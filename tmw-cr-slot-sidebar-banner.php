@@ -3,7 +3,7 @@
  * Plugin Name: TMW CR Slot Sidebar Banner
  * Plugin URI: https://themilisofialtd.com/
  * Description: Displays a geo-targeted CrackRevenue slot banner with a 3-reel interface in sidebar areas via shortcode or template tag.
- * Version: 1.7.0
+ * Version: 1.8.0
  * Author: The Milisofia LTD
  * Author URI: https://themilisofialtd.com/
  * License: GPL2
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'TMW_CR_SLOT_BANNER_VERSION', '1.7.0' );
+define( 'TMW_CR_SLOT_BANNER_VERSION', '1.8.0' );
 define( 'TMW_CR_SLOT_BANNER_PATH', plugin_dir_path( __FILE__ ) );
 define( 'TMW_CR_SLOT_BANNER_URL', plugin_dir_url( __FILE__ ) );
 
@@ -23,6 +23,7 @@ require_once TMW_CR_SLOT_BANNER_PATH . 'includes/geo-helper.php';
 require_once TMW_CR_SLOT_BANNER_PATH . 'includes/class-offer-repository.php';
 require_once TMW_CR_SLOT_BANNER_PATH . 'includes/class-cr-api-client.php';
 require_once TMW_CR_SLOT_BANNER_PATH . 'includes/class-offer-sync-service.php';
+require_once TMW_CR_SLOT_BANNER_PATH . 'includes/class-stats-sync-service.php';
 require_once TMW_CR_SLOT_BANNER_PATH . 'admin/admin-page.php';
 
 /**
@@ -58,6 +59,20 @@ class TMW_CR_Slot_Sidebar_Banner {
     const OFFER_OVERRIDES_OPTION_KEY = 'tmw_cr_slot_banner_offer_overrides';
 
     /**
+     * Stored offer stats option.
+     *
+     * @var string
+     */
+    const OFFER_STATS_OPTION_KEY = 'tmw_cr_slot_banner_offer_stats';
+
+    /**
+     * Stored offer stats meta option.
+     *
+     * @var string
+     */
+    const OFFER_STATS_META_OPTION_KEY = 'tmw_cr_slot_banner_offer_stats_meta';
+
+    /**
      * Single sidebar slot identifier.
      *
      * @var string
@@ -75,7 +90,7 @@ class TMW_CR_Slot_Sidebar_Banner {
      * Constructor.
      */
     public function __construct() {
-        $this->offer_repository = new TMW_CR_Slot_Offer_Repository( self::OFFERS_OPTION_KEY, self::SYNC_META_OPTION_KEY, self::OFFER_OVERRIDES_OPTION_KEY );
+        $this->offer_repository = new TMW_CR_Slot_Offer_Repository( self::OFFERS_OPTION_KEY, self::SYNC_META_OPTION_KEY, self::OFFER_OVERRIDES_OPTION_KEY, self::OFFER_STATS_OPTION_KEY, self::OFFER_STATS_META_OPTION_KEY );
 
         add_action( 'init', array( $this, 'register_shortcode' ) );
         add_action( 'wp_enqueue_scripts', array( $this, 'register_assets' ) );
@@ -152,6 +167,8 @@ class TMW_CR_Slot_Sidebar_Banner {
             'slot_offer_ids'         => array(),
             'slot_offer_priority'    => array(),
             'offer_image_overrides'  => array(),
+            'rotation_mode'          => 'manual',
+            'stats_sync_range'       => '30d',
         );
 
         $settings = get_option( self::OPTION_KEY, array() );
@@ -161,6 +178,14 @@ class TMW_CR_Slot_Sidebar_Banner {
         $settings['slot_offer_ids']        = is_array( $settings['slot_offer_ids'] ) ? array_values( $settings['slot_offer_ids'] ) : array();
         $settings['slot_offer_priority']   = is_array( $settings['slot_offer_priority'] ) ? $settings['slot_offer_priority'] : array();
         $settings['offer_image_overrides'] = is_array( $settings['offer_image_overrides'] ) ? $settings['offer_image_overrides'] : array();
+        $settings['rotation_mode']         = sanitize_key( (string) $settings['rotation_mode'] );
+        if ( ! in_array( $settings['rotation_mode'], array( 'manual', 'payout_desc', 'conversions_desc', 'epc_desc', 'country_epc_desc', 'hybrid_score' ), true ) ) {
+            $settings['rotation_mode'] = 'manual';
+        }
+        $settings['stats_sync_range']      = sanitize_key( (string) $settings['stats_sync_range'] );
+        if ( ! in_array( $settings['stats_sync_range'], array( '7d', '30d', '90d' ), true ) ) {
+            $settings['stats_sync_range'] = '30d';
+        }
 
         return $settings;
     }

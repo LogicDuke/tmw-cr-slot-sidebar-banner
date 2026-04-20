@@ -31,6 +31,7 @@ class TMW_CR_Slot_Admin_Page {
         add_action( 'admin_init', array( $this, 'register_settings' ) );
         add_action( 'admin_post_tmw_cr_slot_banner_test_connection', array( $this, 'handle_test_connection' ) );
         add_action( 'admin_post_tmw_cr_slot_banner_sync_offers', array( $this, 'handle_sync_offers' ) );
+        add_action( 'admin_post_tmw_cr_slot_banner_sync_stats', array( $this, 'handle_sync_stats' ) );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_dashboard_assets' ) );
     }
 
@@ -91,6 +92,14 @@ class TMW_CR_Slot_Admin_Page {
         $output['subid_value']           = isset( $input['subid_value'] ) ? sanitize_text_field( $input['subid_value'] ) : '';
         $output['open_in_new_tab']       = ! empty( $input['open_in_new_tab'] ) ? 1 : 0;
         $output['country_overrides_raw'] = isset( $input['country_overrides_raw'] ) ? sanitize_textarea_field( $input['country_overrides_raw'] ) : '';
+        $output['rotation_mode']         = isset( $input['rotation_mode'] ) ? sanitize_key( (string) $input['rotation_mode'] ) : 'manual';
+        if ( ! in_array( $output['rotation_mode'], array( 'manual', 'payout_desc', 'conversions_desc', 'epc_desc', 'country_epc_desc', 'hybrid_score' ), true ) ) {
+            $output['rotation_mode'] = 'manual';
+        }
+        $output['stats_sync_range']      = isset( $input['stats_sync_range'] ) ? sanitize_key( (string) $input['stats_sync_range'] ) : '30d';
+        if ( ! in_array( $output['stats_sync_range'], array( '7d', '30d', '90d' ), true ) ) {
+            $output['stats_sync_range'] = '30d';
+        }
 
         $api_key              = isset( $input['cr_api_key'] ) ? trim( (string) $input['cr_api_key'] ) : '';
         $output['cr_api_key'] = '' !== $api_key ? sanitize_text_field( $api_key ) : (string) $existing['cr_api_key'];
@@ -251,6 +260,41 @@ class TMW_CR_Slot_Admin_Page {
     /**
      * @return void
      */
+    public function handle_sync_stats() {
+        $this->assert_admin_action( 'tmw_cr_slot_banner_sync_stats' );
+
+        $settings = TMW_CR_Slot_Sidebar_Banner::get_settings();
+        $client   = $this->build_api_client();
+        $result   = TMW_CR_Slot_Stats_Sync_Service::sync(
+            $client,
+            $this->offer_repository,
+            array(
+                'preset' => isset( $_POST['stats_sync_range'] ) ? sanitize_key( wp_unslash( $_POST['stats_sync_range'] ) ) : (string) $settings['stats_sync_range'],
+            )
+        );
+
+        if ( is_wp_error( $result ) ) {
+            $this->redirect_with_notice( 'error', $result->get_error_message() );
+        }
+
+        $message = sprintf(
+            __( '[TMW-CR-STATS] Stats sync complete. Raw rows: %1$d, Imported rows: %2$d, Range: %3$s to %4$s.', 'tmw-cr-slot-sidebar-banner' ),
+            (int) ( $result['last_stats_raw_rows'] ?? 0 ),
+            (int) ( $result['last_stats_imported_rows'] ?? 0 ),
+            (string) ( $result['last_stats_date_start'] ?? '' ),
+            (string) ( $result['last_stats_date_end'] ?? '' )
+        );
+
+        if ( ! empty( $result['preserved_previous'] ) ) {
+            $message .= ' ' . __( 'Previous local stats were preserved due to a parser mismatch.', 'tmw-cr-slot-sidebar-banner' );
+        }
+
+        $this->redirect_with_notice( 'success', $message );
+    }
+
+    /**
+     * @return void
+     */
     public function render_page() {
         if ( ! current_user_can( 'manage_options' ) ) {
             return;
@@ -264,7 +308,7 @@ class TMW_CR_Slot_Admin_Page {
         $client      = $this->build_api_client();
 
         $active_tab = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : 'overview';
-        if ( ! in_array( $active_tab, array( 'overview', 'offers', 'slot-setup', 'settings' ), true ) ) {
+        if ( ! in_array( $active_tab, array( 'overview', 'offers', 'performance', 'slot-setup', 'settings' ), true ) ) {
             $active_tab = 'overview';
         }
         ?>
@@ -288,6 +332,8 @@ class TMW_CR_Slot_Admin_Page {
                 $this->render_overview_tab( $summary, $sync_meta, $client );
             } elseif ( 'offers' === $active_tab ) {
                 $this->render_offers_tab( $settings );
+            } elseif ( 'performance' === $active_tab ) {
+                $this->render_performance_tab();
             } elseif ( 'slot-setup' === $active_tab ) {
                 $this->render_slot_setup_tab( $settings );
             } else {
@@ -305,6 +351,7 @@ class TMW_CR_Slot_Admin_Page {
         return array(
             'overview'   => __( 'Overview', 'tmw-cr-slot-sidebar-banner' ),
             'offers'     => __( 'Offers', 'tmw-cr-slot-sidebar-banner' ),
+            'performance'=> __( 'Performance', 'tmw-cr-slot-sidebar-banner' ),
             'slot-setup' => __( 'Slot Setup', 'tmw-cr-slot-sidebar-banner' ),
             'settings'   => __( 'Settings', 'tmw-cr-slot-sidebar-banner' ),
         );
@@ -357,6 +404,12 @@ class TMW_CR_Slot_Admin_Page {
             <?php $this->render_summary_card( __( 'Last sync time', 'tmw-cr-slot-sidebar-banner' ), ! empty( $summary['last_sync_time'] ) ? (string) $summary['last_sync_time'] : __( 'Never', 'tmw-cr-slot-sidebar-banner' ) ); ?>
             <?php $this->render_summary_card( __( 'Last raw/imported/skipped', 'tmw-cr-slot-sidebar-banner' ), sprintf( '%d / %d / %d', (int) $summary['last_raw_row_count'], (int) $summary['last_imported_count'], (int) $summary['last_skipped_count'] ) ); ?>
             <?php $this->render_summary_card( __( 'Last soft-failure', 'tmw-cr-slot-sidebar-banner' ), ! empty( $summary['last_soft_failure'] ) ? __( 'Yes', 'tmw-cr-slot-sidebar-banner' ) : __( 'No', 'tmw-cr-slot-sidebar-banner' ) ); ?>
+            <?php $this->render_summary_card( __( 'Total clicks (stats)', 'tmw-cr-slot-sidebar-banner' ), (string) (int) $summary['total_clicks'] ); ?>
+            <?php $this->render_summary_card( __( 'Total conversions (stats)', 'tmw-cr-slot-sidebar-banner' ), (string) (float) $summary['total_conversions'] ); ?>
+            <?php $this->render_summary_card( __( 'Total payout (stats)', 'tmw-cr-slot-sidebar-banner' ), (string) round( (float) $summary['total_payout'], 2 ) ); ?>
+            <?php $this->render_summary_card( __( 'Top performing offer', 'tmw-cr-slot-sidebar-banner' ), ! empty( $summary['top_offer_name'] ) ? (string) $summary['top_offer_name'] : __( 'N/A', 'tmw-cr-slot-sidebar-banner' ) ); ?>
+            <?php $this->render_summary_card( __( 'Top performing country', 'tmw-cr-slot-sidebar-banner' ), ! empty( $summary['top_country_name'] ) ? (string) $summary['top_country_name'] : __( 'N/A', 'tmw-cr-slot-sidebar-banner' ) ); ?>
+            <?php $this->render_summary_card( __( 'Stats freshness', 'tmw-cr-slot-sidebar-banner' ), ! empty( $summary['last_stats_synced_at'] ) ? (string) $summary['last_stats_synced_at'] : __( 'Never', 'tmw-cr-slot-sidebar-banner' ) ); ?>
         </div>
 
         <div class="tmw-cr-actions-row">
@@ -370,6 +423,17 @@ class TMW_CR_Slot_Admin_Page {
                 <input type="hidden" name="action" value="tmw_cr_slot_banner_sync_offers" />
                 <?php submit_button( __( 'Sync Offers Now', 'tmw-cr-slot-sidebar-banner' ), 'primary', 'submit', false ); ?>
             </form>
+            <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+                <?php $settings = TMW_CR_Slot_Sidebar_Banner::get_settings(); ?>
+                <?php wp_nonce_field( 'tmw_cr_slot_banner_sync_stats' ); ?>
+                <input type="hidden" name="action" value="tmw_cr_slot_banner_sync_stats" />
+                <select name="stats_sync_range">
+                    <option value="7d" <?php selected( $settings['stats_sync_range'], '7d' ); ?>>7d</option>
+                    <option value="30d" <?php selected( $settings['stats_sync_range'], '30d' ); ?>>30d</option>
+                    <option value="90d" <?php selected( $settings['stats_sync_range'], '90d' ); ?>>90d</option>
+                </select>
+                <?php submit_button( __( 'Sync Stats Now', 'tmw-cr-slot-sidebar-banner' ), 'secondary', 'submit', false ); ?>
+            </form>
             <p><strong><?php esc_html_e( 'Stored API key', 'tmw-cr-slot-sidebar-banner' ); ?>:</strong> <?php echo esc_html( $client->get_masked_api_key() ? $client->get_masked_api_key() : __( 'Not configured', 'tmw-cr-slot-sidebar-banner' ) ); ?></p>
         </div>
 
@@ -378,6 +442,8 @@ class TMW_CR_Slot_Admin_Page {
                 <tr><th><?php esc_html_e( 'Last response shape', 'tmw-cr-slot-sidebar-banner' ); ?></th><td><?php echo ! empty( $sync_meta['last_response_shape'] ) ? esc_html( (string) $sync_meta['last_response_shape'] ) : esc_html__( 'Unknown', 'tmw-cr-slot-sidebar-banner' ); ?></td></tr>
                 <tr><th><?php esc_html_e( 'Sample row keys', 'tmw-cr-slot-sidebar-banner' ); ?></th><td><?php echo ! empty( $sync_meta['sample_row_keys'] ) ? esc_html( (string) $sync_meta['sample_row_keys'] ) : esc_html__( 'N/A', 'tmw-cr-slot-sidebar-banner' ); ?></td></tr>
                 <tr><th><?php esc_html_e( 'Last sync error', 'tmw-cr-slot-sidebar-banner' ); ?></th><td><?php echo ! empty( $summary['last_error'] ) ? esc_html( (string) $summary['last_error'] ) : esc_html__( 'None', 'tmw-cr-slot-sidebar-banner' ); ?></td></tr>
+                <tr><th><?php esc_html_e( 'Last stats range', 'tmw-cr-slot-sidebar-banner' ); ?></th><td><?php echo esc_html( (string) $summary['last_stats_date_start'] . ' → ' . (string) $summary['last_stats_date_end'] ); ?></td></tr>
+                <tr><th><?php esc_html_e( 'Last stats error', 'tmw-cr-slot-sidebar-banner' ); ?></th><td><?php echo ! empty( $summary['last_stats_error'] ) ? esc_html( (string) $summary['last_stats_error'] ) : esc_html__( 'None', 'tmw-cr-slot-sidebar-banner' ); ?></td></tr>
             </tbody>
         </table>
         <?php
@@ -640,6 +706,77 @@ class TMW_CR_Slot_Admin_Page {
     }
 
     /**
+     * @return void
+     */
+    protected function render_performance_tab() {
+        $country    = isset( $_GET['country'] ) ? sanitize_text_field( wp_unslash( $_GET['country'] ) ) : '';
+        $sort_by    = isset( $_GET['sort_by'] ) ? sanitize_key( wp_unslash( $_GET['sort_by'] ) ) : 'payout';
+        $sort_order = isset( $_GET['sort_order'] ) ? sanitize_key( wp_unslash( $_GET['sort_order'] ) ) : 'desc';
+        $rows       = $this->offer_repository->get_performance_rows(
+            $country,
+            array(
+                'sort_by'    => $sort_by,
+                'sort_order' => $sort_order,
+            )
+        );
+        $summary = $this->offer_repository->get_performance_summary();
+        ?>
+        <form method="get" class="tmw-cr-filters">
+            <input type="hidden" name="page" value="tmw-cr-slot-sidebar-banner" />
+            <input type="hidden" name="tab" value="performance" />
+            <label><?php esc_html_e( 'Country', 'tmw-cr-slot-sidebar-banner' ); ?> <input type="text" name="country" value="<?php echo esc_attr( $country ); ?>" placeholder="US / Canada / GLOBAL" /></label>
+            <label><?php esc_html_e( 'Sort by', 'tmw-cr-slot-sidebar-banner' ); ?>
+                <select name="sort_by">
+                    <option value="payout" <?php selected( $sort_by, 'payout' ); ?>>payout</option>
+                    <option value="clicks" <?php selected( $sort_by, 'clicks' ); ?>>clicks</option>
+                    <option value="conversions" <?php selected( $sort_by, 'conversions' ); ?>>conversions</option>
+                    <option value="epc" <?php selected( $sort_by, 'epc' ); ?>>epc</option>
+                    <option value="conversion_rate" <?php selected( $sort_by, 'conversion_rate' ); ?>>conversion rate</option>
+                </select>
+            </label>
+            <label><?php esc_html_e( 'Order', 'tmw-cr-slot-sidebar-banner' ); ?>
+                <select name="sort_order">
+                    <option value="desc" <?php selected( $sort_order, 'desc' ); ?>>desc</option>
+                    <option value="asc" <?php selected( $sort_order, 'asc' ); ?>>asc</option>
+                </select>
+            </label>
+            <?php submit_button( __( 'Apply', 'tmw-cr-slot-sidebar-banner' ), 'secondary', '', false ); ?>
+        </form>
+
+        <p><strong>[TMW-CR-DASH]</strong> <?php echo esc_html( sprintf( 'Top offer: %s | Top country: %s | Total payout: %.2f', (string) $summary['top_offer_name'], (string) $summary['top_country_name'], (float) $summary['total_payout'] ) ); ?></p>
+
+        <table class="widefat striped">
+            <thead>
+                <tr>
+                    <th><?php esc_html_e( 'Offer', 'tmw-cr-slot-sidebar-banner' ); ?></th>
+                    <th><?php esc_html_e( 'Clicks', 'tmw-cr-slot-sidebar-banner' ); ?></th>
+                    <th><?php esc_html_e( 'Conversions', 'tmw-cr-slot-sidebar-banner' ); ?></th>
+                    <th><?php esc_html_e( 'Payout', 'tmw-cr-slot-sidebar-banner' ); ?></th>
+                    <th><?php esc_html_e( 'EPC', 'tmw-cr-slot-sidebar-banner' ); ?></th>
+                    <th><?php esc_html_e( 'Conversion rate %', 'tmw-cr-slot-sidebar-banner' ); ?></th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php if ( empty( $rows ) ) : ?>
+                <tr><td colspan="6"><?php esc_html_e( 'No local stats found. Run Stats Sync first.', 'tmw-cr-slot-sidebar-banner' ); ?></td></tr>
+            <?php else : ?>
+                <?php foreach ( $rows as $row ) : ?>
+                    <tr>
+                        <td><strong><?php echo esc_html( (string) $row['offer_name'] ); ?></strong><br/><code><?php echo esc_html( (string) $row['offer_id'] ); ?></code></td>
+                        <td><?php echo esc_html( (string) (int) $row['clicks'] ); ?></td>
+                        <td><?php echo esc_html( (string) (float) $row['conversions'] ); ?></td>
+                        <td><?php echo esc_html( number_format( (float) $row['payout'], 2 ) ); ?></td>
+                        <td><?php echo esc_html( number_format( (float) $row['epc'], 6 ) ); ?></td>
+                        <td><?php echo esc_html( number_format( (float) $row['conversion_rate'], 4 ) ); ?></td>
+                    </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+            </tbody>
+        </table>
+        <?php
+    }
+
+    /**
      * @param array<string,mixed> $settings Settings.
      * @param array<string,mixed> $sync_meta Sync meta.
      * @param TMW_CR_Slot_CR_API_Client $client Client.
@@ -700,6 +837,30 @@ class TMW_CR_Slot_Admin_Page {
                         </td>
                     </tr>
                     <tr>
+                        <th scope="row"><label for="tmw-cr-rotation-mode"><?php esc_html_e( 'Rotation mode', 'tmw-cr-slot-sidebar-banner' ); ?></label></th>
+                        <td>
+                            <select id="tmw-cr-rotation-mode" name="<?php echo esc_attr( $this->option_key ); ?>[rotation_mode]">
+                                <option value="manual" <?php selected( $settings['rotation_mode'], 'manual' ); ?>>manual</option>
+                                <option value="payout_desc" <?php selected( $settings['rotation_mode'], 'payout_desc' ); ?>>payout_desc</option>
+                                <option value="conversions_desc" <?php selected( $settings['rotation_mode'], 'conversions_desc' ); ?>>conversions_desc</option>
+                                <option value="epc_desc" <?php selected( $settings['rotation_mode'], 'epc_desc' ); ?>>epc_desc</option>
+                                <option value="country_epc_desc" <?php selected( $settings['rotation_mode'], 'country_epc_desc' ); ?>>country_epc_desc</option>
+                                <option value="hybrid_score" <?php selected( $settings['rotation_mode'], 'hybrid_score' ); ?>>hybrid_score</option>
+                            </select>
+                            <p class="description"><?php esc_html_e( '[TMW-CR-OPT] Runtime ordering mode. Manual priority state is never rewritten.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="tmw-cr-stats-range"><?php esc_html_e( 'Stats sync range', 'tmw-cr-slot-sidebar-banner' ); ?></label></th>
+                        <td>
+                            <select id="tmw-cr-stats-range" name="<?php echo esc_attr( $this->option_key ); ?>[stats_sync_range]">
+                                <option value="7d" <?php selected( $settings['stats_sync_range'], '7d' ); ?>>7d</option>
+                                <option value="30d" <?php selected( $settings['stats_sync_range'], '30d' ); ?>>30d</option>
+                                <option value="90d" <?php selected( $settings['stats_sync_range'], '90d' ); ?>>90d</option>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
                         <th scope="row"><label for="tmw-cr-country-overrides"><?php esc_html_e( 'Country Overrides', 'tmw-cr-slot-sidebar-banner' ); ?></label></th>
                         <td>
                             <textarea class="large-text code" rows="8" id="tmw-cr-country-overrides" name="<?php echo esc_attr( $this->option_key ); ?>[country_overrides_raw]" placeholder="US|https://example.com/us-banner.png|https://offer.com/us|Join Now|Exclusive US Bonus"><?php echo esc_textarea( $settings['country_overrides_raw'] ); ?></textarea>
@@ -722,6 +883,12 @@ class TMW_CR_Slot_Admin_Page {
                 <?php wp_nonce_field( 'tmw_cr_slot_banner_sync_offers' ); ?>
                 <input type="hidden" name="action" value="tmw_cr_slot_banner_sync_offers" />
                 <?php submit_button( __( 'Sync Offers Now', 'tmw-cr-slot-sidebar-banner' ), 'primary', 'submit', false ); ?>
+            </form>
+            <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline-block;">
+                <?php wp_nonce_field( 'tmw_cr_slot_banner_sync_stats' ); ?>
+                <input type="hidden" name="action" value="tmw_cr_slot_banner_sync_stats" />
+                <input type="hidden" name="stats_sync_range" value="<?php echo esc_attr( (string) $settings['stats_sync_range'] ); ?>" />
+                <?php submit_button( __( 'Sync Stats Now', 'tmw-cr-slot-sidebar-banner' ), 'secondary', 'submit', false ); ?>
             </form>
             <p>
                 <strong><?php esc_html_e( 'Last sync', 'tmw-cr-slot-sidebar-banner' ); ?>:</strong>

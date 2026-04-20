@@ -19,6 +19,8 @@ class TMW_CR_Slot_Sidebar_Banner {
             'slot_offer_ids'         => array(),
             'slot_offer_priority'    => array(),
             'offer_image_overrides'  => array(),
+            'rotation_mode'          => 'manual',
+            'stats_sync_range'       => '30d',
         );
 
         return wp_parse_args( get_option( self::OPTION_KEY, array() ), $defaults );
@@ -894,10 +896,129 @@ $tests['render_page_shows_dashboard_tabs_and_sections'] = function() {
 
     tmw_assert_contains( 'Overview', $html, 'Dashboard should render Overview tab.' );
     tmw_assert_contains( 'Offers', $html, 'Dashboard should render Offers tab.' );
+    tmw_assert_contains( 'Performance', $html, 'Dashboard should render Performance tab.' );
     tmw_assert_contains( 'Slot Setup', $html, 'Dashboard should render Slot Setup tab.' );
     tmw_assert_contains( 'Settings', $html, 'Dashboard should render Settings tab.' );
     tmw_assert_contains( 'Last raw/imported/skipped', $html, 'Overview cards should render sync count summary.' );
     tmw_assert_true( false === strpos( $html, 'hidden-api-key' ), 'Overview should never leak API key.' );
+};
+
+$tests['stats_client_request_shape_get_stats'] = function() {
+    tmw_reset_test_state();
+
+    $captured = '';
+    $GLOBALS['tmw_test_remote_get'] = static function ( $url ) use ( &$captured ) {
+        $captured = $url;
+        return array(
+            'response' => array( 'code' => 200 ),
+            'body'     => wp_json_encode( array( 'response' => array( 'data' => array() ) ) ),
+        );
+    };
+
+    $client = new TMW_CR_Slot_CR_API_Client( 'apikey' );
+    $client->get_offer_stats(
+        array(
+            'fields' => array( 'Stat.clicks', 'Stat.offer_id' ),
+            'groups' => array( 'Stat.offer_id', 'Country.name' ),
+            'filters' => array( 'Stat.offer_id' => '100' ),
+            'sort' => array( 'Stat.payout' => 'desc' ),
+            'data_start' => '2026-04-01',
+            'data_end' => '2026-04-20',
+            'limit' => 50,
+            'page' => 2,
+        )
+    );
+
+    tmw_assert_contains( 'Target=Affiliate_Report', $captured, 'Stats request should target Affiliate_Report.' );
+    tmw_assert_contains( 'Method=getStats', $captured, 'Stats request should use getStats.' );
+    tmw_assert_contains( 'fields[]=Stat.clicks', $captured, 'Stats request should include fields[] payload.' );
+    tmw_assert_contains( 'groups[]=Stat.offer_id', $captured, 'Stats request should include groups[] payload.' );
+};
+
+$tests['stats_sync_storage_and_transport_failure_preserves_existing'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
+    $repository->save_offer_stats(
+        array(
+            'old' => array( 'offer_id' => '1', 'country_name' => 'US', 'clicks' => 2, 'conversions' => 1, 'payout' => 4, 'epc' => 2 ),
+        )
+    );
+
+    $calls = 0;
+    $GLOBALS['tmw_test_remote_get'] = static function () use ( &$calls ) {
+        ++$calls;
+        if ( 1 === $calls ) {
+            return array(
+                'response' => array( 'code' => 200 ),
+                'body'     => wp_json_encode(
+                    array(
+                        'response' => array(
+                            'data' => array(
+                                array(
+                                    'Stat' => array( 'offer_id' => '10', 'clicks' => 100, 'conversions' => 4, 'payout' => 130, 'payout_type' => 'cpa' ),
+                                    'Offer' => array( 'name' => 'Ten' ),
+                                    'Country' => array( 'name' => 'US' ),
+                                ),
+                            ),
+                        ),
+                    )
+                ),
+            );
+        }
+        return new WP_Error( 'down', 'down' );
+    };
+
+    $client = new TMW_CR_Slot_CR_API_Client( 'apikey' );
+    $result = TMW_CR_Slot_Stats_Sync_Service::sync( $client, $repository, array( 'preset' => '7d' ) );
+    tmw_assert_true( ! is_wp_error( $result ), 'First stats sync should pass.' );
+    $stored = $repository->get_offer_stats();
+    tmw_assert_true( ! empty( $stored['10|US'] ), 'Aggregated stats should be keyed by offer+country.' );
+
+    $error = TMW_CR_Slot_Stats_Sync_Service::sync( $client, $repository, array( 'preset' => '7d' ) );
+    tmw_assert_true( is_wp_error( $error ), 'Second sync should fail transport.' );
+    $stored_after = $repository->get_offer_stats();
+    tmw_assert_same( $stored, $stored_after, 'Transport failure should preserve existing stats.' );
+};
+
+$tests['runtime_ranking_modes_and_country_fallback'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
+    $repository->save_synced_offers(
+        array(
+            '1' => array( 'id' => '1', 'name' => 'One', 'status' => 'active' ),
+            '2' => array( 'id' => '2', 'name' => 'Two', 'status' => 'active' ),
+        )
+    );
+    $repository->save_offer_stats(
+        array(
+            '1|US' => array( 'offer_id' => '1', 'country_name' => 'US', 'clicks' => 10, 'conversions' => 1, 'payout' => 10, 'epc' => 1 ),
+            '2|GLOBAL' => array( 'offer_id' => '2', 'country_name' => 'GLOBAL', 'clicks' => 100, 'conversions' => 20, 'payout' => 300, 'epc' => 3 ),
+        )
+    );
+    $offers = array(
+        array( 'id' => '1', 'name' => 'One' ),
+        array( 'id' => '2', 'name' => 'Two' ),
+    );
+    $manual = $repository->rank_offers_for_slot( $offers, array( 'rotation_mode' => 'manual' ), 'US', array( '1' => 1, '2' => 2 ) );
+    tmw_assert_same( '1', $manual[0]['id'], 'Manual mode should keep priority order.' );
+
+    $optimized = $repository->rank_offers_for_slot( $offers, array( 'rotation_mode' => 'payout_desc' ), 'US', array( '1' => 1, '2' => 2 ) );
+    tmw_assert_same( '2', $optimized[0]['id'], 'Payout mode should use country row when available and fallback to global if missing.' );
+};
+
+$tests['dashboard_performance_summary_fields'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
+    $repository->save_offer_stats(
+        array(
+            '1|US' => array( 'offer_id' => '1', 'offer_name' => 'One', 'country_name' => 'US', 'clicks' => 10, 'conversions' => 1, 'payout' => 20 ),
+            '2|CA' => array( 'offer_id' => '2', 'offer_name' => 'Two', 'country_name' => 'CA', 'clicks' => 20, 'conversions' => 2, 'payout' => 25 ),
+        )
+    );
+    $repository->save_stats_meta( array( 'last_stats_synced_at' => '2026-04-20T00:00:00+00:00', 'last_stats_date_start' => '2026-04-01', 'last_stats_date_end' => '2026-04-20' ) );
+    $summary = $repository->get_dashboard_summary( array() );
+    tmw_assert_same( 30, (int) $summary['total_clicks'], 'Summary should include stats clicks.' );
+    tmw_assert_same( 'Two', (string) $summary['top_offer_name'], 'Summary should include top offer by payout.' );
 };
 
 $failures = array();

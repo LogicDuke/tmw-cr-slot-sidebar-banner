@@ -120,6 +120,61 @@ $tests['extract_offer_rows_supports_results_shapes'] = function() {
     tmw_assert_same( 'results', TMW_CR_Slot_Offer_Sync_Service::detect_response_shape( array( 'results' => array( array( 'id' => '9' ) ) ) ), 'results shape should be detected.' );
 };
 
+$tests['extract_offer_rows_unwraps_response_envelope_data_list'] = function() {
+    tmw_reset_test_state();
+
+    $response = array(
+        'response' => array(
+            'status' => true,
+            'httpStatus' => 200,
+            'data' => array(
+                array(
+                    'id' => '123',
+                    'name' => 'Offer A',
+                    'status' => 'active',
+                ),
+                array(
+                    'id' => '124',
+                    'name' => 'Offer B',
+                    'status' => 'active',
+                ),
+            ),
+            'errors' => array(),
+            'errorMessage' => '',
+        ),
+    );
+
+    $rows = TMW_CR_Slot_Offer_Sync_Service::extract_offer_rows( $response );
+
+    tmw_assert_same( 2, count( $rows ), 'Envelope response rows should be unwrapped from response.data.' );
+    tmw_assert_same( '123', $rows[0]['id'], 'First nested response offer should be preserved.' );
+    tmw_assert_same( 'response.envelope.data', TMW_CR_Slot_Offer_Sync_Service::detect_response_shape( $response ), 'Shape diagnostics should indicate envelope unwrapping.' );
+};
+
+$tests['extract_offer_rows_unwraps_double_nested_response_data_data'] = function() {
+    tmw_reset_test_state();
+
+    $response = array(
+        'response' => array(
+            'status' => true,
+            'httpStatus' => 200,
+            'data' => array(
+                'data' => array(
+                    array( 'id' => '123', 'name' => 'Offer A', 'status' => 'active' ),
+                ),
+            ),
+            'errors' => array(),
+            'errorMessage' => '',
+        ),
+    );
+
+    $rows = TMW_CR_Slot_Offer_Sync_Service::extract_offer_rows( $response );
+
+    tmw_assert_same( 1, count( $rows ), 'Double nested response.data.data rows should be extracted.' );
+    tmw_assert_same( '123', $rows[0]['id'], 'Double nested row should keep offer id.' );
+    tmw_assert_same( 'response.envelope.data.data', TMW_CR_Slot_Offer_Sync_Service::detect_response_shape( $response ), 'Shape diagnostics should include nested data path.' );
+};
+
 $tests['extract_offer_rows_supports_top_level_keyed_collection'] = function() {
     tmw_reset_test_state();
 
@@ -266,7 +321,7 @@ $tests['sync_soft_failure_preserves_previous_offers'] = function() {
                     array(
                         'response' => array(
                             'data' => array(
-                                array( 'name' => 'No ID Offer' ),
+                                array( 'name' => 'No ID Offer', 'status' => 'active' ),
                             ),
                         ),
                     )
@@ -290,6 +345,49 @@ $tests['sync_soft_failure_preserves_previous_offers'] = function() {
     tmw_assert_same( 1, (int) $meta['last_soft_failure'], 'Soft failure flag should be set in sync meta.' );
     tmw_assert_same( 1, (int) $meta['last_raw_row_count'], 'Raw row count should be recorded.' );
     tmw_assert_same( 1, (int) $meta['last_skipped_count'], 'Skipped count should be recorded.' );
+};
+
+$tests['sync_imports_nested_envelope_rows_and_avoids_soft_failure'] = function() {
+    tmw_reset_test_state();
+
+    $GLOBALS['tmw_test_remote_get'] = function() {
+        static $page = 0;
+        ++$page;
+
+        if ( 1 === $page ) {
+            return array(
+                'response' => array( 'code' => 200 ),
+                'body'     => wp_json_encode(
+                    array(
+                        'response' => array(
+                            'status' => true,
+                            'httpStatus' => 200,
+                            'data' => array(
+                                array( 'id' => '123', 'name' => 'Offer A', 'status' => 'active' ),
+                                array( 'id' => '124', 'name' => 'Offer B', 'status' => 'active' ),
+                            ),
+                            'errors' => array(),
+                            'errorMessage' => '',
+                        ),
+                    )
+                ),
+            );
+        }
+
+        return array(
+            'response' => array( 'code' => 200 ),
+            'body'     => wp_json_encode( array( 'response' => array( 'status' => true, 'httpStatus' => 200, 'data' => array(), 'errors' => array(), 'errorMessage' => '' ) ) ),
+        );
+    };
+
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $result     = TMW_CR_Slot_Offer_Sync_Service::sync_all( new TMW_CR_Slot_CR_API_Client( 'sync-key' ), $repository );
+
+    tmw_assert_true( ! is_wp_error( $result ), 'Envelope sync should succeed.' );
+    tmw_assert_same( 2, (int) $result['offer_count'], 'Envelope sync should import both offers.' );
+    tmw_assert_same( 0, (int) $result['last_soft_failure'], 'Envelope sync should not flag parser soft failure.' );
+    tmw_assert_same( 'response.envelope.data', $result['last_response_shape'], 'Envelope sync should report nested shape.' );
+    tmw_assert_same( 'Offer A', $repository->get_synced_offers()['123']['name'], 'Envelope rows should be stored locally.' );
 };
 
 $tests['sync_transport_failure_preserves_existing_offers'] = function() {
@@ -322,7 +420,7 @@ $tests['sync_meta_stores_diagnostics'] = function() {
                     array(
                         'data' => array(
                             array( 'id' => '12', 'name' => 'Offer Twelve', 'status' => 'active' ),
-                            array( 'name' => 'Skipped Row' ),
+                            array( 'name' => 'Skipped Row', 'status' => 'active' ),
                         ),
                     )
                 ),
@@ -388,7 +486,7 @@ $tests['handle_sync_offers_notice_includes_counts_and_preserve_flag'] = function
         if ( 1 === $page ) {
             return array(
                 'response' => array( 'code' => 200 ),
-                'body'     => wp_json_encode( array( 'response' => array( 'data' => array( array( 'name' => 'No ID' ) ) ) ) ),
+                'body'     => wp_json_encode( array( 'response' => array( 'data' => array( array( 'name' => 'No ID', 'status' => 'active' ) ) ) ) ),
             );
         }
 

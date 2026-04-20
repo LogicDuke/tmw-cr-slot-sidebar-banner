@@ -193,37 +193,7 @@ class TMW_CR_Slot_Offer_Sync_Service {
      * @return array<int,array<string,mixed>>
      */
     public static function extract_offer_rows( $response ) {
-        $candidates = array();
-
-        if ( isset( $response['response']['data'] ) && is_array( $response['response']['data'] ) ) {
-            $candidates[] = $response['response']['data'];
-        }
-
-        if ( isset( $response['data'] ) && is_array( $response['data'] ) ) {
-            $candidates[] = $response['data'];
-        }
-
-        if ( isset( $response['response']['results'] ) && is_array( $response['response']['results'] ) ) {
-            $candidates[] = $response['response']['results'];
-        }
-
-        if ( isset( $response['results'] ) && is_array( $response['results'] ) ) {
-            $candidates[] = $response['results'];
-        }
-
-        if ( is_array( $response ) ) {
-            $candidates[] = $response;
-        }
-
-        foreach ( $candidates as $candidate ) {
-            $rows = self::extract_rows_from_candidate( $candidate );
-
-            if ( ! empty( $rows ) ) {
-                return $rows;
-            }
-        }
-
-        return array();
+        return self::extract_offer_rows_from_payload( $response );
     }
 
     /**
@@ -232,53 +202,14 @@ class TMW_CR_Slot_Offer_Sync_Service {
      * @return string
      */
     public static function detect_response_shape( $response ) {
-        $candidates = array();
+        $shape = self::detect_response_shape_from_payload( $response, 'top-level' );
 
-        if ( isset( $response['response']['data'] ) && is_array( $response['response']['data'] ) ) {
-            $candidates[] = array(
-                'shape' => array_is_list( $response['response']['data'] ) ? 'response.data' : 'response.data:keyed',
-                'rows'  => self::extract_rows_from_candidate( $response['response']['data'] ),
-            );
-        }
-
-        if ( isset( $response['data'] ) && is_array( $response['data'] ) ) {
-            $candidates[] = array(
-                'shape' => array_is_list( $response['data'] ) ? 'data' : 'data:keyed',
-                'rows'  => self::extract_rows_from_candidate( $response['data'] ),
-            );
-        }
-
-        if ( isset( $response['response']['results'] ) && is_array( $response['response']['results'] ) ) {
-            $candidates[] = array(
-                'shape' => array_is_list( $response['response']['results'] ) ? 'response.results' : 'response.results:keyed',
-                'rows'  => self::extract_rows_from_candidate( $response['response']['results'] ),
-            );
-        }
-
-        if ( isset( $response['results'] ) && is_array( $response['results'] ) ) {
-            $candidates[] = array(
-                'shape' => array_is_list( $response['results'] ) ? 'results' : 'results:keyed',
-                'rows'  => self::extract_rows_from_candidate( $response['results'] ),
-            );
+        if ( 'unknown' !== $shape ) {
+            return $shape;
         }
 
         if ( is_array( $response ) ) {
-            $candidates[] = array(
-                'shape' => array_is_list( $response ) ? 'list' : 'top-level:keyed',
-                'rows'  => self::extract_rows_from_candidate( $response ),
-            );
-        }
-
-        foreach ( $candidates as $candidate ) {
-            if ( ! empty( $candidate['rows'] ) ) {
-                return (string) $candidate['shape'];
-            }
-        }
-
-        foreach ( $candidates as $candidate ) {
-            if ( '' !== (string) $candidate['shape'] ) {
-                return (string) $candidate['shape'];
-            }
+            return array_is_list( $response ) ? 'list' : 'top-level:keyed';
         }
 
         return 'unknown';
@@ -385,26 +316,155 @@ class TMW_CR_Slot_Offer_Sync_Service {
             return true;
         }
 
-        $known_keys = array(
+        $strong_identifiers = array(
             'id',
             'ID',
             'offer_id',
-            'name',
-            'description',
-            'preview_url',
-            'status',
-            'default_payout',
-            'percent_payout',
-            'payout_type',
-            'require_approval',
-            'featured',
-            'currency',
         );
 
-        foreach ( $known_keys as $known_key ) {
-            if ( array_key_exists( $known_key, $entry ) ) {
+        foreach ( $strong_identifiers as $identifier_key ) {
+            if ( array_key_exists( $identifier_key, $entry ) ) {
                 return true;
             }
+        }
+
+        if ( self::is_envelope_container( $entry ) ) {
+            return false;
+        }
+
+        $has_name = array_key_exists( 'name', $entry );
+        $offer_context_keys = array(
+            'preview_url',
+            'payout_type',
+            'description',
+            'default_payout',
+            'percent_payout',
+            'currency',
+            'require_approval',
+            'featured',
+            'status',
+        );
+
+        if ( $has_name ) {
+            foreach ( $offer_context_keys as $context_key ) {
+                if ( array_key_exists( $context_key, $entry ) ) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param mixed $payload API payload.
+     * @param int   $depth Traversal depth.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    protected static function extract_offer_rows_from_payload( $payload, $depth = 0 ) {
+        if ( ! is_array( $payload ) || $depth > 4 ) {
+            return array();
+        }
+
+        $rows = self::extract_rows_from_candidate( $payload );
+        if ( ! empty( $rows ) ) {
+            return $rows;
+        }
+
+        foreach ( self::get_response_wrapper_keys() as $wrapper_key ) {
+            if ( isset( $payload[ $wrapper_key ] ) && is_array( $payload[ $wrapper_key ] ) ) {
+                $rows = self::extract_offer_rows_from_payload( $payload[ $wrapper_key ], $depth + 1 );
+                if ( ! empty( $rows ) ) {
+                    return $rows;
+                }
+            }
+        }
+
+        return array();
+    }
+
+    /**
+     * @param mixed  $payload API payload.
+     * @param string $shape_path Current path.
+     * @param int    $depth Traversal depth.
+     *
+     * @return string
+     */
+    protected static function detect_response_shape_from_payload( $payload, $shape_path, $depth = 0 ) {
+        if ( ! is_array( $payload ) || $depth > 4 ) {
+            return 'unknown';
+        }
+
+        $rows = self::extract_rows_from_candidate( $payload );
+        if ( ! empty( $rows ) ) {
+            if ( 'top-level' === $shape_path ) {
+                return array_is_list( $payload ) ? 'list' : 'top-level:keyed';
+            }
+
+            return array_is_list( $payload ) ? $shape_path : $shape_path . ':keyed';
+        }
+
+        foreach ( self::get_response_wrapper_keys() as $wrapper_key ) {
+            if ( ! isset( $payload[ $wrapper_key ] ) || ! is_array( $payload[ $wrapper_key ] ) ) {
+                continue;
+            }
+
+            $next_shape = self::append_shape_segment( $shape_path, $payload, $wrapper_key );
+            $detected   = self::detect_response_shape_from_payload( $payload[ $wrapper_key ], $next_shape, $depth + 1 );
+
+            if ( 'unknown' !== $detected ) {
+                return $detected;
+            }
+        }
+
+        return 'unknown';
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    protected static function get_response_wrapper_keys() {
+        return array( 'response', 'data', 'results' );
+    }
+
+    /**
+     * @param string              $current_shape Current shape path.
+     * @param array<string,mixed> $parent_payload Parent payload.
+     * @param string              $wrapper_key Wrapper key.
+     *
+     * @return string
+     */
+    protected static function append_shape_segment( $current_shape, $parent_payload, $wrapper_key ) {
+        if ( 'data' === $wrapper_key && self::is_envelope_container( $parent_payload ) ) {
+            if ( 'top-level' === $current_shape ) {
+                return 'envelope.data';
+            }
+
+            return $current_shape . '.envelope.data';
+        }
+
+        if ( 'top-level' === $current_shape ) {
+            return $wrapper_key;
+        }
+
+        return $current_shape . '.' . $wrapper_key;
+    }
+
+    /**
+     * @param array<string,mixed> $entry Candidate entry.
+     *
+     * @return bool
+     */
+    protected static function is_envelope_container( $entry ) {
+        $keys = array_map( 'strtolower', array_keys( $entry ) );
+        $keys = array_unique( $keys );
+
+        $envelope_markers = array( 'status', 'httpstatus', 'data', 'errors', 'errormessage' );
+        $marker_count     = count( array_intersect( $keys, $envelope_markers ) );
+
+        if ( $marker_count >= 3 ) {
+            return true;
         }
 
         return false;

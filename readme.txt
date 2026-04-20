@@ -3,7 +3,7 @@ Contributors: themilisofia
 Tags: affiliate marketing, crackrevenue, sidebar, banner, shortcode
 Requires at least: 5.8
 Tested up to: 6.4
-Stable tag: 1.4.1
+Stable tag: 1.4.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -40,6 +40,11 @@ Yes. Developers can hook into the `tmw_cr_slot_banner_offers` filter to provide 
 Yes. Version 1.3.0 ships with optimized PNG assets inside `assets/img/offers/` so the slot banner works out of the box. You can still override or extend the catalog with your own creatives via filters.
 
 == Changelog ==
+
+= 1.4.2 =
+* [TMW-CR-FIX] Fixed CrakRevenue envelope parsing so `response/status/httpStatus/data/errors/errorMessage` wrappers are not misclassified as offer rows.
+* [TMW-CR-SYNC] Added explicit nested wrapper unwrapping (`response`, `data`, `results`) and improved response shape diagnostics for envelope payloads.
+* [TMW-CR-API] Added tests covering live envelope payload shapes (`response.data`, `response.data.data`) to ensure rows import and local storage updates correctly.
 
 = 1.4.1 =
 * [TMW-CR-FIX] Hardened CrakRevenue offer sync extraction/normalization for response shape variants.

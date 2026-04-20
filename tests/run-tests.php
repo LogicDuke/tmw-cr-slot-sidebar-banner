@@ -120,6 +120,55 @@ $tests['extract_offer_rows_supports_results_shapes'] = function() {
     tmw_assert_same( 'results', TMW_CR_Slot_Offer_Sync_Service::detect_response_shape( array( 'results' => array( array( 'id' => '9' ) ) ) ), 'results shape should be detected.' );
 };
 
+$tests['extract_offer_rows_supports_top_level_keyed_collection'] = function() {
+    tmw_reset_test_state();
+
+    $response = array(
+        'offer_a' => array( 'id' => '41', 'name' => 'Forty One' ),
+        'offer_b' => array( 'id' => '42', 'name' => 'Forty Two' ),
+    );
+
+    $rows = TMW_CR_Slot_Offer_Sync_Service::extract_offer_rows( $response );
+
+    tmw_assert_same( 2, count( $rows ), 'Top-level keyed collections should be accepted.' );
+    tmw_assert_same( 'top-level:keyed', TMW_CR_Slot_Offer_Sync_Service::detect_response_shape( $response ), 'Top-level keyed shape should be detected.' );
+};
+
+$tests['extract_offer_rows_supports_keyed_collection_with_scalar_metadata'] = function() {
+    tmw_reset_test_state();
+
+    $response = array(
+        'offer_a' => array( 'id' => '51', 'name' => 'Fifty One' ),
+        'meta'    => 'page-1',
+        'offer_b' => array( 'id' => '52', 'name' => 'Fifty Two' ),
+        'count'   => 2,
+    );
+
+    $rows = TMW_CR_Slot_Offer_Sync_Service::extract_offer_rows( $response );
+
+    tmw_assert_same( 2, count( $rows ), 'Keyed payloads with scalar metadata should keep valid rows.' );
+    tmw_assert_same( '51', $rows[0]['id'], 'First valid offer row should be preserved.' );
+};
+
+$tests['extract_offer_rows_uses_non_empty_fallback_shape'] = function() {
+    tmw_reset_test_state();
+
+    $response = array(
+        'response' => array(
+            'data' => array(),
+        ),
+        'results' => array(
+            array( 'id' => '61', 'name' => 'Fallback Offer' ),
+        ),
+    );
+
+    $rows = TMW_CR_Slot_Offer_Sync_Service::extract_offer_rows( $response );
+
+    tmw_assert_same( 1, count( $rows ), 'Extractor should continue to later non-empty fallback shapes.' );
+    tmw_assert_same( '61', $rows[0]['id'], 'Fallback rows should be returned when earlier candidates are empty.' );
+    tmw_assert_same( 'results', TMW_CR_Slot_Offer_Sync_Service::detect_response_shape( $response ), 'Detected shape should prefer first non-empty candidate.' );
+};
+
 $tests['normalize_offer_supports_nested_offer_wrappers_and_id_aliases'] = function() {
     tmw_reset_test_state();
 

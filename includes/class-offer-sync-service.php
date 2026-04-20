@@ -211,17 +211,15 @@ class TMW_CR_Slot_Offer_Sync_Service {
             $candidates[] = $response['results'];
         }
 
-        if ( array_is_list( $response ) ) {
+        if ( is_array( $response ) ) {
             $candidates[] = $response;
         }
 
         foreach ( $candidates as $candidate ) {
-            if ( array_is_list( $candidate ) ) {
-                return array_values( $candidate );
-            }
+            $rows = self::extract_rows_from_candidate( $candidate );
 
-            if ( self::is_keyed_offer_collection( $candidate ) ) {
-                return array_values( $candidate );
+            if ( ! empty( $rows ) ) {
+                return $rows;
             }
         }
 
@@ -234,24 +232,53 @@ class TMW_CR_Slot_Offer_Sync_Service {
      * @return string
      */
     public static function detect_response_shape( $response ) {
+        $candidates = array();
+
         if ( isset( $response['response']['data'] ) && is_array( $response['response']['data'] ) ) {
-            return array_is_list( $response['response']['data'] ) ? 'response.data' : 'response.data:keyed';
+            $candidates[] = array(
+                'shape' => array_is_list( $response['response']['data'] ) ? 'response.data' : 'response.data:keyed',
+                'rows'  => self::extract_rows_from_candidate( $response['response']['data'] ),
+            );
         }
 
         if ( isset( $response['data'] ) && is_array( $response['data'] ) ) {
-            return array_is_list( $response['data'] ) ? 'data' : 'data:keyed';
+            $candidates[] = array(
+                'shape' => array_is_list( $response['data'] ) ? 'data' : 'data:keyed',
+                'rows'  => self::extract_rows_from_candidate( $response['data'] ),
+            );
         }
 
         if ( isset( $response['response']['results'] ) && is_array( $response['response']['results'] ) ) {
-            return array_is_list( $response['response']['results'] ) ? 'response.results' : 'response.results:keyed';
+            $candidates[] = array(
+                'shape' => array_is_list( $response['response']['results'] ) ? 'response.results' : 'response.results:keyed',
+                'rows'  => self::extract_rows_from_candidate( $response['response']['results'] ),
+            );
         }
 
         if ( isset( $response['results'] ) && is_array( $response['results'] ) ) {
-            return array_is_list( $response['results'] ) ? 'results' : 'results:keyed';
+            $candidates[] = array(
+                'shape' => array_is_list( $response['results'] ) ? 'results' : 'results:keyed',
+                'rows'  => self::extract_rows_from_candidate( $response['results'] ),
+            );
         }
 
-        if ( array_is_list( $response ) ) {
-            return 'list';
+        if ( is_array( $response ) ) {
+            $candidates[] = array(
+                'shape' => array_is_list( $response ) ? 'list' : 'top-level:keyed',
+                'rows'  => self::extract_rows_from_candidate( $response ),
+            );
+        }
+
+        foreach ( $candidates as $candidate ) {
+            if ( ! empty( $candidate['rows'] ) ) {
+                return (string) $candidate['shape'];
+            }
+        }
+
+        foreach ( $candidates as $candidate ) {
+            if ( '' !== (string) $candidate['shape'] ) {
+                return (string) $candidate['shape'];
+            }
         }
 
         return 'unknown';
@@ -320,22 +347,67 @@ class TMW_CR_Slot_Offer_Sync_Service {
     }
 
     /**
-     * @param array<mixed> $candidate Potential row collection.
+     * @param mixed $candidate Potential row collection.
      *
-     * @return bool
+     * @return array<int,array<string,mixed>>
      */
-    protected static function is_keyed_offer_collection( $candidate ) {
-        if ( ! is_array( $candidate ) || empty( $candidate ) || array_is_list( $candidate ) ) {
-            return false;
+    protected static function extract_rows_from_candidate( $candidate ) {
+        if ( ! is_array( $candidate ) || empty( $candidate ) ) {
+            return array();
         }
 
-        foreach ( $candidate as $row ) {
-            if ( ! is_array( $row ) ) {
-                return false;
+        $rows = array();
+
+        foreach ( $candidate as $entry ) {
+            if ( ! is_array( $entry ) ) {
+                continue;
+            }
+
+            if ( self::is_offer_row_candidate( $entry ) ) {
+                $rows[] = $entry;
             }
         }
 
-        return true;
+        return array_values( $rows );
+    }
+
+    /**
+     * @param array<string,mixed> $entry Candidate row.
+     *
+     * @return bool
+     */
+    protected static function is_offer_row_candidate( $entry ) {
+        if ( isset( $entry['Offer'] ) && is_array( $entry['Offer'] ) ) {
+            return true;
+        }
+
+        if ( isset( $entry['offer'] ) && is_array( $entry['offer'] ) ) {
+            return true;
+        }
+
+        $known_keys = array(
+            'id',
+            'ID',
+            'offer_id',
+            'name',
+            'description',
+            'preview_url',
+            'status',
+            'default_payout',
+            'percent_payout',
+            'payout_type',
+            'require_approval',
+            'featured',
+            'currency',
+        );
+
+        foreach ( $known_keys as $known_key ) {
+            if ( array_key_exists( $known_key, $entry ) ) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

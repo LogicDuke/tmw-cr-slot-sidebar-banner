@@ -3,7 +3,7 @@ Contributors: themilisofia
 Tags: affiliate marketing, crackrevenue, sidebar, banner, shortcode
 Requires at least: 5.8
 Tested up to: 6.4
-Stable tag: 1.3.0
+Stable tag: 1.4.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -40,6 +40,10 @@ Yes. Developers can hook into the `tmw_cr_slot_banner_offers` filter to provide 
 Yes. Version 1.3.0 ships with optimized PNG assets inside `assets/img/offers/` so the slot banner works out of the box. You can still override or extend the catalog with your own creatives via filters.
 
 == Changelog ==
+
+= 1.4.1 =
+* [TMW-CR-FIX] Hardened CrakRevenue offer sync extraction/normalization for response shape variants.
+* [TMW-CR-SYNC] Added sync diagnostics, soft-failure preservation, and richer admin notices.
 
 = 1.3.0 =
 * Replaced the static banner with a three-reel slot interface and heartbeat CTA.

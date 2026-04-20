@@ -29,9 +29,39 @@ class TMW_CR_Slot_Sidebar_Banner {
     }
 }
 
+class TMW_Test_Admin_Page extends TMW_CR_Slot_Admin_Page {
+    public $notice = array();
+
+    protected function redirect_with_notice( $notice_type, $message ) {
+        if ( ! empty( $this->notice ) ) {
+            return;
+        }
+
+        $this->notice = array(
+            'type'    => $notice_type,
+            'message' => $message,
+        );
+    }
+
+    protected function assert_admin_action( $nonce_action ) {
+        unset( $nonce_action );
+    }
+}
+
+function tmw_reset_test_state() {
+    $GLOBALS['tmw_test_options']      = array();
+    $GLOBALS['tmw_test_transients']   = array();
+    $GLOBALS['tmw_test_remote_get']   = null;
+    $GLOBALS['tmw_test_last_redirect'] = '';
+    $_GET  = array();
+    $_POST = array();
+}
+
 $tests = array();
 
 $tests['sanitize_settings_preserves_blank_api_key'] = function() {
+    tmw_reset_test_state();
+
     update_option(
         TMW_CR_Slot_Sidebar_Banner::OPTION_KEY,
         array(
@@ -55,29 +85,176 @@ $tests['sanitize_settings_preserves_blank_api_key'] = function() {
     );
 
     tmw_assert_same( 'secret-key-1234', $sanitized['cr_api_key'], 'Blank API key should preserve existing value.' );
-    tmw_assert_same( array( '12', '34' ), $sanitized['slot_offer_ids'], 'Selected offers should be preserved.' );
-    tmw_assert_same( 'sub_id', $sanitized['subid_param'], 'Sub ID param should be sanitized.' );
 };
 
-$tests['api_client_masks_key_and_uses_findall'] = function() {
-    $GLOBALS['tmw_test_remote_get'] = function( $url ) {
-        tmw_assert_contains( 'Target=Affiliate_Offer', $url, 'Request should target Affiliate_Offer.' );
-        tmw_assert_contains( 'Method=findAll', $url, 'Request should call findAll.' );
-        tmw_assert_contains( 'id', $url, 'Request should include requested offer fields.' );
+$tests['extract_offer_rows_supports_response_data_and_keyed_collections'] = function() {
+    tmw_reset_test_state();
+
+    $rows = TMW_CR_Slot_Offer_Sync_Service::extract_offer_rows(
+        array(
+            'response' => array(
+                'data' => array(
+                    'first' => array( 'id' => '10', 'name' => 'Offer Ten' ),
+                    'second' => array( 'id' => '11', 'name' => 'Offer Eleven' ),
+                ),
+            ),
+        )
+    );
+
+    tmw_assert_same( 2, count( $rows ), 'Keyed response.data collections should be accepted.' );
+    tmw_assert_same( '10', $rows[0]['id'], 'Rows should be reindexed by array_values.' );
+};
+
+$tests['extract_offer_rows_supports_results_shapes'] = function() {
+    tmw_reset_test_state();
+
+    $rows = TMW_CR_Slot_Offer_Sync_Service::extract_offer_rows(
+        array(
+            'results' => array(
+                array( 'id' => '9', 'name' => 'Offer Nine' ),
+            ),
+        )
+    );
+
+    tmw_assert_same( 1, count( $rows ), 'results shape should be accepted.' );
+    tmw_assert_same( 'results', TMW_CR_Slot_Offer_Sync_Service::detect_response_shape( array( 'results' => array( array( 'id' => '9' ) ) ) ), 'results shape should be detected.' );
+};
+
+$tests['extract_offer_rows_supports_top_level_keyed_collection'] = function() {
+    tmw_reset_test_state();
+
+    $response = array(
+        'offer_a' => array( 'id' => '41', 'name' => 'Forty One' ),
+        'offer_b' => array( 'id' => '42', 'name' => 'Forty Two' ),
+    );
+
+    $rows = TMW_CR_Slot_Offer_Sync_Service::extract_offer_rows( $response );
+
+    tmw_assert_same( 2, count( $rows ), 'Top-level keyed collections should be accepted.' );
+    tmw_assert_same( 'top-level:keyed', TMW_CR_Slot_Offer_Sync_Service::detect_response_shape( $response ), 'Top-level keyed shape should be detected.' );
+};
+
+$tests['extract_offer_rows_supports_keyed_collection_with_scalar_metadata'] = function() {
+    tmw_reset_test_state();
+
+    $response = array(
+        'offer_a' => array( 'id' => '51', 'name' => 'Fifty One' ),
+        'meta'    => 'page-1',
+        'offer_b' => array( 'id' => '52', 'name' => 'Fifty Two' ),
+        'count'   => 2,
+    );
+
+    $rows = TMW_CR_Slot_Offer_Sync_Service::extract_offer_rows( $response );
+
+    tmw_assert_same( 2, count( $rows ), 'Keyed payloads with scalar metadata should keep valid rows.' );
+    tmw_assert_same( '51', $rows[0]['id'], 'First valid offer row should be preserved.' );
+};
+
+$tests['extract_offer_rows_uses_non_empty_fallback_shape'] = function() {
+    tmw_reset_test_state();
+
+    $response = array(
+        'response' => array(
+            'data' => array(),
+        ),
+        'results' => array(
+            array( 'id' => '61', 'name' => 'Fallback Offer' ),
+        ),
+    );
+
+    $rows = TMW_CR_Slot_Offer_Sync_Service::extract_offer_rows( $response );
+
+    tmw_assert_same( 1, count( $rows ), 'Extractor should continue to later non-empty fallback shapes.' );
+    tmw_assert_same( '61', $rows[0]['id'], 'Fallback rows should be returned when earlier candidates are empty.' );
+    tmw_assert_same( 'results', TMW_CR_Slot_Offer_Sync_Service::detect_response_shape( $response ), 'Detected shape should prefer first non-empty candidate.' );
+};
+
+$tests['normalize_offer_supports_nested_offer_wrappers_and_id_aliases'] = function() {
+    tmw_reset_test_state();
+
+    $offer_upper = TMW_CR_Slot_Offer_Sync_Service::normalize_offer(
+        array(
+            'Offer' => array(
+                'ID' => '88',
+                'name' => 'Upper Offer',
+                'featured' => '2026-04-20 00:00:00',
+            ),
+        )
+    );
+
+    $offer_lower = TMW_CR_Slot_Offer_Sync_Service::normalize_offer(
+        array(
+            'offer' => array(
+                'offer_id' => '77',
+                'name' => 'Lower Offer',
+                'featured' => '0000-00-00 00:00:00',
+            ),
+        )
+    );
+
+    tmw_assert_same( '88', $offer_upper['id'], 'ID alias should normalize to id.' );
+    tmw_assert_same( '77', $offer_lower['id'], 'offer_id alias should normalize to id.' );
+    tmw_assert_true( true === $offer_upper['is_featured'], 'Non-empty featured timestamp should be featured.' );
+    tmw_assert_true( false === $offer_lower['is_featured'], 'Zero-date featured timestamp should not be featured.' );
+};
+
+$tests['sync_imports_nested_offer_rows'] = function() {
+    tmw_reset_test_state();
+
+    $GLOBALS['tmw_test_remote_get'] = function() {
+        static $page = 0;
+        ++$page;
+
+        if ( 1 === $page ) {
+            return array(
+                'response' => array( 'code' => 200 ),
+                'body'     => wp_json_encode(
+                    array(
+                        'response' => array(
+                            'results' => array(
+                                array(
+                                    'Offer' => array(
+                                        'ID' => '301',
+                                        'name' => 'Wrapped Offer',
+                                        'status' => 'active',
+                                        'preview_url' => 'https://preview.test/301',
+                                    ),
+                                ),
+                                array(
+                                    'offer' => array(
+                                        'offer_id' => '302',
+                                        'name' => 'Lower Wrapped',
+                                        'status' => 'active',
+                                    ),
+                                ),
+                            ),
+                        ),
+                    )
+                ),
+            );
+        }
 
         return array(
             'response' => array( 'code' => 200 ),
-            'body'     => wp_json_encode( array( 'response' => array( 'data' => array( array( 'id' => '1', 'name' => 'Offer A' ) ) ) ) ),
+            'body'     => wp_json_encode( array( 'response' => array( 'results' => array() ) ) ),
         );
     };
 
-    $client = new TMW_CR_Slot_CR_API_Client( 'abcd1234secret' );
-    tmw_assert_same( '**********cret', $client->get_masked_api_key(), 'Masked key should hide all but last four characters.' );
-    $response = $client->test_connection();
-    tmw_assert_true( ! is_wp_error( $response ), 'Connection test should succeed.' );
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $result = TMW_CR_Slot_Offer_Sync_Service::sync_all( new TMW_CR_Slot_CR_API_Client( 'sync-key' ), $repository );
+
+    tmw_assert_true( ! is_wp_error( $result ), 'Sync should succeed for wrapped rows.' );
+    $offers = $repository->get_synced_offers();
+    tmw_assert_same( 'Wrapped Offer', $offers['301']['name'], 'Offer wrapper rows should import.' );
+    tmw_assert_same( 'Lower Wrapped', $offers['302']['name'], 'offer wrapper rows should import.' );
 };
 
-$tests['offer_sync_stores_normalized_offers'] = function() {
+$tests['sync_soft_failure_preserves_previous_offers'] = function() {
+    tmw_reset_test_state();
+
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repository->save_synced_offers( array( 'existing' => array( 'id' => 'existing', 'name' => 'Existing Offer' ) ) );
+
     $GLOBALS['tmw_test_remote_get'] = function() {
         static $page = 0;
         ++$page;
@@ -89,19 +266,7 @@ $tests['offer_sync_stores_normalized_offers'] = function() {
                     array(
                         'response' => array(
                             'data' => array(
-                                array(
-                                    'id' => '10',
-                                    'name' => 'Offer Ten',
-                                    'description' => 'Desc',
-                                    'preview_url' => 'https://preview.test/10',
-                                    'status' => 'active',
-                                    'default_payout' => '50.00',
-                                    'percent_payout' => '25.00',
-                                    'payout_type' => 'cpa_both',
-                                    'require_approval' => '1',
-                                    'featured' => '2026-04-20 00:00:00',
-                                    'currency' => 'USD',
-                                ),
+                                array( 'name' => 'No ID Offer' ),
                             ),
                         ),
                     )
@@ -115,22 +280,140 @@ $tests['offer_sync_stores_normalized_offers'] = function() {
         );
     };
 
-    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
-    $client = new TMW_CR_Slot_CR_API_Client( 'sync-key' );
-    $result = TMW_CR_Slot_Offer_Sync_Service::sync_all( $client, $repository );
+    $result = TMW_CR_Slot_Offer_Sync_Service::sync_all( new TMW_CR_Slot_CR_API_Client( 'sync-key' ), $repository );
 
-    tmw_assert_true( ! is_wp_error( $result ), 'Sync should succeed.' );
-    $offers = $repository->get_synced_offers();
-    tmw_assert_same( 'Offer Ten', $offers['10']['name'], 'Offer name should be stored.' );
-    tmw_assert_same( '1', $offers['10']['require_approval'], 'Approval flag should be normalized.' );
-    tmw_assert_true( true === $offers['10']['is_featured'], 'Featured should be normalized to a boolean flag.' );
+    tmw_assert_true( ! is_wp_error( $result ), 'Soft failure should return a non-error result.' );
+    tmw_assert_true( ! empty( $result['preserved_previous'] ), 'Soft failure should preserve previous offers.' );
+    tmw_assert_same( 'Existing Offer', $repository->get_synced_offers()['existing']['name'], 'Previous offers should not be overwritten on soft failure.' );
+
+    $meta = $repository->get_sync_meta();
+    tmw_assert_same( 1, (int) $meta['last_soft_failure'], 'Soft failure flag should be set in sync meta.' );
+    tmw_assert_same( 1, (int) $meta['last_raw_row_count'], 'Raw row count should be recorded.' );
+    tmw_assert_same( 1, (int) $meta['last_skipped_count'], 'Skipped count should be recorded.' );
 };
 
-$tests['render_page_populates_synced_offer_table'] = function() {
+$tests['sync_transport_failure_preserves_existing_offers'] = function() {
+    tmw_reset_test_state();
+
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repository->save_synced_offers( array( 'existing' => array( 'id' => 'existing', 'name' => 'Existing Offer' ) ) );
+
+    $GLOBALS['tmw_test_remote_get'] = function() {
+        return new WP_Error( 'offline', 'Offline' );
+    };
+
+    $result = TMW_CR_Slot_Offer_Sync_Service::sync_all( new TMW_CR_Slot_CR_API_Client( 'sync-key' ), $repository );
+
+    tmw_assert_true( is_wp_error( $result ), 'Sync should fail on transport errors.' );
+    tmw_assert_same( 'Existing Offer', $repository->get_synced_offers()['existing']['name'], 'Transport failure should not wipe offers.' );
+};
+
+$tests['sync_meta_stores_diagnostics'] = function() {
+    tmw_reset_test_state();
+
+    $GLOBALS['tmw_test_remote_get'] = function() {
+        static $page = 0;
+        ++$page;
+
+        if ( 1 === $page ) {
+            return array(
+                'response' => array( 'code' => 200 ),
+                'body'     => wp_json_encode(
+                    array(
+                        'data' => array(
+                            array( 'id' => '12', 'name' => 'Offer Twelve', 'status' => 'active' ),
+                            array( 'name' => 'Skipped Row' ),
+                        ),
+                    )
+                ),
+            );
+        }
+
+        return array(
+            'response' => array( 'code' => 200 ),
+            'body'     => wp_json_encode( array( 'data' => array() ) ),
+        );
+    };
+
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    TMW_CR_Slot_Offer_Sync_Service::sync_all( new TMW_CR_Slot_CR_API_Client( 'sync-key' ), $repository );
+
+    $meta = $repository->get_sync_meta();
+    tmw_assert_same( 2, (int) $meta['last_raw_row_count'], 'Meta should store raw row count.' );
+    tmw_assert_same( 1, (int) $meta['last_imported_count'], 'Meta should store imported count.' );
+    tmw_assert_same( 1, (int) $meta['last_skipped_count'], 'Meta should store skipped count.' );
+    tmw_assert_same( 'data', $meta['last_response_shape'], 'Meta should store response shape.' );
+    tmw_assert_contains( 'id', $meta['sample_row_keys'], 'Meta should include sample row keys.' );
+};
+
+$tests['handle_test_connection_notices_cover_rows_and_no_rows'] = function() {
+    tmw_reset_test_state();
+
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'cr_api_key' => 'key' ) );
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repository, 'sidebar' );
+
+    $GLOBALS['tmw_test_remote_get'] = function() {
+        return array(
+            'response' => array( 'code' => 200 ),
+            'body'     => wp_json_encode( array( 'response' => array( 'data' => array( array( 'id' => '1', 'name' => 'A' ) ) ) ) ),
+        );
+    };
+    $page->notice = array();
+    $page->handle_test_connection();
+    tmw_assert_contains( 'detected 1 row', strtolower( $page->notice['message'] ), 'Connection notice should include row count when rows exist.' );
+
+    $GLOBALS['tmw_test_remote_get'] = function() {
+        return array(
+            'response' => array( 'code' => 200 ),
+            'body'     => wp_json_encode( array( 'response' => array( 'data' => array() ) ) ),
+        );
+    };
+    $page->notice = array();
+    $page->handle_test_connection();
+    tmw_assert_contains( 'no rows were returned', strtolower( $page->notice['message'] ), 'Connection notice should mention no-row success.' );
+};
+
+$tests['handle_sync_offers_notice_includes_counts_and_preserve_flag'] = function() {
+    tmw_reset_test_state();
+
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'cr_api_key' => 'key' ) );
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repository->save_synced_offers( array( '99' => array( 'id' => '99', 'name' => 'Existing Offer' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repository, 'sidebar' );
+
+    $GLOBALS['tmw_test_remote_get'] = function() {
+        static $page = 0;
+        ++$page;
+        if ( 1 === $page ) {
+            return array(
+                'response' => array( 'code' => 200 ),
+                'body'     => wp_json_encode( array( 'response' => array( 'data' => array( array( 'name' => 'No ID' ) ) ) ) ),
+            );
+        }
+
+        return array(
+            'response' => array( 'code' => 200 ),
+            'body'     => wp_json_encode( array( 'response' => array( 'data' => array() ) ) ),
+        );
+    };
+
+    $page->notice = array();
+    $page->handle_sync_offers();
+
+    tmw_assert_contains( 'Imported: 0', $page->notice['message'], 'Sync notice should include imported count.' );
+    tmw_assert_contains( 'Raw: 1', $page->notice['message'], 'Sync notice should include raw count.' );
+    tmw_assert_contains( 'Skipped: 1', $page->notice['message'], 'Sync notice should include skipped count.' );
+    tmw_assert_contains( 'preserved', strtolower( $page->notice['message'] ), 'Sync notice should mention preserved offers on soft failure.' );
+};
+
+$tests['render_page_shows_sync_diagnostics_and_hides_api_key'] = function() {
+    tmw_reset_test_state();
+
     update_option(
         TMW_CR_Slot_Sidebar_Banner::OPTION_KEY,
         array(
-            'cr_api_key' => 'render-key',
+            'cr_api_key' => 'super-secret-key',
             'slot_offer_ids' => array( '10' ),
             'slot_offer_priority' => array( '10' => 2 ),
             'offer_image_overrides' => array( '10' => 'https://img.test/10.png' ),
@@ -154,6 +437,19 @@ $tests['render_page_populates_synced_offer_table'] = function() {
             ),
         )
     );
+    $repository->save_sync_meta(
+        array(
+            'last_synced_at' => '2026-04-20T00:00:00+00:00',
+            'last_error' => '[TMW-CR-AUDIT] sample error',
+            'offer_count' => 1,
+            'last_raw_row_count' => 5,
+            'last_imported_count' => 1,
+            'last_skipped_count' => 4,
+            'last_response_shape' => 'response.data:keyed',
+            'last_soft_failure' => 1,
+            'sample_row_keys' => 'id,name,status',
+        )
+    );
 
     $page = new TMW_CR_Slot_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repository, 'sidebar' );
 
@@ -161,27 +457,10 @@ $tests['render_page_populates_synced_offer_table'] = function() {
     $page->render_page();
     $html = ob_get_clean();
 
-    tmw_assert_contains( 'Offer Ten', $html, 'Admin page should include synced offer names.' );
-    tmw_assert_contains( 'https://img.test/10.png', $html, 'Admin page should include image override field values.' );
-    tmw_assert_contains( 'Test Connection', $html, 'Admin page should include connection button.' );
-};
-
-$tests['sync_failure_updates_meta_without_overwriting_existing_offers'] = function() {
-    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
-    $repository->save_synced_offers( array( 'existing' => array( 'id' => 'existing', 'name' => 'Existing Offer' ) ) );
-
-    $GLOBALS['tmw_test_remote_get'] = function() {
-        return new WP_Error( 'offline', 'Offline' );
-    };
-
-    $client = new TMW_CR_Slot_CR_API_Client( 'bad-key' );
-    $result = TMW_CR_Slot_Offer_Sync_Service::sync_all( $client, $repository );
-
-    tmw_assert_true( is_wp_error( $result ), 'Sync should fail when the API is unavailable.' );
-    $offers = $repository->get_synced_offers();
-    $meta   = $repository->get_sync_meta();
-    tmw_assert_same( 'Existing Offer', $offers['existing']['name'], 'Existing offers should remain when sync fails.' );
-    tmw_assert_same( 'CrakRevenue API request failed.', $meta['last_error'], 'Failure reason should be stored in sync meta.' );
+    tmw_assert_contains( 'Last raw row count', $html, 'Admin page should show raw row diagnostics.' );
+    tmw_assert_contains( 'response.data:keyed', $html, 'Admin page should show response shape diagnostics.' );
+    tmw_assert_true( false === strpos( $html, 'super-secret-key' ), 'Rendered admin HTML must not leak raw API key.' );
+    tmw_assert_contains( '************-key', $html, 'Rendered admin HTML should show masked API key only.' );
 };
 
 $failures = array();

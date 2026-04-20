@@ -124,7 +124,7 @@ class TMW_CR_Slot_CR_API_Client {
         );
 
         if ( is_wp_error( $response ) ) {
-            return new WP_Error( 'tmw_cr_slot_api_unavailable', __( 'CrakRevenue API request failed.', 'tmw-cr-slot-sidebar-banner' ) );
+            return new WP_Error( 'tmw_cr_slot_api_unavailable', __( '[TMW-CR-API] CrakRevenue API request failed.', 'tmw-cr-slot-sidebar-banner' ) );
         }
 
         $status = (int) wp_remote_retrieve_response_code( $response );
@@ -132,11 +132,11 @@ class TMW_CR_Slot_CR_API_Client {
         $data   = json_decode( $body, true );
 
         if ( 200 !== $status ) {
-            return new WP_Error( 'tmw_cr_slot_api_http_error', sprintf( __( 'CrakRevenue API returned HTTP %d.', 'tmw-cr-slot-sidebar-banner' ), $status ) );
+            return new WP_Error( 'tmw_cr_slot_api_http_error', sprintf( __( '[TMW-CR-API] CrakRevenue API returned HTTP %d.', 'tmw-cr-slot-sidebar-banner' ), $status ) );
         }
 
         if ( ! is_array( $data ) ) {
-            return new WP_Error( 'tmw_cr_slot_api_invalid_json', __( 'CrakRevenue API returned an unexpected response.', 'tmw-cr-slot-sidebar-banner' ) );
+            return new WP_Error( 'tmw_cr_slot_api_invalid_json', __( '[TMW-CR-API] CrakRevenue API returned an unexpected response.', 'tmw-cr-slot-sidebar-banner' ) );
         }
 
         if ( isset( $data['error'] ) && ! empty( $data['error'] ) ) {

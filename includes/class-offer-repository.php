@@ -56,7 +56,32 @@ class TMW_CR_Slot_Offer_Repository {
      * @return void
      */
     public function save_sync_meta( $meta ) {
-        update_option( $this->meta_option_key, $meta, false );
+        $existing = $this->get_sync_meta();
+        $defaults = array(
+            'last_synced_at'      => '',
+            'last_error'          => '',
+            'offer_count'         => 0,
+            'last_raw_row_count'  => 0,
+            'last_imported_count' => 0,
+            'last_skipped_count'  => 0,
+            'last_response_shape' => '',
+            'last_soft_failure'   => 0,
+            'sample_row_keys'     => '',
+        );
+
+        $payload = wp_parse_args( (array) $meta, wp_parse_args( $existing, $defaults ) );
+
+        $payload['last_synced_at']      = sanitize_text_field( (string) $payload['last_synced_at'] );
+        $payload['last_error']          = sanitize_text_field( (string) $payload['last_error'] );
+        $payload['offer_count']         = max( 0, (int) $payload['offer_count'] );
+        $payload['last_raw_row_count']  = max( 0, (int) $payload['last_raw_row_count'] );
+        $payload['last_imported_count'] = max( 0, (int) $payload['last_imported_count'] );
+        $payload['last_skipped_count']  = max( 0, (int) $payload['last_skipped_count'] );
+        $payload['last_response_shape'] = sanitize_text_field( (string) $payload['last_response_shape'] );
+        $payload['last_soft_failure']   = ! empty( $payload['last_soft_failure'] ) ? 1 : 0;
+        $payload['sample_row_keys']     = sanitize_text_field( (string) $payload['sample_row_keys'] );
+
+        update_option( $this->meta_option_key, $payload, false );
     }
 
     /**

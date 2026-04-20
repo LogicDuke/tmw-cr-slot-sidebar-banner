@@ -3,7 +3,7 @@ Contributors: themilisofia
 Tags: affiliate marketing, crackrevenue, sidebar, banner, shortcode
 Requires at least: 5.8
 Tested up to: 6.4
-Stable tag: 1.8.0
+Stable tag: 1.9.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -46,6 +46,12 @@ Yes. Version 1.3.0 ships with optimized PNG assets inside `assets/img/offers/` s
 * [TMW-CR-DASH] Added performance summary cards in Overview plus a new Performance admin tab with sortable local metrics (clicks, conversions, payout, EPC, conversion rate).
 * [TMW-CR-OPT] Added runtime optimization engine with rotation modes: manual, payout_desc, conversions_desc, epc_desc, country_epc_desc, and hybrid_score.
 * [TMW-CR-OPT] Added conservative country-aware ranking fallback (country metrics first, then global aggregate) without mutating manual priorities.
+
+= 1.9.0 =
+* [TMW-CR-OPT] Added advanced optimization controls (safe_hybrid_score, minimum click/conversion/payout thresholds, zero-data exclusion toggles, and operator notes).
+* [TMW-CR-OPT] Added deterministic country/global weighted decay with low-sample fallback protection and confidence penalties to reduce overfitting on tiny datasets.
+* [TMW-CR-CRON] Added scheduled stats sync controls (hourly/twice_daily/daily), safe unscheduling when disabled, and duplicate-event protection.
+* [TMW-CR-DASH] Added optimization control panel and explainability table (clicks, conversions, payout, EPC, country sample, fallback usage, penalty flag, final score) in Performance tab.
 
 = 1.6.0 =
 * [TMW-CR-CTRL] Added a persistent per-offer control layer via `tmw_cr_slot_banner_offer_overrides` (enabled, final URL, image URL, countries, CTA text, label, notes).

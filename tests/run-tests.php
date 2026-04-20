@@ -3,6 +3,7 @@ require_once __DIR__ . '/bootstrap.php';
 
 class TMW_CR_Slot_Sidebar_Banner {
     const OPTION_KEY = 'tmw_cr_slot_banner_settings';
+    const STATS_SYNC_CRON_HOOK = 'tmw_cr_slot_banner_scheduled_stats_sync';
 
     public static function get_settings() {
         $defaults = array(
@@ -20,7 +21,21 @@ class TMW_CR_Slot_Sidebar_Banner {
             'slot_offer_priority'    => array(),
             'offer_image_overrides'  => array(),
             'rotation_mode'          => 'manual',
+            'optimization_enabled'   => 1,
+            'minimum_clicks_threshold' => 10,
+            'minimum_conversions_threshold' => 1,
+            'minimum_payout_threshold' => 0,
+            'exclude_zero_click_offers' => 0,
+            'exclude_zero_conversion_offers' => 0,
+            'country_decay_enabled' => 1,
+            'country_weight' => 0.7,
+            'global_weight' => 0.3,
+            'decay_min_country_clicks' => 10,
+            'fallback_to_global_when_low_sample' => 1,
+            'auto_sync_enabled' => 0,
+            'auto_sync_frequency' => 'daily',
             'stats_sync_range'       => '30d',
+            'optimization_notes' => '',
         );
 
         return wp_parse_args( get_option( self::OPTION_KEY, array() ), $defaults );
@@ -78,6 +93,7 @@ function tmw_reset_test_state() {
     $GLOBALS['tmw_test_transients']   = array();
     $GLOBALS['tmw_test_remote_get']   = null;
     $GLOBALS['tmw_test_last_redirect'] = '';
+    $GLOBALS['tmw_test_cron_events'] = array();
     $_GET  = array();
     $_POST = array();
 }
@@ -110,6 +126,133 @@ $tests['sanitize_settings_preserves_blank_api_key'] = function() {
     );
 
     tmw_assert_same( 'secret-key-1234', $sanitized['cr_api_key'], 'Blank API key should preserve existing value.' );
+};
+
+$tests['optimization_thresholds_and_decay_guard_low_sample_outliers'] = function() {
+    tmw_reset_test_state();
+
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
+    $repository->save_offer_stats(
+        array(
+            'A|US' => array( 'offer_id' => 'A', 'offer_name' => 'A', 'country_name' => 'US', 'clicks' => 1, 'conversions' => 1, 'payout' => 20, 'epc' => 20 ),
+            'A|GLOBAL' => array( 'offer_id' => 'A', 'offer_name' => 'A', 'country_name' => 'GLOBAL', 'clicks' => 100, 'conversions' => 10, 'payout' => 100, 'epc' => 1 ),
+            'B|US' => array( 'offer_id' => 'B', 'offer_name' => 'B', 'country_name' => 'US', 'clicks' => 50, 'conversions' => 10, 'payout' => 75, 'epc' => 1.5 ),
+        )
+    );
+
+    $offers = array(
+        array( 'id' => 'A', 'name' => 'Offer A' ),
+        array( 'id' => 'B', 'name' => 'Offer B' ),
+    );
+
+    $ranked = $repository->rank_offers_for_slot(
+        $offers,
+        array(
+            'rotation_mode' => 'safe_hybrid_score',
+            'optimization_enabled' => 1,
+            'minimum_clicks_threshold' => 25,
+            'minimum_conversions_threshold' => 2,
+            'country_decay_enabled' => 1,
+            'country_weight' => 0.8,
+            'global_weight' => 0.2,
+            'decay_min_country_clicks' => 10,
+            'fallback_to_global_when_low_sample' => 1,
+        ),
+        'US',
+        array()
+    );
+
+    tmw_assert_same( 'B', $ranked[0]['id'], 'Low-sample US outlier should not outrank established offer when thresholds apply.' );
+};
+
+$tests['optimization_excludes_zero_clicks_and_zero_conversions'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
+    $repository->save_offer_stats(
+        array(
+            'A|GLOBAL' => array( 'offer_id' => 'A', 'offer_name' => 'A', 'country_name' => 'GLOBAL', 'clicks' => 0, 'conversions' => 0, 'payout' => 0, 'epc' => 0 ),
+            'B|GLOBAL' => array( 'offer_id' => 'B', 'offer_name' => 'B', 'country_name' => 'GLOBAL', 'clicks' => 20, 'conversions' => 0, 'payout' => 12, 'epc' => 0.6 ),
+            'C|GLOBAL' => array( 'offer_id' => 'C', 'offer_name' => 'C', 'country_name' => 'GLOBAL', 'clicks' => 20, 'conversions' => 2, 'payout' => 20, 'epc' => 1 ),
+        )
+    );
+    $offers = array( array( 'id' => 'A', 'name' => 'A' ), array( 'id' => 'B', 'name' => 'B' ), array( 'id' => 'C', 'name' => 'C' ) );
+    $ranked = $repository->rank_offers_for_slot( $offers, array( 'rotation_mode' => 'epc_desc', 'optimization_enabled' => 1, 'exclude_zero_click_offers' => 1, 'exclude_zero_conversion_offers' => 1 ), 'US', array() );
+    tmw_assert_same( 1, count( $ranked ), 'Zero click and zero conversion offers should be excluded from optimization ranking when configured.' );
+    tmw_assert_same( 'C', $ranked[0]['id'], 'Remaining eligible offer should rank.' );
+};
+
+$tests['manual_mode_unaffected_by_optimization_filters'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
+    $offers = array( array( 'id' => 'A', 'name' => 'A' ), array( 'id' => 'B', 'name' => 'B' ) );
+    $ranked = $repository->rank_offers_for_slot( $offers, array( 'rotation_mode' => 'manual', 'optimization_enabled' => 1, 'exclude_zero_click_offers' => 1 ), 'US', array( 'B' => 1, 'A' => 2 ) );
+    tmw_assert_same( 'B', $ranked[0]['id'], 'Manual mode should still honor manual priorities only.' );
+};
+
+$tests['performance_tab_renders_optimization_controls_and_explainability'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'cr_api_key' => 'secure', 'rotation_mode' => 'safe_hybrid_score', 'optimization_enabled' => 1 ) );
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
+    $repository->save_synced_offers( array( '901' => array( 'id' => '901', 'name' => 'Offer 901', 'status' => 'active' ) ) );
+    $repository->save_offer_stats( array( '901|GLOBAL' => array( 'offer_id' => '901', 'offer_name' => 'Offer 901', 'country_name' => 'GLOBAL', 'clicks' => 10, 'conversions' => 1, 'payout' => 9, 'epc' => 0.9 ) ) );
+    $_GET = array( 'tab' => 'performance' );
+    $page = new TMW_CR_Slot_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repository, 'sidebar' );
+    ob_start();
+    $page->render_page();
+    $html = ob_get_clean();
+    tmw_assert_contains( 'minimum_clicks_threshold', $html, 'Performance tab should render optimization controls.' );
+    tmw_assert_contains( 'Optimization Explainability', $html, 'Performance tab should include explainability section.' );
+};
+
+$tests['scheduled_auto_sync_registration_unschedule_and_no_duplicates'] = function() {
+    tmw_reset_test_state();
+    tmw_assert_same( false, wp_next_scheduled( TMW_CR_Slot_Stats_Sync_Service::CRON_HOOK ), 'No cron event should exist initially.' );
+    TMW_CR_Slot_Stats_Sync_Service::ensure_cron_schedule( 'hourly' );
+    $first = wp_next_scheduled( TMW_CR_Slot_Stats_Sync_Service::CRON_HOOK );
+    tmw_assert_true( false !== $first, 'Cron should be registered when enabled.' );
+    TMW_CR_Slot_Stats_Sync_Service::ensure_cron_schedule( 'hourly' );
+    tmw_assert_same( 1, count( $GLOBALS['tmw_test_cron_events'] ), 'Duplicate cron events should not be created.' );
+    TMW_CR_Slot_Stats_Sync_Service::clear_cron_schedule();
+    tmw_assert_same( false, wp_next_scheduled( TMW_CR_Slot_Stats_Sync_Service::CRON_HOOK ), 'Cron should be removed when disabled.' );
+};
+
+$tests['country_blended_score_and_global_fallback_flags'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
+    $repository->save_synced_offers( array( 'X' => array( 'id' => 'X', 'name' => 'Offer X', 'status' => 'active' ) ) );
+    $repository->save_offer_stats(
+        array(
+            'X|US' => array( 'offer_id' => 'X', 'offer_name' => 'Offer X', 'country_name' => 'US', 'clicks' => 3, 'conversions' => 1, 'payout' => 12, 'epc' => 4 ),
+            'X|GLOBAL' => array( 'offer_id' => 'X', 'offer_name' => 'Offer X', 'country_name' => 'GLOBAL', 'clicks' => 100, 'conversions' => 10, 'payout' => 100, 'epc' => 1 ),
+        )
+    );
+    $rows = $repository->get_optimization_explain_rows(
+        'US',
+        array(
+            'slot_offer_ids' => array( 'X' ),
+            'rotation_mode' => 'safe_hybrid_score',
+            'country_decay_enabled' => 1,
+            'country_weight' => 0.8,
+            'global_weight' => 0.2,
+            'decay_min_country_clicks' => 10,
+            'fallback_to_global_when_low_sample' => 1,
+        ),
+        5
+    );
+    tmw_assert_true( ! empty( $rows ), 'Explain rows should return ranked offers.' );
+    tmw_assert_same( 1, (int) $rows[0]['used_global_fallback'], 'Low sample country data should trigger global fallback flag.' );
+};
+
+$tests['dashboard_does_not_leak_raw_api_key'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'cr_api_key' => 'super-secret-api-key' ) );
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
+    $page = new TMW_CR_Slot_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repository, 'sidebar' );
+    $_GET = array( 'tab' => 'settings' );
+    ob_start();
+    $page->render_page();
+    $html = ob_get_clean();
+    tmw_assert_true( false === strpos( $html, 'super-secret-api-key' ), 'Raw API key must never be rendered in dashboard HTML.' );
 };
 
 $tests['offer_override_resolution_and_country_filters'] = function() {

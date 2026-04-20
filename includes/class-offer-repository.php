@@ -138,6 +138,9 @@ class TMW_CR_Slot_Offer_Repository {
             'last_stats_imported_rows'  => 0,
             'last_stats_date_start'     => '',
             'last_stats_date_end'       => '',
+            'last_scheduled_run_at'     => '',
+            'last_scheduled_result'     => '',
+            'last_scheduled_message'    => '',
         );
         $payload  = wp_parse_args( (array) $meta, wp_parse_args( $existing, $defaults ) );
 
@@ -147,6 +150,9 @@ class TMW_CR_Slot_Offer_Repository {
         $payload['last_stats_imported_rows']  = max( 0, (int) $payload['last_stats_imported_rows'] );
         $payload['last_stats_date_start']     = sanitize_text_field( (string) $payload['last_stats_date_start'] );
         $payload['last_stats_date_end']       = sanitize_text_field( (string) $payload['last_stats_date_end'] );
+        $payload['last_scheduled_run_at']     = sanitize_text_field( (string) $payload['last_scheduled_run_at'] );
+        $payload['last_scheduled_result']     = sanitize_text_field( (string) $payload['last_scheduled_result'] );
+        $payload['last_scheduled_message']    = sanitize_text_field( (string) $payload['last_scheduled_message'] );
 
         update_option( $this->stats_meta_option_key, $payload, false );
     }
@@ -303,6 +309,8 @@ class TMW_CR_Slot_Offer_Repository {
             'last_stats_date_start'    => (string) ( $stats_meta['last_stats_date_start'] ?? '' ),
             'last_stats_date_end'      => (string) ( $stats_meta['last_stats_date_end'] ?? '' ),
             'last_stats_error'         => (string) ( $stats_meta['last_stats_error'] ?? '' ),
+            'last_scheduled_run_at'    => (string) ( $stats_meta['last_scheduled_run_at'] ?? '' ),
+            'last_scheduled_result'    => (string) ( $stats_meta['last_scheduled_result'] ?? '' ),
         );
     }
 
@@ -644,11 +652,12 @@ class TMW_CR_Slot_Offer_Repository {
      */
     public function rank_offers_for_slot( $offers, $settings, $country, $priorities = array() ) {
         $mode = isset( $settings['rotation_mode'] ) ? sanitize_key( (string) $settings['rotation_mode'] ) : 'manual';
+        $optimization = $this->get_optimization_settings( $settings );
         if ( '' === $mode ) {
             $mode = 'manual';
         }
 
-        if ( 'manual' === $mode ) {
+        if ( 'manual' === $mode || empty( $optimization['optimization_enabled'] ) ) {
             usort(
                 $offers,
                 static function ( $left, $right ) use ( $priorities ) {
@@ -672,8 +681,16 @@ class TMW_CR_Slot_Offer_Repository {
 
         foreach ( $offers as $offer ) {
             $offer_id = (string) ( $offer['id'] ?? '' );
-            $metrics  = $this->get_offer_metrics_for_country( $offer_id, $country, $stats );
-            $score    = $this->build_rotation_score( $mode, $metrics );
+            $metrics  = $this->get_offer_metrics_for_country( $offer_id, $country, $stats, $optimization );
+
+            if ( ! empty( $optimization['exclude_zero_click_offers'] ) && $metrics['clicks'] <= 0 ) {
+                continue;
+            }
+            if ( ! empty( $optimization['exclude_zero_conversion_offers'] ) && $metrics['conversions'] <= 0 ) {
+                continue;
+            }
+
+            $score    = $this->build_rotation_score( $mode, $metrics, $optimization );
 
             $offer['_tmw_score'] = $score;
             $offer['_tmw_has_country_stats'] = ! empty( $metrics['country_used'] ) ? 1 : 0;
@@ -1198,11 +1215,12 @@ class TMW_CR_Slot_Offer_Repository {
      *
      * @return array<string,mixed>
      */
-    protected function get_offer_metrics_for_country( $offer_id, $country, $stats ) {
+    protected function get_offer_metrics_for_country( $offer_id, $country, $stats, $optimization = array() ) {
         $offer_id = (string) $offer_id;
         $country  = strtoupper( (string) $country );
         $country_row = null;
-        $global      = array( 'clicks' => 0, 'conversions' => 0.0, 'payout' => 0.0, 'epc' => 0.0, 'country_used' => '' );
+        $global      = array( 'clicks' => 0, 'conversions' => 0.0, 'payout' => 0.0, 'epc' => 0.0, 'country_used' => '', 'country_clicks' => 0, 'fallback_to_global' => 1 );
+        $optimization = $this->get_optimization_settings( $optimization );
 
         foreach ( $stats as $row ) {
             if ( $offer_id !== (string) ( $row['offer_id'] ?? '' ) ) {
@@ -1220,17 +1238,56 @@ class TMW_CR_Slot_Offer_Repository {
 
         $global['epc'] = $global['clicks'] > 0 ? round( $global['payout'] / $global['clicks'], 6 ) : 0.0;
 
-        if ( is_array( $country_row ) && (int) ( $country_row['clicks'] ?? 0 ) >= 3 ) {
+        if ( ! is_array( $country_row ) ) {
+            return $global;
+        }
+
+        $country_clicks      = max( 0, (int) ( $country_row['clicks'] ?? 0 ) );
+        $country_conversions = max( 0.0, (float) ( $country_row['conversions'] ?? 0 ) );
+        $country_payout      = max( 0.0, (float) ( $country_row['payout'] ?? 0 ) );
+        $country_epc         = $country_clicks > 0 ? round( $country_payout / $country_clicks, 6 ) : 0.0;
+
+        if ( empty( $optimization['country_decay_enabled'] ) ) {
             return array(
-                'clicks'      => (int) ( $country_row['clicks'] ?? 0 ),
-                'conversions' => (float) ( $country_row['conversions'] ?? 0 ),
-                'payout'      => (float) ( $country_row['payout'] ?? 0 ),
-                'epc'         => (float) ( $country_row['epc'] ?? 0 ),
+                'clicks'      => $country_clicks,
+                'conversions' => $country_conversions,
+                'payout'      => $country_payout,
+                'epc'         => $country_epc,
                 'country_used' => $country,
+                'country_clicks' => $country_clicks,
+                'fallback_to_global' => 0,
             );
         }
 
-        return $global;
+        $minimum_country_clicks = max( 1, (int) $optimization['decay_min_country_clicks'] );
+        if ( $country_clicks < $minimum_country_clicks && ! empty( $optimization['fallback_to_global_when_low_sample'] ) ) {
+            return $global;
+        }
+
+        // [TMW-CR-OPT] Weighted country decay formula:
+        // effective_metric = (country_metric * adjusted_country_weight) + (global_metric * adjusted_global_weight)
+        // For low country samples, adjusted_country_weight scales down proportionally to sample depth.
+        $sample_ratio             = min( 1, $country_clicks / $minimum_country_clicks );
+        $country_weight_adjusted  = $optimization['country_weight'] * $sample_ratio;
+        $global_weight_adjusted   = $optimization['global_weight'] + ( $optimization['country_weight'] - $country_weight_adjusted );
+        $weight_sum               = $country_weight_adjusted + $global_weight_adjusted;
+        if ( $weight_sum <= 0 ) {
+            $country_weight_adjusted = 0.7;
+            $global_weight_adjusted  = 0.3;
+            $weight_sum              = 1;
+        }
+        $country_weight_adjusted = $country_weight_adjusted / $weight_sum;
+        $global_weight_adjusted  = $global_weight_adjusted / $weight_sum;
+
+        return array(
+            'clicks'            => (int) round( ( $country_clicks * $country_weight_adjusted ) + ( $global['clicks'] * $global_weight_adjusted ) ),
+            'conversions'       => round( ( $country_conversions * $country_weight_adjusted ) + ( $global['conversions'] * $global_weight_adjusted ), 4 ),
+            'payout'            => round( ( $country_payout * $country_weight_adjusted ) + ( $global['payout'] * $global_weight_adjusted ), 4 ),
+            'epc'               => round( ( $country_epc * $country_weight_adjusted ) + ( $global['epc'] * $global_weight_adjusted ), 6 ),
+            'country_used'      => $country,
+            'country_clicks'    => $country_clicks,
+            'fallback_to_global'=> $country_clicks < $minimum_country_clicks ? 1 : 0,
+        );
     }
 
     /**
@@ -1239,24 +1296,133 @@ class TMW_CR_Slot_Offer_Repository {
      *
      * @return float
      */
-    protected function build_rotation_score( $mode, $metrics ) {
+    protected function build_rotation_score( $mode, $metrics, $optimization = array() ) {
         $clicks      = (int) ( $metrics['clicks'] ?? 0 );
         $conversions = (float) ( $metrics['conversions'] ?? 0 );
         $payout      = (float) ( $metrics['payout'] ?? 0 );
         $epc         = (float) ( $metrics['epc'] ?? 0 );
+        $optimization = $this->get_optimization_settings( $optimization );
+        $confidence   = $this->calculate_confidence_multiplier( $metrics, $optimization );
 
         if ( 'payout_desc' === $mode ) {
-            return $payout;
+            return $payout * $confidence;
         }
         if ( 'conversions_desc' === $mode ) {
-            return $conversions;
+            return $conversions * $confidence;
         }
         if ( 'epc_desc' === $mode || 'country_epc_desc' === $mode ) {
-            return $epc;
+            return $epc * $confidence;
+        }
+        if ( 'safe_hybrid_score' === $mode ) {
+            return ( ( $epc * 1000 ) + ( $conversions * 100 ) + $payout ) * $confidence;
         }
 
         // [TMW-CR-OPT] hybrid_score: conversions first, payout second, epc third.
         return ( $conversions * 100000 ) + ( $payout * 100 ) + $epc + ( $clicks / 1000000 );
+    }
+
+    /**
+     * @param array<string,mixed> $settings Settings.
+     *
+     * @return array<string,mixed>
+     */
+    protected function get_optimization_settings( $settings ) {
+        $defaults = array(
+            'optimization_enabled' => 1,
+            'minimum_clicks_threshold' => 10,
+            'minimum_conversions_threshold' => 1,
+            'minimum_payout_threshold' => 0.0,
+            'exclude_zero_click_offers' => 0,
+            'exclude_zero_conversion_offers' => 0,
+            'country_decay_enabled' => 1,
+            'country_weight' => 0.7,
+            'global_weight' => 0.3,
+            'decay_min_country_clicks' => 10,
+            'fallback_to_global_when_low_sample' => 1,
+        );
+        $settings = wp_parse_args( (array) $settings, $defaults );
+        $settings['optimization_enabled'] = ! empty( $settings['optimization_enabled'] ) ? 1 : 0;
+        $settings['minimum_clicks_threshold'] = max( 0, (int) $settings['minimum_clicks_threshold'] );
+        $settings['minimum_conversions_threshold'] = max( 0, (float) $settings['minimum_conversions_threshold'] );
+        $settings['minimum_payout_threshold'] = max( 0, (float) $settings['minimum_payout_threshold'] );
+        $settings['exclude_zero_click_offers'] = ! empty( $settings['exclude_zero_click_offers'] ) ? 1 : 0;
+        $settings['exclude_zero_conversion_offers'] = ! empty( $settings['exclude_zero_conversion_offers'] ) ? 1 : 0;
+        $settings['country_decay_enabled'] = ! empty( $settings['country_decay_enabled'] ) ? 1 : 0;
+        $settings['country_weight'] = max( 0, min( 1, (float) $settings['country_weight'] ) );
+        $settings['global_weight'] = max( 0, min( 1, (float) $settings['global_weight'] ) );
+        $settings['decay_min_country_clicks'] = max( 1, (int) $settings['decay_min_country_clicks'] );
+        $settings['fallback_to_global_when_low_sample'] = ! empty( $settings['fallback_to_global_when_low_sample'] ) ? 1 : 0;
+
+        return $settings;
+    }
+
+    /**
+     * @param array<string,mixed> $metrics Metrics.
+     * @param array<string,mixed> $optimization Optimization settings.
+     *
+     * @return float
+     */
+    protected function calculate_confidence_multiplier( $metrics, $optimization ) {
+        $clicks      = (int) ( $metrics['clicks'] ?? 0 );
+        $conversions = (float) ( $metrics['conversions'] ?? 0 );
+        $payout      = (float) ( $metrics['payout'] ?? 0 );
+
+        $click_ratio = $optimization['minimum_clicks_threshold'] > 0 ? min( 1, $clicks / $optimization['minimum_clicks_threshold'] ) : 1;
+        $conv_ratio  = $optimization['minimum_conversions_threshold'] > 0 ? min( 1, $conversions / $optimization['minimum_conversions_threshold'] ) : 1;
+        $payout_ratio= $optimization['minimum_payout_threshold'] > 0 ? min( 1, $payout / $optimization['minimum_payout_threshold'] ) : 1;
+
+        return max( 0.05, min( $click_ratio, $conv_ratio, $payout_ratio ) );
+    }
+
+    /**
+     * [TMW-CR-DASH] Explainability rows for optimization ranking.
+     *
+     * @param string               $country Country.
+     * @param array<string,mixed>  $settings Settings.
+     * @param int                  $limit Limit.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function get_optimization_explain_rows( $country, $settings, $limit = 10 ) {
+        $selected_ids  = $this->get_selected_offer_ids( $settings );
+        $synced_offers = $this->get_synced_offers();
+        $stats         = $this->get_offer_stats();
+        $optimization  = $this->get_optimization_settings( $settings );
+        $mode          = isset( $settings['rotation_mode'] ) ? sanitize_key( (string) $settings['rotation_mode'] ) : 'manual';
+        $rows          = array();
+
+        foreach ( $selected_ids as $offer_id ) {
+            if ( ! isset( $synced_offers[ $offer_id ] ) ) {
+                continue;
+            }
+
+            $metrics     = $this->get_offer_metrics_for_country( $offer_id, $country, $stats, $optimization );
+            $confidence  = $this->calculate_confidence_multiplier( $metrics, $optimization );
+            $rows[] = array(
+                'offer_id' => $offer_id,
+                'offer_name' => (string) ( $synced_offers[ $offer_id ]['name'] ?? $offer_id ),
+                'clicks' => (int) $metrics['clicks'],
+                'conversions' => (float) $metrics['conversions'],
+                'payout' => (float) $metrics['payout'],
+                'epc' => (float) $metrics['epc'],
+                'country_sample_used' => (int) ( $metrics['country_clicks'] ?? 0 ),
+                'used_global_fallback' => ! empty( $metrics['fallback_to_global'] ) ? 1 : 0,
+                'low_sample_penalty' => $confidence < 1 ? 1 : 0,
+                'final_score' => $this->build_rotation_score( $mode, $metrics, $optimization ),
+            );
+        }
+
+        usort(
+            $rows,
+            static function ( $left, $right ) {
+                if ( $left['final_score'] !== $right['final_score'] ) {
+                    return $right['final_score'] <=> $left['final_score'];
+                }
+                return strcasecmp( (string) $left['offer_name'], (string) $right['offer_name'] );
+            }
+        );
+
+        return array_slice( $rows, 0, max( 1, (int) $limit ) );
     }
 
     /**

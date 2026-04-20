@@ -3,13 +3,14 @@
 define( 'ABSPATH', __DIR__ . '/' );
 define( 'HOUR_IN_SECONDS', 3600 );
 define( 'TMW_CR_SLOT_BANNER_PATH', dirname( __DIR__ ) . '/' );
-define( 'TMW_CR_SLOT_BANNER_VERSION', '1.8.0-test' );
+define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.0-test' );
 
 $GLOBALS['tmw_test_options']      = array();
 $GLOBALS['tmw_test_transients']   = array();
 $GLOBALS['tmw_test_remote_get']   = null;
 $GLOBALS['tmw_test_last_redirect'] = '';
 $GLOBALS['tmw_test_nonce_ok']     = true;
+$GLOBALS['tmw_test_cron_events']  = array();
 
 class WP_Error {
     protected $code;
@@ -58,6 +59,38 @@ function add_options_page() {}
 function is_admin() { return true; }
 function shortcode_atts( $pairs, $atts ) { return array_merge( $pairs, (array) $atts ); }
 function add_shortcode() {}
+function wp_next_scheduled( $hook ) {
+    foreach ( $GLOBALS['tmw_test_cron_events'] as $event ) {
+        if ( $event['hook'] === $hook ) {
+            return $event['timestamp'];
+        }
+    }
+    return false;
+}
+function wp_schedule_event( $timestamp, $recurrence, $hook ) {
+    foreach ( $GLOBALS['tmw_test_cron_events'] as $event ) {
+        if ( $event['hook'] === $hook ) {
+            return true;
+        }
+    }
+    $GLOBALS['tmw_test_cron_events'][] = array(
+        'timestamp' => (int) $timestamp,
+        'recurrence' => (string) $recurrence,
+        'hook' => (string) $hook,
+    );
+    return true;
+}
+function wp_clear_scheduled_hook( $hook ) {
+    $GLOBALS['tmw_test_cron_events'] = array_values(
+        array_filter(
+            $GLOBALS['tmw_test_cron_events'],
+            static function ( $event ) use ( $hook ) {
+                return $event['hook'] !== $hook;
+            }
+        )
+    );
+    return true;
+}
 function do_action() {}
 function did_action() { return 1; }
 function wp_register_style() {}

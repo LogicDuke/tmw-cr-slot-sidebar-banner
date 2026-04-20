@@ -8,6 +8,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 class TMW_CR_Slot_Stats_Sync_Service {
+    const CRON_HOOK = 'tmw_cr_slot_banner_scheduled_stats_sync';
     /**
      * @return array<string,mixed>
      */
@@ -33,6 +34,35 @@ class TMW_CR_Slot_Stats_Sync_Service {
             'limit'  => 250,
             'page'   => 1,
         );
+    }
+
+    /**
+     * [TMW-CR-CRON] Ensures scheduled stats sync event exists once.
+     *
+     * @param string $frequency Cron frequency.
+     *
+     * @return bool
+     */
+    public static function ensure_cron_schedule( $frequency ) {
+        $frequency = sanitize_key( (string) $frequency );
+        if ( ! in_array( $frequency, array( 'hourly', 'twicedaily', 'daily' ), true ) ) {
+            $frequency = 'daily';
+        }
+
+        if ( wp_next_scheduled( self::CRON_HOOK ) ) {
+            return true;
+        }
+
+        return (bool) wp_schedule_event( time() + 60, $frequency, self::CRON_HOOK );
+    }
+
+    /**
+     * [TMW-CR-CRON] Removes scheduled stats sync event.
+     *
+     * @return bool
+     */
+    public static function clear_cron_schedule() {
+        return (bool) wp_clear_scheduled_hook( self::CRON_HOOK );
     }
 
     /**

@@ -39,6 +39,11 @@ function esc_attr( $text ) { return (string) $text; }
 function esc_html( $text ) { return (string) $text; }
 function esc_textarea( $text ) { return (string) $text; }
 function checked( $checked, $current = true ) { if ( (bool) $checked === (bool) $current ) { echo 'checked'; } }
+function selected( $selected, $current = true, $display = true ) {
+    $result = (string) $selected === (string) $current ? 'selected' : '';
+    if ( $display ) { echo $result; }
+    return $result;
+}
 function current_user_can() { return true; }
 function admin_url( $path = '' ) { return 'https://example.test/wp-admin/' . ltrim( $path, '/' ); }
 function wp_unslash( $value ) { return $value; }

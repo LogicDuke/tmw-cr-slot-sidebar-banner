@@ -27,6 +27,29 @@ class TMW_CR_Slot_Sidebar_Banner {
     public static function asset_url( $relative_path ) {
         return 'https://example.test/plugins/tmw/' . ltrim( $relative_path, '/' );
     }
+
+    public static function get_offer_catalog_defaults() {
+        return array(
+            'cam4' => array(
+                'id' => 'cam4',
+                'name' => 'CAM4',
+                'filename' => 'CAM4.png',
+                'aliases' => array( 'cam 4' ),
+            ),
+            'live-jasmin' => array(
+                'id' => 'live-jasmin',
+                'name' => 'Live Jasmin',
+                'filename' => 'Live Jasmin.png',
+                'aliases' => array( 'livejasmin' ),
+            ),
+            'sex-messenger' => array(
+                'id' => 'sex-messenger',
+                'name' => 'Sex Messenger',
+                'filename' => 'Sex Messenger.png',
+                'aliases' => array( 'sexmessenger' ),
+            ),
+        );
+    }
 }
 
 class TMW_Test_Admin_Page extends TMW_CR_Slot_Admin_Page {
@@ -177,6 +200,73 @@ $tests['frontend_pool_filters_and_legacy_fallback_to_three'] = function() {
     tmw_assert_same( '200', $offers[0]['id'], 'Priority ordering should persist for eligible synced offers.' );
     tmw_assert_same( 'https://img.test/legacy-200.png', $offers[0]['image'], 'Legacy offer_image_overrides should remain compatible.' );
     tmw_assert_true( '201' !== $offers[0]['id'], 'Country-ineligible synced offers should be removed from pool.' );
+};
+
+$tests['image_resolver_chain_prefers_manual_then_local_then_remote_then_placeholder'] = function() {
+    tmw_reset_test_state();
+
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $legacy     = TMW_CR_Slot_Sidebar_Banner::get_offer_catalog_defaults();
+
+    $manual = $repository->resolve_synced_offer_image(
+        array( 'id' => '500', 'name' => 'CAM4' ),
+        array( 'offer_image_overrides' => array( '500' => 'https://img.test/manual.png' ) ),
+        $legacy,
+        array( 'image_url_override' => 'https://img.test/full-control.png' )
+    );
+    tmw_assert_same( 'https://img.test/full-control.png', $manual, 'Full-control override must win.' );
+
+    $local = $repository->resolve_synced_offer_image(
+        array( 'id' => '501', 'name' => 'LiveJasmin' ),
+        array(),
+        $legacy
+    );
+    tmw_assert_contains( 'assets/img/offers/Live Jasmin.png', $local, 'Local alias match should return bundled image URL.' );
+
+    $remote = $repository->resolve_synced_offer_image(
+        array( 'id' => '502', 'name' => 'OnlyFans' ),
+        array(),
+        $legacy
+    );
+    tmw_assert_contains( 'upload.wikimedia.org', $remote, 'Known remote map entries should resolve to explicit URLs.' );
+
+    $placeholder = $repository->resolve_synced_offer_image(
+        array( 'id' => '503', 'name' => 'Unknown Offer XYZ' ),
+        array(),
+        $legacy
+    );
+    tmw_assert_true( 0 === strpos( $placeholder, 'data:image/svg+xml;base64,' ), 'Unknown offers should fallback to placeholder image.' );
+};
+
+$tests['alias_normalization_handles_spaces_dashes_and_case'] = function() {
+    tmw_reset_test_state();
+
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+
+    tmw_assert_same( 'live jasmin', $repository->normalize_offer_name_for_image_match( ' LIVE-Jasmin ' ), 'Normalization should collapse dashes and case.' );
+    tmw_assert_same( 'sex messenger', $repository->normalize_offer_name_for_image_match( 'Sex_Messenger' ), 'Normalization should normalize separators.' );
+    tmw_assert_same( 'my free cams', $repository->normalize_offer_name_for_image_match( 'my   free   cams' ), 'Normalization should collapse spaces.' );
+};
+
+$tests['synced_offer_normalization_keeps_frontend_pool_behavior'] = function() {
+    tmw_reset_test_state();
+
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repository->save_synced_offers(
+        array(
+            '601' => array( 'id' => '601', 'name' => 'SexMessenger', 'status' => 'active', 'preview_url' => 'https://preview.test/601' ),
+            '602' => array( 'id' => '602', 'name' => 'Paused Offer', 'status' => 'paused', 'preview_url' => 'https://preview.test/602' ),
+        )
+    );
+
+    $settings = array(
+        'slot_offer_ids' => array( '601', '602' ),
+        'slot_offer_priority' => array( '601' => 1, '602' => 2 ),
+    );
+
+    $offers = $repository->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => 'https://base.test', 'cta_text' => 'CTA' ), 'US', TMW_CR_Slot_Sidebar_Banner::get_offer_catalog_defaults() );
+    tmw_assert_same( '601', $offers[0]['id'], 'Active synced offers should still normalize for frontend slot pool.' );
+    tmw_assert_contains( 'assets/img/offers/Sex Messenger.png', $offers[0]['image'], 'Resolver should pick local catalog image via alias match.' );
 };
 
 $tests['admin_sanitize_and_render_supports_offer_overrides'] = function() {

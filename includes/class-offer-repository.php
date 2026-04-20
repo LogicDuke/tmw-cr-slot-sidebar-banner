@@ -263,9 +263,9 @@ class TMW_CR_Slot_Offer_Repository {
         $approval    = strtolower( trim( (string) $query['approval_required'] ) );
         $payout_type = strtolower( trim( (string) $query['payout_type'] ) );
         $image       = strtolower( trim( (string) $query['image_status'] ) );
-        $offers      = array_values( $this->get_synced_offers() );
-
-        $filtered = array();
+        $offers         = array_values( $this->get_synced_offers() );
+        $legacy_catalog = $this->get_default_legacy_catalog();
+        $filtered       = array();
 
         foreach ( $offers as $offer ) {
             $offer_id = (string) ( $offer['id'] ?? '' );
@@ -309,7 +309,7 @@ class TMW_CR_Slot_Offer_Repository {
                 continue;
             }
 
-            $image_status = $this->get_image_status_for_offer( $offer_id, $settings );
+            $image_status = $this->get_image_status_for_offer( $offer_id, $settings, $legacy_catalog );
             if ( '' !== $image && $image !== $image_status ) {
                 continue;
             }
@@ -386,7 +386,7 @@ class TMW_CR_Slot_Offer_Repository {
      *
      * @return string
      */
-    public function get_image_status_for_offer( $offer_id, $settings ) {
+    public function get_image_status_for_offer( $offer_id, $settings, $legacy_catalog = array() ) {
         $offer_id     = (string) $offer_id;
         $selected_ids = $this->get_selected_offer_ids( $settings );
         if ( ! in_array( $offer_id, $selected_ids, true ) ) {
@@ -404,6 +404,19 @@ class TMW_CR_Slot_Offer_Repository {
             return 'manual_override';
         }
 
+        $synced_offers = $this->get_synced_offers();
+        if ( isset( $synced_offers[ $offer_id ] ) ) {
+            $offer_name = (string) ( $synced_offers[ $offer_id ]['name'] ?? $offer_id );
+
+            if ( '' !== $this->resolve_local_catalog_image( $offer_name, $legacy_catalog ) ) {
+                return 'auto_local';
+            }
+
+            if ( '' !== $this->resolve_remote_thumbnail_image( $offer_name ) ) {
+                return 'auto_remote';
+            }
+        }
+
         return 'placeholder_only';
     }
 
@@ -416,6 +429,17 @@ class TMW_CR_Slot_Offer_Repository {
         $selected = isset( $settings['slot_offer_ids'] ) && is_array( $settings['slot_offer_ids'] ) ? $settings['slot_offer_ids'] : array();
 
         return array_values( array_unique( array_filter( array_map( 'strval', $selected ) ) ) );
+    }
+
+    /**
+     * @return array<string,array<string,mixed>>
+     */
+    protected function get_default_legacy_catalog() {
+        if ( class_exists( 'TMW_CR_Slot_Sidebar_Banner' ) && method_exists( 'TMW_CR_Slot_Sidebar_Banner', 'get_offer_catalog_defaults' ) ) {
+            return (array) TMW_CR_Slot_Sidebar_Banner::get_offer_catalog_defaults();
+        }
+
+        return array();
     }
 
     /**
@@ -567,15 +591,7 @@ class TMW_CR_Slot_Offer_Repository {
             return array();
         }
 
-        $image = '';
-
-        if ( ! empty( $image_map[ $offer_id ] ) ) {
-            $image = esc_url_raw( $image_map[ $offer_id ] );
-        }
-
-        if ( '' === $image ) {
-            $image = $this->build_placeholder_image( (string) ( $offer['name'] ?? $offer_id ) );
-        }
+        $image = $this->resolve_synced_offer_image( $offer, array( 'offer_image_overrides' => $image_map ), array() );
 
         return array(
             'id'       => $offer_id,
@@ -675,7 +691,7 @@ class TMW_CR_Slot_Offer_Repository {
         return array(
             'id'       => $offer_id,
             'name'     => $name,
-            'image'    => $this->get_effective_image( $offer_id, $settings, $banner_data, $synced_offer, $override ),
+            'image'    => $this->get_effective_image( $offer_id, $settings, $banner_data, $synced_offer, $override, $legacy_catalog ),
             'cta_url'  => $this->get_effective_cta_url( $offer_id, $settings, $banner_data, $synced_offer, $override ),
             'cta_text' => $this->get_effective_cta_text( $offer_id, $settings, $banner_data, $synced_offer, $override, $legacy_catalog ),
         );
@@ -754,28 +770,131 @@ class TMW_CR_Slot_Offer_Repository {
      * @param array<string,string> $banner_data Banner data.
      * @param array<string,mixed> $synced_offer Synced offer.
      * @param array<string,mixed> $override Override.
+     * @param array<string,array<string,mixed>> $legacy_catalog Legacy catalog.
      *
      * @return string
      */
-    public function get_effective_image( $offer_id, $settings, $banner_data, $synced_offer, $override ) {
+    public function get_effective_image( $offer_id, $settings, $banner_data, $synced_offer, $override, $legacy_catalog = array() ) {
         unset( $banner_data );
 
-        if ( ! empty( $override['image_url_override'] ) ) {
-            return esc_url_raw( (string) $override['image_url_override'] );
+        return $this->resolve_synced_offer_image( $synced_offer, $settings, $legacy_catalog, $override );
+    }
+
+    /**
+     * [TMW-CR-IMG] Resolves synced offer image with layered fallback strategy.
+     *
+     * Resolution order:
+     * 1) Per-offer control-layer override (`offer_overrides[].image_url_override`)
+     * 2) Legacy `offer_image_overrides`
+     * 3) Local bundled catalog match (name + aliases)
+     * 4) Explicit remote thumbnail map
+     * 5) Placeholder SVG
+     *
+     * @param array<string,mixed>              $offer Synced offer payload.
+     * @param array<string,mixed>              $settings Plugin settings payload.
+     * @param array<string,array<string,mixed>> $legacy_catalog Bundled local catalog.
+     * @param array<string,mixed>              $overrides Offer-level override payload.
+     *
+     * @return string
+     */
+    public function resolve_synced_offer_image( $offer, $settings, $legacy_catalog, $overrides = array() ) {
+        $offer_id   = (string) ( $offer['id'] ?? '' );
+        $offer_name = (string) ( $offer['name'] ?? $offer_id );
+
+        if ( ! empty( $overrides['image_url_override'] ) ) {
+            return esc_url_raw( (string) $overrides['image_url_override'] );
         }
 
         $image_map = isset( $settings['offer_image_overrides'] ) && is_array( $settings['offer_image_overrides'] ) ? $settings['offer_image_overrides'] : array();
-        if ( ! empty( $image_map[ $offer_id ] ) ) {
+        if ( '' !== $offer_id && ! empty( $image_map[ $offer_id ] ) ) {
             return esc_url_raw( (string) $image_map[ $offer_id ] );
         }
 
-        foreach ( array( 'image_url', 'image', 'thumbnail', 'thumbnail_url' ) as $field ) {
-            if ( ! empty( $synced_offer[ $field ] ) ) {
-                return esc_url_raw( (string) $synced_offer[ $field ] );
+        $local_image = $this->resolve_local_catalog_image( $offer_name, $legacy_catalog );
+        if ( '' !== $local_image ) {
+            return $local_image;
+        }
+
+        $remote_image = $this->resolve_remote_thumbnail_image( $offer_name );
+        if ( '' !== $remote_image ) {
+            return $remote_image;
+        }
+
+        return $this->build_placeholder_image( $offer_name );
+    }
+
+    /**
+     * @param string $name Raw offer name.
+     *
+     * @return string
+     */
+    public function normalize_offer_name_for_image_match( $name ) {
+        $name = strtolower( sanitize_text_field( (string) $name ) );
+        $name = str_replace( '&', ' and ', $name );
+        $name = preg_replace( '/[^a-z0-9]+/', ' ', $name );
+        $name = preg_replace( '/\s+/', ' ', (string) $name );
+
+        return trim( (string) $name );
+    }
+
+    /**
+     * @param string                           $offer_name Offer name.
+     * @param array<string,array<string,mixed>> $legacy_catalog Bundled offer catalog.
+     *
+     * @return string
+     */
+    public function resolve_local_catalog_image( $offer_name, $legacy_catalog ) {
+        $needle = $this->normalize_offer_name_for_image_match( $offer_name );
+        if ( '' === $needle || empty( $legacy_catalog ) ) {
+            return '';
+        }
+
+        foreach ( $legacy_catalog as $legacy_offer ) {
+            $candidates = array();
+            $candidates[] = (string) ( $legacy_offer['name'] ?? '' );
+            $candidates[] = (string) ( $legacy_offer['id'] ?? '' );
+
+            if ( ! empty( $legacy_offer['aliases'] ) && is_array( $legacy_offer['aliases'] ) ) {
+                $candidates = array_merge( $candidates, $legacy_offer['aliases'] );
+            }
+
+            foreach ( $candidates as $candidate ) {
+                $normalized = $this->normalize_offer_name_for_image_match( (string) $candidate );
+                if ( '' !== $normalized && $needle === $normalized ) {
+                    $file = isset( $legacy_offer['filename'] ) ? (string) $legacy_offer['filename'] : '';
+                    if ( '' !== $file ) {
+                        return TMW_CR_Slot_Sidebar_Banner::asset_url( 'assets/img/offers/' . $file );
+                    }
+                }
             }
         }
 
-        return $this->build_placeholder_image( (string) ( $synced_offer['name'] ?? $offer_id ) );
+        return '';
+    }
+
+    /**
+     * @param string $offer_name Offer name.
+     *
+     * @return string
+     */
+    public function resolve_remote_thumbnail_image( $offer_name ) {
+        $needle = $this->normalize_offer_name_for_image_match( $offer_name );
+        $map    = $this->get_remote_thumbnail_map();
+
+        return isset( $map[ $needle ] ) ? esc_url_raw( (string) $map[ $needle ] ) : '';
+    }
+
+    /**
+     * [TMW-CR-IMG] Curated explicit map for known brands not yet bundled locally.
+     *
+     * @return array<string,string>
+     */
+    public function get_remote_thumbnail_map() {
+        return array(
+            'onlyfans' => 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/48/OnlyFans_logo.svg/640px-OnlyFans_logo.svg.png',
+            'fansly'   => 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/77/Fansly_logo.svg/640px-Fansly_logo.svg.png',
+            'stripchat' => 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/59/Stripchat_logo.svg/640px-Stripchat_logo.svg.png',
+        );
     }
 
     /**

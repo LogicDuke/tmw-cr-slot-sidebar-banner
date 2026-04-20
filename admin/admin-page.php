@@ -402,10 +402,10 @@ class TMW_CR_Slot_Admin_Page {
             'per_page'          => 25,
         );
 
-        $result = $this->offer_repository->get_filtered_synced_offers_for_admin( $args, $settings );
-        $items  = $result['items'];
-        $country = strtoupper( TMW_CR_Slot_Geo_Helper::get_country_code() );
-        $legacy_catalog = array();
+        $legacy_catalog = TMW_CR_Slot_Sidebar_Banner::get_offer_catalog_defaults();
+        $result         = $this->offer_repository->get_filtered_synced_offers_for_admin( $args, $settings );
+        $items          = $result['items'];
+        $country        = strtoupper( TMW_CR_Slot_Geo_Helper::get_country_code() );
         ?>
         <form method="get" class="tmw-cr-filters">
             <input type="hidden" name="page" value="tmw-cr-slot-sidebar-banner" />
@@ -415,7 +415,7 @@ class TMW_CR_Slot_Admin_Page {
             <?php $this->render_filter_select( 'featured', $args['featured'], array( '' => 'Featured: any', 'yes' => 'Featured: yes', 'no' => 'Featured: no' ) ); ?>
             <?php $this->render_filter_select( 'approval_required', $args['approval_required'], array( '' => 'Approval: any', 'yes' => 'Approval required', 'no' => 'Approval not required' ) ); ?>
             <?php $this->render_filter_select( 'payout_type', $args['payout_type'], array( '' => 'Payout type: any', 'cpa' => 'CPA', 'revshare' => 'Revshare', 'hybrid' => 'Hybrid', 'cpa_both' => 'CPA both' ) ); ?>
-            <?php $this->render_filter_select( 'image_status', $args['image_status'], array( '' => 'Image status: any', 'manual_override' => 'Manual override', 'placeholder_only' => 'Placeholder only' ) ); ?>
+            <?php $this->render_filter_select( 'image_status', $args['image_status'], array( '' => 'Image status: any', 'manual_override' => 'Manual override', 'auto_local' => 'Auto local', 'auto_remote' => 'Auto remote', 'placeholder_only' => 'Placeholder' ) ); ?>
             <?php submit_button( __( 'Apply', 'tmw-cr-slot-sidebar-banner' ), 'secondary', '', false ); ?>
         </form>
 
@@ -452,7 +452,7 @@ class TMW_CR_Slot_Admin_Page {
                             <td><small><?php echo esc_html( $this->format_payout( $offer ) ); ?></small></td>
                             <td><?php $this->render_badge( ! empty( $offer['is_featured'] ) ? 'Yes' : 'No', ! empty( $offer['is_featured'] ) ? 'featured' : 'muted' ); ?></td>
                             <td><?php $this->render_badge( '1' === (string) ( $offer['require_approval'] ?? '' ) ? 'Required' : 'No', 'approval' ); ?></td>
-                            <td><?php $this->render_badge( 'manual_override' === (string) ( $offer['image_status'] ?? '' ) ? 'Manual override' : 'Placeholder only', 'manual_override' === (string) ( $offer['image_status'] ?? '' ) ? 'featured' : 'muted' ); ?></td>
+                            <td><?php $this->render_image_status_badge( (string) ( $offer['image_status'] ?? '' ) ); ?></td>
                             <td><?php $this->render_badge( ! empty( $offer['is_selected_for_slot'] ) ? 'Selected for slot' : 'Not selected', ! empty( $offer['is_selected_for_slot'] ) ? 'selected' : 'muted' ); ?></td>
                             <td><?php $this->render_badge( ( $is_active && $allowed ) ? 'Eligible' : 'Excluded', ( $is_active && $allowed ) ? 'selected' : 'muted' ); ?></td>
                             <td><?php $this->render_badge( $allowed ? 'Allowed' : 'Blocked', $allowed ? 'featured' : 'muted' ); ?></td>
@@ -481,9 +481,10 @@ class TMW_CR_Slot_Admin_Page {
             'page'          => 1,
             'per_page'      => 400,
         );
-        $result      = $this->offer_repository->get_filtered_synced_offers_for_admin( $args, $settings );
-        $offers      = $result['items'];
-        $country     = strtoupper( TMW_CR_Slot_Geo_Helper::get_country_code() );
+        $result         = $this->offer_repository->get_filtered_synced_offers_for_admin( $args, $settings );
+        $offers         = $result['items'];
+        $country        = strtoupper( TMW_CR_Slot_Geo_Helper::get_country_code() );
+        $legacy_catalog = TMW_CR_Slot_Sidebar_Banner::get_offer_catalog_defaults();
 
         usort(
             $offers,
@@ -527,12 +528,13 @@ class TMW_CR_Slot_Admin_Page {
                         <th><?php esc_html_e( 'Allowed countries', 'tmw-cr-slot-sidebar-banner' ); ?></th>
                         <th><?php esc_html_e( 'Blocked countries', 'tmw-cr-slot-sidebar-banner' ); ?></th>
                         <th><?php esc_html_e( 'Preview', 'tmw-cr-slot-sidebar-banner' ); ?></th>
+                        <th><?php esc_html_e( 'Image source', 'tmw-cr-slot-sidebar-banner' ); ?></th>
                         <th><?php esc_html_e( 'Quick action', 'tmw-cr-slot-sidebar-banner' ); ?></th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if ( empty( $offers ) ) : ?>
-                        <tr><td colspan="10"><?php esc_html_e( 'No offers available for slot setup yet. Sync offers first.', 'tmw-cr-slot-sidebar-banner' ); ?></td></tr>
+                        <tr><td colspan="11"><?php esc_html_e( 'No offers available for slot setup yet. Sync offers first.', 'tmw-cr-slot-sidebar-banner' ); ?></td></tr>
                     <?php else : ?>
                         <?php foreach ( $offers as $offer ) : ?>
                             <?php
@@ -545,8 +547,9 @@ class TMW_CR_Slot_Admin_Page {
                             $allowed_raw = ! empty( $override['allowed_countries'] ) ? implode( ',', (array) $override['allowed_countries'] ) : '';
                             $blocked_raw = ! empty( $override['blocked_countries'] ) ? implode( ',', (array) $override['blocked_countries'] ) : '';
                             $eligible    = $this->offer_repository->is_offer_allowed_for_country( $offer_id, $country, $override, $offer, array() );
-                            $effective_image = $this->offer_repository->get_effective_image( $offer_id, $settings, array(), $offer, $override );
+                            $effective_image = $this->offer_repository->get_effective_image( $offer_id, $settings, array(), $offer, $override, $legacy_catalog );
                             $effective_url   = $this->offer_repository->get_effective_cta_url( $offer_id, $settings, array( 'cta_url' => (string) $settings['cta_url'] ), $offer, $override );
+                            $image_status    = $this->offer_repository->get_image_status_for_offer( $offer_id, $settings, $legacy_catalog );
                             ?>
                             <tr>
                                 <td>
@@ -562,7 +565,7 @@ class TMW_CR_Slot_Admin_Page {
                                 <td>
                                     <input type="url" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_image_overrides][<?php echo esc_attr( $offer_id ); ?>]" value="<?php echo esc_attr( $image_value ); ?>" />
                                     <input type="url" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][image_url_override]" value="<?php echo esc_attr( (string) ( $override['image_url_override'] ?? '' ) ); ?>" placeholder="<?php esc_attr_e( 'Per-offer image override', 'tmw-cr-slot-sidebar-banner' ); ?>" />
-                                    <p class="description"><?php esc_html_e( 'Optional. Leave blank to use generated placeholder image.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+                                    <p class="description"><?php esc_html_e( 'Optional. Leave blank to use automatic resolver chain (local/remote/placeholder).', 'tmw-cr-slot-sidebar-banner' ); ?></p>
                                 </td>
                                 <td><input type="url" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][final_url_override]" value="<?php echo esc_attr( (string) ( $override['final_url_override'] ?? '' ) ); ?>" placeholder="https://..." /></td>
                                 <td>
@@ -580,6 +583,7 @@ class TMW_CR_Slot_Admin_Page {
                                     <?php endif; ?>
                                     <p class="description"><strong><?php esc_html_e( '[TMW-CR-DASH] Destination:', 'tmw-cr-slot-sidebar-banner' ); ?></strong> <?php echo esc_html( $effective_url ? $effective_url : '-' ); ?></p>
                                 </td>
+                                <td><?php $this->render_image_status_badge( $image_status ); ?></td>
                                 <td>
                                     <?php $this->render_badge( $selected ? 'Selected' : 'Not selected', $selected ? 'selected' : 'muted' ); ?>
                                     <?php $this->render_badge( $eligible ? 'Country eligible' : 'Country blocked', $eligible ? 'featured' : 'muted' ); ?>
@@ -824,6 +828,25 @@ class TMW_CR_Slot_Admin_Page {
      */
     protected function render_badge( $label, $variant ) {
         echo '<span class="tmw-cr-badge tmw-cr-badge--' . esc_attr( sanitize_key( $variant ) ) . '">' . esc_html( $label ) . '</span>';
+    }
+
+    /**
+     * @param string $status Image status.
+     *
+     * @return void
+     */
+    protected function render_image_status_badge( $status ) {
+        $status = sanitize_key( (string) $status );
+
+        $map = array(
+            'manual_override' => array( 'label' => 'manual', 'variant' => 'featured' ),
+            'auto_local'      => array( 'label' => 'auto-local', 'variant' => 'selected' ),
+            'auto_remote'     => array( 'label' => 'auto-remote', 'variant' => 'approval' ),
+            'placeholder_only' => array( 'label' => 'placeholder', 'variant' => 'muted' ),
+        );
+
+        $badge = isset( $map[ $status ] ) ? $map[ $status ] : $map['placeholder_only'];
+        $this->render_badge( $badge['label'], $badge['variant'] );
     }
 
     /**

@@ -3,7 +3,7 @@
  * Plugin Name: TMW CR Slot Sidebar Banner
  * Plugin URI: https://themilisofialtd.com/
  * Description: Displays a geo-targeted CrackRevenue slot banner with a 3-reel interface in sidebar areas via shortcode or template tag.
- * Version: 1.6.0
+ * Version: 1.7.0
  * Author: The Milisofia LTD
  * Author URI: https://themilisofialtd.com/
  * License: GPL2
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'TMW_CR_SLOT_BANNER_VERSION', '1.6.0' );
+define( 'TMW_CR_SLOT_BANNER_VERSION', '1.7.0' );
 define( 'TMW_CR_SLOT_BANNER_PATH', plugin_dir_path( __FILE__ ) );
 define( 'TMW_CR_SLOT_BANNER_URL', plugin_dir_url( __FILE__ ) );
 
@@ -374,11 +374,21 @@ class TMW_CR_Slot_Sidebar_Banner {
      * @return array<string,array<string,mixed>>
      */
     protected function get_offer_catalog() {
+        return self::get_offer_catalog_defaults();
+    }
+
+    /**
+     * Returns the bundled fallback catalog defaults.
+     *
+     * @return array<string,array<string,mixed>>
+     */
+    public static function get_offer_catalog_defaults() {
         return array(
             'jerkmate' => array(
                 'id'        => 'jerkmate',
                 'name'      => 'Jerkmate',
                 'filename'  => 'Jerkmate.png',
+                'aliases'   => array( 'jerk mate' ),
                 'countries' => array( 'US', 'CA', 'GB', 'IE', 'BE', 'DE', 'AT', 'CH', 'FR', 'AU', 'NZ' ),
                 'cta_text'  => __( 'Play on Jerkmate', 'tmw-cr-slot-sidebar-banner' ),
             ),
@@ -386,13 +396,23 @@ class TMW_CR_Slot_Sidebar_Banner {
                 'id'        => 'cam4',
                 'name'      => 'CAM4',
                 'filename'  => 'CAM4.png',
+                'aliases'   => array( 'cam 4' ),
                 'countries' => array( 'US', 'CA', 'GB', 'BE', 'DE', 'SE', 'NO', 'DK', 'NL' ),
                 'cta_text'  => __( 'Go Live on CAM4', 'tmw-cr-slot-sidebar-banner' ),
+            ),
+            'myfreecams' => array(
+                'id'        => 'myfreecams',
+                'name'      => 'MyFreeCams',
+                'filename'  => 'MyFreeCams.png',
+                'aliases'   => array( 'my free cams' ),
+                'countries' => array( 'US', 'CA', 'GB', 'AU', 'NZ' ),
+                'cta_text'  => __( 'Watch on MyFreeCams', 'tmw-cr-slot-sidebar-banner' ),
             ),
             'imlive' => array(
                 'id'        => 'imlive',
                 'name'      => 'ImLive',
                 'filename'  => 'ImLive.png',
+                'aliases'   => array( 'im live' ),
                 'countries' => array( 'US', 'CA', 'GB', 'IE', 'BE', 'DE', 'FR', 'ES', 'IT' ),
                 'cta_text'  => __( 'Chat on ImLive', 'tmw-cr-slot-sidebar-banner' ),
             ),
@@ -400,6 +420,7 @@ class TMW_CR_Slot_Sidebar_Banner {
                 'id'        => 'live-jasmin',
                 'name'      => 'Live Jasmin',
                 'filename'  => 'Live Jasmin.png',
+                'aliases'   => array( 'livejasmin' ),
                 'countries' => array( 'US', 'CA', 'GB', 'IE', 'BE', 'DE', 'FR', 'ES', 'IT', 'PT' ),
                 'cta_text'  => __( 'Watch on Live Jasmin', 'tmw-cr-slot-sidebar-banner' ),
             ),
@@ -407,6 +428,7 @@ class TMW_CR_Slot_Sidebar_Banner {
                 'id'        => 'xcams',
                 'name'      => 'Xcams',
                 'filename'  => 'Xcams.png',
+                'aliases'   => array( 'x cams' ),
                 'countries' => array( 'BE', 'NL', 'DE', 'AT', 'CH', 'SE' ),
                 'cta_text'  => __( 'Join Xcams', 'tmw-cr-slot-sidebar-banner' ),
             ),
@@ -414,6 +436,7 @@ class TMW_CR_Slot_Sidebar_Banner {
                 'id'        => 'xmatch',
                 'name'      => 'XMatch',
                 'filename'  => 'XMatch.png',
+                'aliases'   => array( 'x match' ),
                 'countries' => array( 'US', 'CA', 'GB', 'BE', 'DE', 'NL', 'SE', 'NO' ),
                 'cta_text'  => __( 'Meet Singles on XMatch', 'tmw-cr-slot-sidebar-banner' ),
             ),
@@ -421,6 +444,7 @@ class TMW_CR_Slot_Sidebar_Banner {
                 'id'        => 'sex-messenger',
                 'name'      => 'Sex Messenger',
                 'filename'  => 'Sex Messenger.png',
+                'aliases'   => array( 'sexmessenger' ),
                 'countries' => array( 'US', 'CA', 'GB', 'BE', 'DE', 'AU', 'NZ' ),
                 'cta_text'  => __( 'Chat on Sex Messenger', 'tmw-cr-slot-sidebar-banner' ),
             ),
@@ -428,6 +452,7 @@ class TMW_CR_Slot_Sidebar_Banner {
                 'id'        => 'joi',
                 'name'      => 'JOI Gaming',
                 'filename'  => 'Joi.png',
+                'aliases'   => array( 'joi gaming' ),
                 'countries' => array( 'US', 'CA', 'GB', 'BE', 'DE', 'SE' ),
                 'cta_text'  => __( 'Unlock JOI Gaming', 'tmw-cr-slot-sidebar-banner' ),
             ),
@@ -435,6 +460,7 @@ class TMW_CR_Slot_Sidebar_Banner {
                 'id'        => 'girlfriend-gpt',
                 'name'      => 'Girlfriend GPT',
                 'filename'  => 'Girlfriend GPT.png',
+                'aliases'   => array( 'girlfriendgpt' ),
                 'countries' => array(),
                 'cta_text'  => __( 'Chat with Girlfriend GPT', 'tmw-cr-slot-sidebar-banner' ),
             ),
@@ -442,6 +468,7 @@ class TMW_CR_Slot_Sidebar_Banner {
                 'id'        => 'candi-ai',
                 'name'      => 'Candi AI',
                 'filename'  => 'candi-ai.png',
+                'aliases'   => array( 'candiai' ),
                 'countries' => array(),
                 'cta_text'  => __( 'Explore Candi AI', 'tmw-cr-slot-sidebar-banner' ),
             ),

@@ -3,7 +3,7 @@ Contributors: themilisofia
 Tags: affiliate marketing, crackrevenue, sidebar, banner, shortcode
 Requires at least: 5.8
 Tested up to: 6.4
-Stable tag: 1.6.0
+Stable tag: 1.7.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -46,6 +46,12 @@ Yes. Version 1.3.0 ships with optimized PNG assets inside `assets/img/offers/` s
 * [TMW-CR-CTRL] Added effective synced-offer resolution with layered URL/image/CTA fallback rules and country eligibility filtering.
 * [TMW-CR-DASH] Extended Offers and Slot Setup admin views with per-offer enablement, destination/image controls, country controls, and effective status indicators.
 * [TMW-CR-CTRL] Added automated coverage for override resolution, country filtering, legacy fallback behavior, admin override save/render path, and API-key safety.
+
+= 1.7.0 =
+* [TMW-CR-IMG] Added synced-offer automatic image resolver chain (manual override → legacy override → local alias match → explicit remote map → placeholder fallback).
+* [TMW-CR-IMG] Added local catalog alias strategy for normalized brand-name matching without frontend API/image discovery calls.
+* [TMW-CR-DASH] Added admin image-source badges (manual, auto-local, auto-remote, placeholder) and wired slot setup preview to the effective image source.
+* [TMW-CR-IMG] Expanded tests to cover resolver order, alias normalization, remote-map fallback, placeholder fallback, and frontend slot normalization compatibility.
 
 = 1.5.0 =
 * [TMW-CR-DASH] Rebuilt admin into a WordPress-native dashboard with Overview, Offers, Slot Setup, and Settings tabs.

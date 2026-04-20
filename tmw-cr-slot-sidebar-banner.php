@@ -3,7 +3,7 @@
  * Plugin Name: TMW CR Slot Sidebar Banner
  * Plugin URI: https://themilisofialtd.com/
  * Description: Displays a geo-targeted CrackRevenue slot banner with a 3-reel interface in sidebar areas via shortcode or template tag.
- * Version: 1.8.0
+ * Version: 1.9.0
  * Author: The Milisofia LTD
  * Author URI: https://themilisofialtd.com/
  * License: GPL2
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'TMW_CR_SLOT_BANNER_VERSION', '1.8.0' );
+define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.0' );
 define( 'TMW_CR_SLOT_BANNER_PATH', plugin_dir_path( __FILE__ ) );
 define( 'TMW_CR_SLOT_BANNER_URL', plugin_dir_url( __FILE__ ) );
 
@@ -71,6 +71,7 @@ class TMW_CR_Slot_Sidebar_Banner {
      * @var string
      */
     const OFFER_STATS_META_OPTION_KEY = 'tmw_cr_slot_banner_offer_stats_meta';
+    const STATS_SYNC_CRON_HOOK = TMW_CR_Slot_Stats_Sync_Service::CRON_HOOK;
 
     /**
      * Single sidebar slot identifier.
@@ -93,6 +94,8 @@ class TMW_CR_Slot_Sidebar_Banner {
         $this->offer_repository = new TMW_CR_Slot_Offer_Repository( self::OFFERS_OPTION_KEY, self::SYNC_META_OPTION_KEY, self::OFFER_OVERRIDES_OPTION_KEY, self::OFFER_STATS_OPTION_KEY, self::OFFER_STATS_META_OPTION_KEY );
 
         add_action( 'init', array( $this, 'register_shortcode' ) );
+        add_action( 'init', array( $this, 'maybe_configure_stats_sync_schedule' ), 20 );
+        add_action( self::STATS_SYNC_CRON_HOOK, array( $this, 'run_scheduled_stats_sync' ) );
         add_action( 'wp_enqueue_scripts', array( $this, 'register_assets' ) );
         add_action( 'wp_footer', array( $this, 'maybe_enqueue_assets' ), 1 );
         add_filter( 'widget_text', 'do_shortcode' );
@@ -168,7 +171,21 @@ class TMW_CR_Slot_Sidebar_Banner {
             'slot_offer_priority'    => array(),
             'offer_image_overrides'  => array(),
             'rotation_mode'          => 'manual',
+            'optimization_enabled'   => 1,
+            'minimum_clicks_threshold' => 10,
+            'minimum_conversions_threshold' => 1,
+            'minimum_payout_threshold' => 0,
+            'exclude_zero_click_offers' => 0,
+            'exclude_zero_conversion_offers' => 0,
+            'country_decay_enabled' => 1,
+            'country_weight'        => 0.7,
+            'global_weight'         => 0.3,
+            'decay_min_country_clicks' => 10,
+            'fallback_to_global_when_low_sample' => 1,
+            'auto_sync_enabled'     => 0,
+            'auto_sync_frequency'   => 'daily',
             'stats_sync_range'       => '30d',
+            'optimization_notes'    => '',
         );
 
         $settings = get_option( self::OPTION_KEY, array() );
@@ -179,13 +196,34 @@ class TMW_CR_Slot_Sidebar_Banner {
         $settings['slot_offer_priority']   = is_array( $settings['slot_offer_priority'] ) ? $settings['slot_offer_priority'] : array();
         $settings['offer_image_overrides'] = is_array( $settings['offer_image_overrides'] ) ? $settings['offer_image_overrides'] : array();
         $settings['rotation_mode']         = sanitize_key( (string) $settings['rotation_mode'] );
-        if ( ! in_array( $settings['rotation_mode'], array( 'manual', 'payout_desc', 'conversions_desc', 'epc_desc', 'country_epc_desc', 'hybrid_score' ), true ) ) {
+        if ( ! in_array( $settings['rotation_mode'], array( 'manual', 'payout_desc', 'conversions_desc', 'epc_desc', 'country_epc_desc', 'hybrid_score', 'safe_hybrid_score' ), true ) ) {
             $settings['rotation_mode'] = 'manual';
+        }
+        $settings['optimization_enabled'] = ! empty( $settings['optimization_enabled'] ) ? 1 : 0;
+        $settings['minimum_clicks_threshold'] = max( 0, (int) $settings['minimum_clicks_threshold'] );
+        $settings['minimum_conversions_threshold'] = max( 0, (float) $settings['minimum_conversions_threshold'] );
+        $settings['minimum_payout_threshold'] = max( 0, (float) $settings['minimum_payout_threshold'] );
+        $settings['exclude_zero_click_offers'] = ! empty( $settings['exclude_zero_click_offers'] ) ? 1 : 0;
+        $settings['exclude_zero_conversion_offers'] = ! empty( $settings['exclude_zero_conversion_offers'] ) ? 1 : 0;
+        $settings['country_decay_enabled'] = ! empty( $settings['country_decay_enabled'] ) ? 1 : 0;
+        $settings['country_weight'] = max( 0, min( 1, (float) $settings['country_weight'] ) );
+        $settings['global_weight'] = max( 0, min( 1, (float) $settings['global_weight'] ) );
+        if ( ( $settings['country_weight'] + $settings['global_weight'] ) <= 0 ) {
+            $settings['country_weight'] = 0.7;
+            $settings['global_weight']  = 0.3;
+        }
+        $settings['decay_min_country_clicks'] = max( 1, (int) $settings['decay_min_country_clicks'] );
+        $settings['fallback_to_global_when_low_sample'] = ! empty( $settings['fallback_to_global_when_low_sample'] ) ? 1 : 0;
+        $settings['auto_sync_enabled'] = ! empty( $settings['auto_sync_enabled'] ) ? 1 : 0;
+        $settings['auto_sync_frequency'] = sanitize_key( (string) $settings['auto_sync_frequency'] );
+        if ( ! in_array( $settings['auto_sync_frequency'], array( 'hourly', 'twicedaily', 'daily' ), true ) ) {
+            $settings['auto_sync_frequency'] = 'daily';
         }
         $settings['stats_sync_range']      = sanitize_key( (string) $settings['stats_sync_range'] );
         if ( ! in_array( $settings['stats_sync_range'], array( '7d', '30d', '90d' ), true ) ) {
             $settings['stats_sync_range'] = '30d';
         }
+        $settings['optimization_notes'] = sanitize_textarea_field( (string) $settings['optimization_notes'] );
 
         return $settings;
     }
@@ -512,6 +550,44 @@ class TMW_CR_Slot_Sidebar_Banner {
         $segments      = array_map( 'rawurlencode', explode( '/', $relative_path ) );
 
         return plugins_url( implode( '/', $segments ), __FILE__ );
+    }
+
+    /**
+     * [TMW-CR-CRON] Maintains scheduled stats sync according to operator settings.
+     *
+     * @return void
+     */
+    public function maybe_configure_stats_sync_schedule() {
+        $settings = self::get_settings();
+        if ( empty( $settings['auto_sync_enabled'] ) ) {
+            TMW_CR_Slot_Stats_Sync_Service::clear_cron_schedule();
+            return;
+        }
+
+        TMW_CR_Slot_Stats_Sync_Service::ensure_cron_schedule( (string) $settings['auto_sync_frequency'] );
+    }
+
+    /**
+     * [TMW-CR-CRON] Runs scheduled stats sync with the same local service used for manual sync.
+     *
+     * @return void
+     */
+    public function run_scheduled_stats_sync() {
+        $settings = self::get_settings();
+        $client   = new TMW_CR_Slot_CR_API_Client( (string) $settings['cr_api_key'] );
+        $result   = TMW_CR_Slot_Stats_Sync_Service::sync(
+            $client,
+            $this->offer_repository,
+            array( 'preset' => (string) $settings['stats_sync_range'] )
+        );
+
+        $this->offer_repository->save_stats_meta(
+            array(
+                'last_scheduled_run_at'  => gmdate( 'c' ),
+                'last_scheduled_result'  => is_wp_error( $result ) ? 'error' : 'success',
+                'last_scheduled_message' => is_wp_error( $result ) ? $result->get_error_message() : __( '[TMW-CR-CRON] Scheduled stats sync completed.', 'tmw-cr-slot-sidebar-banner' ),
+            )
+        );
     }
 }
 

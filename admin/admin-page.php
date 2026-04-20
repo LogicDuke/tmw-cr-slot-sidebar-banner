@@ -93,13 +93,30 @@ class TMW_CR_Slot_Admin_Page {
         $output['open_in_new_tab']       = ! empty( $input['open_in_new_tab'] ) ? 1 : 0;
         $output['country_overrides_raw'] = isset( $input['country_overrides_raw'] ) ? sanitize_textarea_field( $input['country_overrides_raw'] ) : '';
         $output['rotation_mode']         = isset( $input['rotation_mode'] ) ? sanitize_key( (string) $input['rotation_mode'] ) : 'manual';
-        if ( ! in_array( $output['rotation_mode'], array( 'manual', 'payout_desc', 'conversions_desc', 'epc_desc', 'country_epc_desc', 'hybrid_score' ), true ) ) {
+        if ( ! in_array( $output['rotation_mode'], array( 'manual', 'payout_desc', 'conversions_desc', 'epc_desc', 'country_epc_desc', 'hybrid_score', 'safe_hybrid_score' ), true ) ) {
             $output['rotation_mode'] = 'manual';
+        }
+        $output['optimization_enabled'] = ! empty( $input['optimization_enabled'] ) ? 1 : 0;
+        $output['minimum_clicks_threshold'] = isset( $input['minimum_clicks_threshold'] ) ? max( 0, (int) $input['minimum_clicks_threshold'] ) : 10;
+        $output['minimum_conversions_threshold'] = isset( $input['minimum_conversions_threshold'] ) ? max( 0, (float) $input['minimum_conversions_threshold'] ) : 1;
+        $output['minimum_payout_threshold'] = isset( $input['minimum_payout_threshold'] ) ? max( 0, (float) $input['minimum_payout_threshold'] ) : 0;
+        $output['exclude_zero_click_offers'] = ! empty( $input['exclude_zero_click_offers'] ) ? 1 : 0;
+        $output['exclude_zero_conversion_offers'] = ! empty( $input['exclude_zero_conversion_offers'] ) ? 1 : 0;
+        $output['country_decay_enabled'] = ! empty( $input['country_decay_enabled'] ) ? 1 : 0;
+        $output['country_weight'] = isset( $input['country_weight'] ) ? max( 0, min( 1, (float) $input['country_weight'] ) ) : 0.7;
+        $output['global_weight'] = isset( $input['global_weight'] ) ? max( 0, min( 1, (float) $input['global_weight'] ) ) : 0.3;
+        $output['decay_min_country_clicks'] = isset( $input['decay_min_country_clicks'] ) ? max( 1, (int) $input['decay_min_country_clicks'] ) : 10;
+        $output['fallback_to_global_when_low_sample'] = ! empty( $input['fallback_to_global_when_low_sample'] ) ? 1 : 0;
+        $output['auto_sync_enabled'] = ! empty( $input['auto_sync_enabled'] ) ? 1 : 0;
+        $output['auto_sync_frequency'] = isset( $input['auto_sync_frequency'] ) ? sanitize_key( (string) $input['auto_sync_frequency'] ) : 'daily';
+        if ( ! in_array( $output['auto_sync_frequency'], array( 'hourly', 'twicedaily', 'daily' ), true ) ) {
+            $output['auto_sync_frequency'] = 'daily';
         }
         $output['stats_sync_range']      = isset( $input['stats_sync_range'] ) ? sanitize_key( (string) $input['stats_sync_range'] ) : '30d';
         if ( ! in_array( $output['stats_sync_range'], array( '7d', '30d', '90d' ), true ) ) {
             $output['stats_sync_range'] = '30d';
         }
+        $output['optimization_notes'] = isset( $input['optimization_notes'] ) ? sanitize_textarea_field( (string) $input['optimization_notes'] ) : '';
 
         $api_key              = isset( $input['cr_api_key'] ) ? trim( (string) $input['cr_api_key'] ) : '';
         $output['cr_api_key'] = '' !== $api_key ? sanitize_text_field( $api_key ) : (string) $existing['cr_api_key'];
@@ -709,6 +726,7 @@ class TMW_CR_Slot_Admin_Page {
      * @return void
      */
     protected function render_performance_tab() {
+        $settings   = TMW_CR_Slot_Sidebar_Banner::get_settings();
         $country    = isset( $_GET['country'] ) ? sanitize_text_field( wp_unslash( $_GET['country'] ) ) : '';
         $sort_by    = isset( $_GET['sort_by'] ) ? sanitize_key( wp_unslash( $_GET['sort_by'] ) ) : 'payout';
         $sort_order = isset( $_GET['sort_order'] ) ? sanitize_key( wp_unslash( $_GET['sort_order'] ) ) : 'desc';
@@ -720,7 +738,29 @@ class TMW_CR_Slot_Admin_Page {
             )
         );
         $summary = $this->offer_repository->get_performance_summary();
+        $stats_meta = $this->offer_repository->get_stats_meta();
+        $next_cron = wp_next_scheduled( TMW_CR_Slot_Sidebar_Banner::STATS_SYNC_CRON_HOOK );
+        $explain_rows = $this->offer_repository->get_optimization_explain_rows( $country, $settings, 10 );
         ?>
+        <form method="post" action="options.php">
+            <?php settings_fields( 'tmw_cr_slot_banner' ); ?>
+            <h2><?php esc_html_e( 'Optimization Controls', 'tmw-cr-slot-sidebar-banner' ); ?></h2>
+            <table class="form-table" role="presentation">
+                <tbody>
+                    <tr><th scope="row"><?php esc_html_e( 'Rotation mode', 'tmw-cr-slot-sidebar-banner' ); ?></th><td><select name="<?php echo esc_attr( $this->option_key ); ?>[rotation_mode]"><option value="manual" <?php selected( $settings['rotation_mode'], 'manual' ); ?>>manual</option><option value="payout_desc" <?php selected( $settings['rotation_mode'], 'payout_desc' ); ?>>payout_desc</option><option value="conversions_desc" <?php selected( $settings['rotation_mode'], 'conversions_desc' ); ?>>conversions_desc</option><option value="epc_desc" <?php selected( $settings['rotation_mode'], 'epc_desc' ); ?>>epc_desc</option><option value="country_epc_desc" <?php selected( $settings['rotation_mode'], 'country_epc_desc' ); ?>>country_epc_desc</option><option value="hybrid_score" <?php selected( $settings['rotation_mode'], 'hybrid_score' ); ?>>hybrid_score</option><option value="safe_hybrid_score" <?php selected( $settings['rotation_mode'], 'safe_hybrid_score' ); ?>>safe_hybrid_score</option></select></td></tr>
+                    <tr><th scope="row"><?php esc_html_e( 'Optimization enabled', 'tmw-cr-slot-sidebar-banner' ); ?></th><td><label><input type="checkbox" name="<?php echo esc_attr( $this->option_key ); ?>[optimization_enabled]" value="1" <?php checked( ! empty( $settings['optimization_enabled'] ) ); ?> /> <?php esc_html_e( 'Enable runtime optimization ordering', 'tmw-cr-slot-sidebar-banner' ); ?></label></td></tr>
+                    <tr><th scope="row"><?php esc_html_e( 'Minimum clicks', 'tmw-cr-slot-sidebar-banner' ); ?></th><td><input type="number" min="0" name="<?php echo esc_attr( $this->option_key ); ?>[minimum_clicks_threshold]" value="<?php echo esc_attr( (string) $settings['minimum_clicks_threshold'] ); ?>" /></td></tr>
+                    <tr><th scope="row"><?php esc_html_e( 'Minimum conversions', 'tmw-cr-slot-sidebar-banner' ); ?></th><td><input type="number" step="0.01" min="0" name="<?php echo esc_attr( $this->option_key ); ?>[minimum_conversions_threshold]" value="<?php echo esc_attr( (string) $settings['minimum_conversions_threshold'] ); ?>" /></td></tr>
+                    <tr><th scope="row"><?php esc_html_e( 'Minimum payout', 'tmw-cr-slot-sidebar-banner' ); ?></th><td><input type="number" step="0.01" min="0" name="<?php echo esc_attr( $this->option_key ); ?>[minimum_payout_threshold]" value="<?php echo esc_attr( (string) $settings['minimum_payout_threshold'] ); ?>" /></td></tr>
+                    <tr><th scope="row"><?php esc_html_e( 'Zero-data exclusion', 'tmw-cr-slot-sidebar-banner' ); ?></th><td><label><input type="checkbox" name="<?php echo esc_attr( $this->option_key ); ?>[exclude_zero_click_offers]" value="1" <?php checked( ! empty( $settings['exclude_zero_click_offers'] ) ); ?> /> <?php esc_html_e( 'Exclude zero-click offers', 'tmw-cr-slot-sidebar-banner' ); ?></label><br/><label><input type="checkbox" name="<?php echo esc_attr( $this->option_key ); ?>[exclude_zero_conversion_offers]" value="1" <?php checked( ! empty( $settings['exclude_zero_conversion_offers'] ) ); ?> /> <?php esc_html_e( 'Exclude zero-conversion offers', 'tmw-cr-slot-sidebar-banner' ); ?></label></td></tr>
+                    <tr><th scope="row"><?php esc_html_e( 'Country decay', 'tmw-cr-slot-sidebar-banner' ); ?></th><td><label><input type="checkbox" name="<?php echo esc_attr( $this->option_key ); ?>[country_decay_enabled]" value="1" <?php checked( ! empty( $settings['country_decay_enabled'] ) ); ?> /> <?php esc_html_e( 'Enable country/global blended scoring', 'tmw-cr-slot-sidebar-banner' ); ?></label><br/><label>country_weight <input type="number" min="0" max="1" step="0.05" name="<?php echo esc_attr( $this->option_key ); ?>[country_weight]" value="<?php echo esc_attr( (string) $settings['country_weight'] ); ?>" /></label> <label>global_weight <input type="number" min="0" max="1" step="0.05" name="<?php echo esc_attr( $this->option_key ); ?>[global_weight]" value="<?php echo esc_attr( (string) $settings['global_weight'] ); ?>" /></label><br/><label>decay_min_country_clicks <input type="number" min="1" name="<?php echo esc_attr( $this->option_key ); ?>[decay_min_country_clicks]" value="<?php echo esc_attr( (string) $settings['decay_min_country_clicks'] ); ?>" /></label><br/><label><input type="checkbox" name="<?php echo esc_attr( $this->option_key ); ?>[fallback_to_global_when_low_sample]" value="1" <?php checked( ! empty( $settings['fallback_to_global_when_low_sample'] ) ); ?> /> <?php esc_html_e( 'Fallback to global when country sample is low', 'tmw-cr-slot-sidebar-banner' ); ?></label><p class="description"><?php esc_html_e( '[TMW-CR-OPT] Formula: effective_metric = (country_metric × adjusted_country_weight) + (global_metric × adjusted_global_weight).', 'tmw-cr-slot-sidebar-banner' ); ?></p></td></tr>
+                    <tr><th scope="row"><?php esc_html_e( 'Stats sync automation', 'tmw-cr-slot-sidebar-banner' ); ?></th><td><label><input type="checkbox" name="<?php echo esc_attr( $this->option_key ); ?>[auto_sync_enabled]" value="1" <?php checked( ! empty( $settings['auto_sync_enabled'] ) ); ?> /> <?php esc_html_e( 'Enable scheduled stats sync', 'tmw-cr-slot-sidebar-banner' ); ?></label><br/><label>frequency <select name="<?php echo esc_attr( $this->option_key ); ?>[auto_sync_frequency]"><option value="hourly" <?php selected( $settings['auto_sync_frequency'], 'hourly' ); ?>>hourly</option><option value="twicedaily" <?php selected( $settings['auto_sync_frequency'], 'twicedaily' ); ?>>twice_daily</option><option value="daily" <?php selected( $settings['auto_sync_frequency'], 'daily' ); ?>>daily</option></select></label><br/><label>stats range <select name="<?php echo esc_attr( $this->option_key ); ?>[stats_sync_range]"><option value="7d" <?php selected( $settings['stats_sync_range'], '7d' ); ?>>7d</option><option value="30d" <?php selected( $settings['stats_sync_range'], '30d' ); ?>>30d</option><option value="90d" <?php selected( $settings['stats_sync_range'], '90d' ); ?>>90d</option></select></label><p class="description"><?php echo esc_html( sprintf( '[TMW-CR-CRON] next=%s | last=%s | result=%s', $next_cron ? gmdate( 'c', (int) $next_cron ) : 'none', (string) ( $stats_meta['last_scheduled_run_at'] ?? 'never' ), (string) ( $stats_meta['last_scheduled_result'] ?? 'n/a' ) ) ); ?></p></td></tr>
+                    <tr><th scope="row"><?php esc_html_e( 'Optimization notes', 'tmw-cr-slot-sidebar-banner' ); ?></th><td><textarea class="large-text" rows="3" name="<?php echo esc_attr( $this->option_key ); ?>[optimization_notes]"><?php echo esc_textarea( (string) $settings['optimization_notes'] ); ?></textarea></td></tr>
+                </tbody>
+            </table>
+            <?php submit_button( __( 'Save Optimization Controls', 'tmw-cr-slot-sidebar-banner' ) ); ?>
+        </form>
+
         <form method="get" class="tmw-cr-filters">
             <input type="hidden" name="page" value="tmw-cr-slot-sidebar-banner" />
             <input type="hidden" name="tab" value="performance" />
@@ -771,6 +811,26 @@ class TMW_CR_Slot_Admin_Page {
                     </tr>
                 <?php endforeach; ?>
             <?php endif; ?>
+            </tbody>
+        </table>
+
+        <h3><?php esc_html_e( 'Optimization Explainability (Top Ranked)', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
+        <table class="widefat striped">
+            <thead><tr><th>Offer</th><th>Clicks</th><th>Conversions</th><th>Payout</th><th>EPC</th><th>Country sample</th><th>Global fallback</th><th>Low-sample penalty</th><th>Final score</th></tr></thead>
+            <tbody>
+            <?php foreach ( $explain_rows as $row ) : ?>
+                <tr>
+                    <td><strong><?php echo esc_html( (string) $row['offer_name'] ); ?></strong><br/><code><?php echo esc_html( (string) $row['offer_id'] ); ?></code></td>
+                    <td><?php echo esc_html( (string) (int) $row['clicks'] ); ?></td>
+                    <td><?php echo esc_html( (string) (float) $row['conversions'] ); ?></td>
+                    <td><?php echo esc_html( number_format( (float) $row['payout'], 2 ) ); ?></td>
+                    <td><?php echo esc_html( number_format( (float) $row['epc'], 6 ) ); ?></td>
+                    <td><?php echo esc_html( (string) (int) $row['country_sample_used'] ); ?></td>
+                    <td><?php echo ! empty( $row['used_global_fallback'] ) ? 'yes' : 'no'; ?></td>
+                    <td><?php echo ! empty( $row['low_sample_penalty'] ) ? 'yes' : 'no'; ?></td>
+                    <td><?php echo esc_html( number_format( (float) $row['final_score'], 6 ) ); ?></td>
+                </tr>
+            <?php endforeach; ?>
             </tbody>
         </table>
         <?php
@@ -846,6 +906,7 @@ class TMW_CR_Slot_Admin_Page {
                                 <option value="epc_desc" <?php selected( $settings['rotation_mode'], 'epc_desc' ); ?>>epc_desc</option>
                                 <option value="country_epc_desc" <?php selected( $settings['rotation_mode'], 'country_epc_desc' ); ?>>country_epc_desc</option>
                                 <option value="hybrid_score" <?php selected( $settings['rotation_mode'], 'hybrid_score' ); ?>>hybrid_score</option>
+                                <option value="safe_hybrid_score" <?php selected( $settings['rotation_mode'], 'safe_hybrid_score' ); ?>>safe_hybrid_score</option>
                             </select>
                             <p class="description"><?php esc_html_e( '[TMW-CR-OPT] Runtime ordering mode. Manual priority state is never rewritten.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
                         </td>

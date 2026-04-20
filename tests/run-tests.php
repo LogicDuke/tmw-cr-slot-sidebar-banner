@@ -87,6 +87,148 @@ $tests['sanitize_settings_preserves_blank_api_key'] = function() {
     tmw_assert_same( 'secret-key-1234', $sanitized['cr_api_key'], 'Blank API key should preserve existing value.' );
 };
 
+$tests['offer_override_resolution_and_country_filters'] = function() {
+    tmw_reset_test_state();
+
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repository->save_synced_offers(
+        array(
+            '100' => array( 'id' => '100', 'name' => 'Offer 100', 'status' => 'active', 'preview_url' => 'https://preview.test/100' ),
+            '101' => array( 'id' => '101', 'name' => 'Offer 101', 'status' => 'active', 'preview_url' => 'https://preview.test/101' ),
+            '102' => array( 'id' => '102', 'name' => 'Offer 102', 'status' => 'active', 'preview_url' => 'https://preview.test/102' ),
+        )
+    );
+
+    $repository->save_offer_overrides(
+        array(
+            '100' => array(
+                'enabled' => 1,
+                'final_url_override' => 'https://override.test/100',
+                'custom_cta_text' => 'Claim 100',
+                'allowed_countries' => array( 'US' ),
+                'image_url_override' => 'https://img.test/new-100.png',
+            ),
+            '101' => array(
+                'enabled' => 0,
+            ),
+            '102' => array(
+                'enabled' => 1,
+                'blocked_countries' => array( 'US' ),
+            ),
+        )
+    );
+
+    $settings = array(
+        'slot_offer_ids' => array( '100', '101', '102' ),
+        'slot_offer_priority' => array( '100' => 1, '101' => 2, '102' => 3 ),
+        'offer_image_overrides' => array( '100' => 'https://img.test/legacy-100.png' ),
+    );
+    $banner_data = array( 'cta_url' => 'https://base.test/click', 'cta_text' => 'Base CTA' );
+
+    $effective = $repository->get_effective_offer_record( '100', $settings, $banner_data, 'US', array() );
+    tmw_assert_same( 'https://override.test/100', $effective['cta_url'], 'Per-offer final_url_override should win.' );
+    tmw_assert_same( 'https://img.test/new-100.png', $effective['image'], 'New image override should win over legacy image map.' );
+    tmw_assert_same( 'Claim 100', $effective['cta_text'], 'custom_cta_text override should win.' );
+
+    $fallback_url = $repository->get_effective_cta_url( '101', $settings, $banner_data, array( 'id' => '101', 'name' => 'Offer 101' ), array() );
+    tmw_assert_contains( 'offer_id=101', $fallback_url, 'Base CTA fallback should append offer query args.' );
+
+    $preview_only_url = $repository->get_effective_cta_url( '101', $settings, array( 'cta_url' => '' ), array( 'id' => '101', 'name' => 'Offer 101', 'preview_url' => 'https://preview.test/101' ), array() );
+    tmw_assert_same( 'https://preview.test/101', $preview_only_url, 'preview_url should remain the last fallback.' );
+
+    tmw_assert_true( ! $repository->is_offer_allowed_for_country( '101', 'US', $repository->get_offer_override( '101' ), array(), array() ), 'Disabled offer should be excluded.' );
+    tmw_assert_true( $repository->is_offer_allowed_for_country( '100', 'US', $repository->get_offer_override( '100' ), array(), array() ), 'Allowed countries should permit matching country.' );
+    tmw_assert_true( ! $repository->is_offer_allowed_for_country( '102', 'US', $repository->get_offer_override( '102' ), array(), array() ), 'Blocked countries should exclude matching country.' );
+};
+
+$tests['frontend_pool_filters_and_legacy_fallback_to_three'] = function() {
+    tmw_reset_test_state();
+
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repository->save_synced_offers(
+        array(
+            '200' => array( 'id' => '200', 'name' => 'Offer 200', 'status' => 'active', 'preview_url' => 'https://preview.test/200' ),
+            '201' => array( 'id' => '201', 'name' => 'Offer 201', 'status' => 'active', 'preview_url' => 'https://preview.test/201' ),
+        )
+    );
+    $repository->save_offer_overrides(
+        array(
+            '201' => array(
+                'enabled' => 1,
+                'allowed_countries' => array( 'CA' ),
+            ),
+        )
+    );
+
+    $settings = array(
+        'slot_offer_ids' => array( '201', '200' ),
+        'slot_offer_priority' => array( '201' => 1, '200' => 2 ),
+        'offer_image_overrides' => array( '200' => 'https://img.test/legacy-200.png' ),
+    );
+    $legacy = array(
+        'legacy-a' => array( 'id' => 'legacy-a', 'name' => 'Legacy A', 'cta_text' => 'Legacy CTA A', 'countries' => array( 'US' ) ),
+        'legacy-b' => array( 'id' => 'legacy-b', 'name' => 'Legacy B', 'cta_text' => 'Legacy CTA B', 'countries' => array( 'US' ) ),
+        'legacy-c' => array( 'id' => 'legacy-c', 'name' => 'Legacy C', 'cta_text' => 'Legacy CTA C', 'countries' => array( 'US' ) ),
+    );
+
+    $offers = $repository->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => 'https://base.test', 'cta_text' => 'Base CTA' ), 'US', $legacy );
+
+    tmw_assert_same( 3, count( $offers ), 'Legacy fallback should fill the reel pool to 3 offers.' );
+    tmw_assert_same( '200', $offers[0]['id'], 'Priority ordering should persist for eligible synced offers.' );
+    tmw_assert_same( 'https://img.test/legacy-200.png', $offers[0]['image'], 'Legacy offer_image_overrides should remain compatible.' );
+    tmw_assert_true( '201' !== $offers[0]['id'], 'Country-ineligible synced offers should be removed from pool.' );
+};
+
+$tests['admin_sanitize_and_render_supports_offer_overrides'] = function() {
+    tmw_reset_test_state();
+
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'cr_api_key' => 'secure-key' ) );
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repository->save_synced_offers(
+        array(
+            '301' => array( 'id' => '301', 'name' => 'Offer 301', 'status' => 'active', 'preview_url' => 'https://preview.test/301' ),
+        )
+    );
+    $page = new TMW_CR_Slot_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repository, 'sidebar' );
+
+    $page->sanitize_settings(
+        array(
+            'headline' => 'Headline',
+            'subheadline' => 'Subheadline',
+            'cta_text' => 'CTA',
+            'cta_url' => 'https://base.test',
+            'subid_param' => 'subid',
+            'subid_value' => 'slot',
+            'cr_api_key' => '',
+            'offer_overrides' => array(
+                '301' => array(
+                    'enabled' => '1',
+                    'final_url_override' => 'https://final.test/301',
+                    'image_url_override' => 'https://img.test/301.png',
+                    'custom_cta_text' => 'Go 301',
+                    'allowed_countries' => 'us,ca',
+                    'blocked_countries' => 'fr',
+                    'label_override' => 'Offer 301 Label',
+                    'notes' => 'Internal note',
+                ),
+            ),
+        )
+    );
+
+    $override = $repository->get_offer_override( '301' );
+    tmw_assert_same( 'https://final.test/301', $override['final_url_override'], 'Admin sanitize should persist final URL override.' );
+    tmw_assert_same( 'US', $override['allowed_countries'][0], 'Country lists should be sanitized to uppercase ISO-2.' );
+
+    $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1 );
+    ob_start();
+    $page->render_page();
+    $html = ob_get_clean();
+
+    tmw_assert_contains( 'offer_overrides', $html, 'Slot setup should render new override fields.' );
+    tmw_assert_contains( '[TMW-CR-DASH] Destination:', $html, 'Slot setup should render effective destination indicator.' );
+    tmw_assert_true( false === strpos( $html, 'secure-key' ), 'Admin render path must not leak raw API key.' );
+};
+
 $tests['extract_offer_rows_supports_response_data_and_keyed_collections'] = function() {
     tmw_reset_test_state();
 

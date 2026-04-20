@@ -14,13 +14,18 @@ class TMW_CR_Slot_Offer_Repository {
     /** @var string */
     protected $meta_option_key;
 
+    /** @var string */
+    protected $overrides_option_key;
+
     /**
-     * @param string $offers_option_key Option key for synced offers.
-     * @param string $meta_option_key   Option key for sync meta.
+     * @param string $offers_option_key     Option key for synced offers.
+     * @param string $meta_option_key       Option key for sync meta.
+     * @param string $overrides_option_key  Option key for offer overrides.
      */
-    public function __construct( $offers_option_key, $meta_option_key ) {
-        $this->offers_option_key = $offers_option_key;
-        $this->meta_option_key   = $meta_option_key;
+    public function __construct( $offers_option_key, $meta_option_key, $overrides_option_key = 'tmw_cr_slot_banner_offer_overrides' ) {
+        $this->offers_option_key    = $offers_option_key;
+        $this->meta_option_key      = $meta_option_key;
+        $this->overrides_option_key = $overrides_option_key;
     }
 
     /**
@@ -82,6 +87,61 @@ class TMW_CR_Slot_Offer_Repository {
         $payload['sample_row_keys']     = sanitize_text_field( (string) $payload['sample_row_keys'] );
 
         update_option( $this->meta_option_key, $payload, false );
+    }
+
+    /**
+     * @return array<string,array<string,mixed>>
+     */
+    public function get_offer_overrides() {
+        $overrides = get_option( $this->overrides_option_key, array() );
+        if ( ! is_array( $overrides ) ) {
+            return array();
+        }
+
+        $clean = array();
+
+        foreach ( $overrides as $offer_id => $override ) {
+            $offer_id = sanitize_text_field( (string) $offer_id );
+            if ( '' === $offer_id || ! is_array( $override ) ) {
+                continue;
+            }
+
+            $clean[ $offer_id ] = $this->sanitize_offer_override( $override );
+        }
+
+        return $clean;
+    }
+
+    /**
+     * @param array<string,array<string,mixed>> $overrides Offer overrides.
+     *
+     * @return void
+     */
+    public function save_offer_overrides( $overrides ) {
+        $payload = array();
+
+        foreach ( (array) $overrides as $offer_id => $override ) {
+            $offer_id = sanitize_text_field( (string) $offer_id );
+            if ( '' === $offer_id || ! is_array( $override ) ) {
+                continue;
+            }
+
+            $payload[ $offer_id ] = $this->sanitize_offer_override( $override );
+        }
+
+        update_option( $this->overrides_option_key, $payload, false );
+    }
+
+    /**
+     * @param string $offer_id Offer ID.
+     *
+     * @return array<string,mixed>
+     */
+    public function get_offer_override( $offer_id ) {
+        $offer_id  = sanitize_text_field( (string) $offer_id );
+        $overrides = $this->get_offer_overrides();
+
+        return isset( $overrides[ $offer_id ] ) ? $overrides[ $offer_id ] : array();
     }
 
     /**
@@ -333,6 +393,11 @@ class TMW_CR_Slot_Offer_Repository {
             return 'not_selected';
         }
 
+        $offer_override = $this->get_offer_override( $offer_id );
+        if ( ! empty( $offer_override['image_url_override'] ) ) {
+            return 'manual_override';
+        }
+
         $overrides = isset( $settings['offer_image_overrides'] ) && is_array( $settings['offer_image_overrides'] ) ? $settings['offer_image_overrides'] : array();
 
         if ( ! empty( $overrides[ $offer_id ] ) ) {
@@ -365,12 +430,12 @@ class TMW_CR_Slot_Offer_Repository {
      * @return array<int,array<string,string>>
      */
     public function get_frontend_slot_offers( $slot_key, $settings, $banner_data, $country, $legacy_catalog ) {
-        unset( $slot_key, $country );
+        unset( $slot_key );
 
         $synced_offers = $this->get_synced_offers();
+        $overrides_map = $this->get_offer_overrides();
         $selected_ids  = isset( $settings['slot_offer_ids'] ) && is_array( $settings['slot_offer_ids'] ) ? array_values( $settings['slot_offer_ids'] ) : array();
         $priorities    = isset( $settings['slot_offer_priority'] ) && is_array( $settings['slot_offer_priority'] ) ? $settings['slot_offer_priority'] : array();
-        $image_map     = isset( $settings['offer_image_overrides'] ) && is_array( $settings['offer_image_overrides'] ) ? $settings['offer_image_overrides'] : array();
 
         $offers = array();
 
@@ -378,11 +443,19 @@ class TMW_CR_Slot_Offer_Repository {
             $selected_id = (string) $selected_id;
 
             if ( isset( $synced_offers[ $selected_id ] ) ) {
-                $offers[] = $this->normalize_synced_offer( $synced_offers[ $selected_id ], $banner_data, $image_map );
+                $effective = $this->get_effective_offer_record(
+                    $selected_id,
+                    $settings,
+                    $banner_data,
+                    $country,
+                    $legacy_catalog
+                );
+
+                if ( ! empty( $effective ) ) {
+                    $offers[] = $effective;
+                }
             }
         }
-
-        $offers = array_values( array_filter( $offers ) );
 
         if ( empty( $offers ) ) {
             $sorted_synced = array_values( $synced_offers );
@@ -402,7 +475,27 @@ class TMW_CR_Slot_Offer_Repository {
             );
 
             foreach ( $sorted_synced as $synced_offer ) {
-                $offers[] = $this->normalize_synced_offer( $synced_offer, $banner_data, $image_map );
+                $offer_id = (string) ( $synced_offer['id'] ?? '' );
+                if ( '' === $offer_id ) {
+                    continue;
+                }
+
+                $override = isset( $overrides_map[ $offer_id ] ) ? $overrides_map[ $offer_id ] : array();
+                if ( ! $this->is_offer_allowed_for_country( $offer_id, $country, $override, $synced_offer, $legacy_catalog ) ) {
+                    continue;
+                }
+
+                $effective = $this->get_effective_offer_record(
+                    $offer_id,
+                    $settings,
+                    $banner_data,
+                    $country,
+                    $legacy_catalog
+                );
+
+                if ( ! empty( $effective ) ) {
+                    $offers[] = $effective;
+                }
             }
         }
 
@@ -425,8 +518,25 @@ class TMW_CR_Slot_Offer_Repository {
         }
 
         if ( count( $offers ) < 3 ) {
+            $used_ids = array();
+            foreach ( $offers as $offer ) {
+                if ( isset( $offer['id'] ) ) {
+                    $used_ids[] = (string) $offer['id'];
+                }
+            }
+
             foreach ( $legacy_catalog as $legacy_offer ) {
-                $offers[] = $this->normalize_legacy_offer( $legacy_offer, $banner_data );
+                $legacy_id = (string) ( $legacy_offer['id'] ?? $legacy_offer['name'] ?? '' );
+                if ( '' === $legacy_id || in_array( $legacy_id, $used_ids, true ) ) {
+                    continue;
+                }
+
+                if ( ! $this->is_offer_allowed_for_country( $legacy_id, $country, array(), array(), $legacy_catalog ) ) {
+                    continue;
+                }
+
+                $offers[]  = $this->normalize_legacy_offer( $legacy_offer, $banner_data );
+                $used_ids[] = $legacy_id;
 
                 if ( count( $offers ) >= 3 ) {
                     break;
@@ -528,6 +638,211 @@ class TMW_CR_Slot_Offer_Repository {
         }
 
         return '';
+    }
+
+    /**
+     * @param string                      $offer_id Offer ID.
+     * @param array<string,mixed>         $settings Settings.
+     * @param array<string,string>        $banner_data Banner data.
+     * @param string                      $country Country code.
+     * @param array<string,array<string,mixed>> $legacy_catalog Legacy catalog.
+     *
+     * @return array<string,string>
+     */
+    public function get_effective_offer_record( $offer_id, $settings, $banner_data, $country, $legacy_catalog ) {
+        $offer_id      = (string) $offer_id;
+        $synced_offers = $this->get_synced_offers();
+        if ( ! isset( $synced_offers[ $offer_id ] ) ) {
+            return array();
+        }
+
+        $synced_offer = $synced_offers[ $offer_id ];
+        $override     = $this->get_offer_override( $offer_id );
+
+        if ( ! empty( $synced_offer['status'] ) && 'active' !== strtolower( (string) $synced_offer['status'] ) ) {
+            return array();
+        }
+
+        if ( ! $this->is_offer_allowed_for_country( $offer_id, $country, $override, $synced_offer, $legacy_catalog ) ) {
+            return array();
+        }
+
+        $name = (string) ( $synced_offer['name'] ?? $offer_id );
+        if ( ! empty( $override['label_override'] ) ) {
+            $name = (string) $override['label_override'];
+        }
+
+        return array(
+            'id'       => $offer_id,
+            'name'     => $name,
+            'image'    => $this->get_effective_image( $offer_id, $settings, $banner_data, $synced_offer, $override ),
+            'cta_url'  => $this->get_effective_cta_url( $offer_id, $settings, $banner_data, $synced_offer, $override ),
+            'cta_text' => $this->get_effective_cta_text( $offer_id, $settings, $banner_data, $synced_offer, $override, $legacy_catalog ),
+        );
+    }
+
+    /**
+     * @param string $offer_id Offer ID.
+     * @param string $country Country code.
+     * @param array<string,mixed> $override Override row.
+     * @param array<string,mixed> $synced_offer Synced offer.
+     * @param array<string,array<string,mixed>> $legacy_catalog Legacy catalog.
+     *
+     * @return bool
+     */
+    public function is_offer_allowed_for_country( $offer_id, $country, $override, $synced_offer, $legacy_catalog ) {
+        $offer_id = (string) $offer_id;
+        $country  = strtoupper( sanitize_text_field( (string) $country ) );
+
+        if ( isset( $override['enabled'] ) && 0 === (int) $override['enabled'] ) {
+            return false;
+        }
+
+        $allowed = isset( $override['allowed_countries'] ) ? $this->sanitize_country_codes( $override['allowed_countries'] ) : array();
+        if ( ! empty( $allowed ) && ( '' === $country || ! in_array( $country, $allowed, true ) ) ) {
+            return false;
+        }
+
+        $blocked = isset( $override['blocked_countries'] ) ? $this->sanitize_country_codes( $override['blocked_countries'] ) : array();
+        if ( ! empty( $country ) && in_array( $country, $blocked, true ) ) {
+            return false;
+        }
+
+        if ( empty( $allowed ) && empty( $blocked ) && empty( $synced_offer ) && isset( $legacy_catalog[ $offer_id ] ) ) {
+            $legacy_countries = isset( $legacy_catalog[ $offer_id ]['countries'] ) ? (array) $legacy_catalog[ $offer_id ]['countries'] : array();
+            $legacy_countries = $this->sanitize_country_codes( $legacy_countries );
+
+            if ( ! empty( $legacy_countries ) && '' !== $country && ! in_array( $country, $legacy_countries, true ) ) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param string $offer_id Offer ID.
+     * @param array<string,mixed> $settings Settings.
+     * @param array<string,string> $banner_data Banner data.
+     * @param array<string,mixed> $synced_offer Synced offer.
+     * @param array<string,mixed> $override Override.
+     *
+     * @return string
+     */
+    public function get_effective_cta_url( $offer_id, $settings, $banner_data, $synced_offer, $override ) {
+        unset( $settings );
+
+        if ( ! empty( $override['final_url_override'] ) ) {
+            return esc_url_raw( (string) $override['final_url_override'] );
+        }
+
+        $fallback = $this->build_cta_url( $banner_data, $synced_offer );
+        if ( '' !== $fallback ) {
+            return $fallback;
+        }
+
+        if ( ! empty( $synced_offer['preview_url'] ) ) {
+            return esc_url_raw( (string) $synced_offer['preview_url'] );
+        }
+
+        return '';
+    }
+
+    /**
+     * @param string $offer_id Offer ID.
+     * @param array<string,mixed> $settings Settings.
+     * @param array<string,string> $banner_data Banner data.
+     * @param array<string,mixed> $synced_offer Synced offer.
+     * @param array<string,mixed> $override Override.
+     *
+     * @return string
+     */
+    public function get_effective_image( $offer_id, $settings, $banner_data, $synced_offer, $override ) {
+        unset( $banner_data );
+
+        if ( ! empty( $override['image_url_override'] ) ) {
+            return esc_url_raw( (string) $override['image_url_override'] );
+        }
+
+        $image_map = isset( $settings['offer_image_overrides'] ) && is_array( $settings['offer_image_overrides'] ) ? $settings['offer_image_overrides'] : array();
+        if ( ! empty( $image_map[ $offer_id ] ) ) {
+            return esc_url_raw( (string) $image_map[ $offer_id ] );
+        }
+
+        foreach ( array( 'image_url', 'image', 'thumbnail', 'thumbnail_url' ) as $field ) {
+            if ( ! empty( $synced_offer[ $field ] ) ) {
+                return esc_url_raw( (string) $synced_offer[ $field ] );
+            }
+        }
+
+        return $this->build_placeholder_image( (string) ( $synced_offer['name'] ?? $offer_id ) );
+    }
+
+    /**
+     * @param string $offer_id Offer ID.
+     * @param array<string,mixed> $settings Settings.
+     * @param array<string,string> $banner_data Banner data.
+     * @param array<string,mixed> $synced_offer Synced offer.
+     * @param array<string,mixed> $override Override.
+     * @param array<string,array<string,mixed>> $legacy_catalog Legacy catalog.
+     *
+     * @return string
+     */
+    public function get_effective_cta_text( $offer_id, $settings, $banner_data, $synced_offer, $override, $legacy_catalog ) {
+        unset( $settings );
+
+        if ( ! empty( $override['custom_cta_text'] ) ) {
+            return (string) $override['custom_cta_text'];
+        }
+
+        if ( ! empty( $synced_offer['cta_text'] ) ) {
+            return (string) $synced_offer['cta_text'];
+        }
+
+        if ( isset( $legacy_catalog[ $offer_id ] ) && ! empty( $legacy_catalog[ $offer_id ]['cta_text'] ) ) {
+            return (string) $legacy_catalog[ $offer_id ]['cta_text'];
+        }
+
+        return (string) ( $banner_data['cta_text'] ?? '' );
+    }
+
+    /**
+     * @param array<string,mixed> $override Raw override.
+     *
+     * @return array<string,mixed>
+     */
+    protected function sanitize_offer_override( $override ) {
+        return array(
+            'enabled'           => ! isset( $override['enabled'] ) || ! empty( $override['enabled'] ) ? 1 : 0,
+            'final_url_override' => ! empty( $override['final_url_override'] ) ? esc_url_raw( (string) $override['final_url_override'] ) : '',
+            'image_url_override' => ! empty( $override['image_url_override'] ) ? esc_url_raw( (string) $override['image_url_override'] ) : '',
+            'allowed_countries' => $this->sanitize_country_codes( isset( $override['allowed_countries'] ) ? $override['allowed_countries'] : array() ),
+            'blocked_countries' => $this->sanitize_country_codes( isset( $override['blocked_countries'] ) ? $override['blocked_countries'] : array() ),
+            'custom_cta_text'   => ! empty( $override['custom_cta_text'] ) ? sanitize_text_field( (string) $override['custom_cta_text'] ) : '',
+            'label_override'    => ! empty( $override['label_override'] ) ? sanitize_text_field( (string) $override['label_override'] ) : '',
+            'notes'             => ! empty( $override['notes'] ) ? sanitize_textarea_field( (string) $override['notes'] ) : '',
+        );
+    }
+
+    /**
+     * @param array<int|string,mixed>|string $raw Raw country payload.
+     *
+     * @return array<int,string>
+     */
+    protected function sanitize_country_codes( $raw ) {
+        $codes = is_array( $raw ) ? $raw : explode( ',', (string) $raw );
+        $clean = array();
+
+        foreach ( $codes as $code ) {
+            $code = strtoupper( sanitize_text_field( trim( (string) $code ) ) );
+            if ( 2 !== strlen( $code ) || ! preg_match( '/^[A-Z]{2}$/', $code ) ) {
+                continue;
+            }
+
+            $clean[] = $code;
+        }
+
+        return array_values( array_unique( $clean ) );
     }
 
     /**

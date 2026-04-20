@@ -111,6 +111,7 @@ function tmw_assert_same( $expected, $actual, $message ) { if ( $expected !== $a
 function tmw_assert_contains( $needle, $haystack, $message ) { if ( false === strpos( (string) $haystack, (string) $needle ) ) { throw new Exception( $message . ' Missing: ' . $needle ); } }
 
 require_once dirname( __DIR__ ) . '/includes/class-offer-repository.php';
+require_once dirname( __DIR__ ) . '/includes/geo-helper.php';
 require_once dirname( __DIR__ ) . '/includes/class-cr-api-client.php';
 require_once dirname( __DIR__ ) . '/includes/class-offer-sync-service.php';
 require_once dirname( __DIR__ ) . '/admin/admin-page.php';

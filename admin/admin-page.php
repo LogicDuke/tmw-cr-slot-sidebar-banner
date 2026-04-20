@@ -129,6 +129,29 @@ class TMW_CR_Slot_Admin_Page {
             }
         }
 
+        $offer_overrides = array();
+        if ( isset( $input['offer_overrides'] ) && is_array( $input['offer_overrides'] ) ) {
+            foreach ( $input['offer_overrides'] as $offer_id => $override ) {
+                $offer_id = sanitize_text_field( (string) $offer_id );
+                if ( '' === $offer_id || ! is_array( $override ) ) {
+                    continue;
+                }
+
+                $offer_overrides[ $offer_id ] = array(
+                    'enabled'            => ! empty( $override['enabled'] ) ? 1 : 0,
+                    'final_url_override' => isset( $override['final_url_override'] ) ? esc_url_raw( (string) $override['final_url_override'] ) : '',
+                    'image_url_override' => isset( $override['image_url_override'] ) ? esc_url_raw( (string) $override['image_url_override'] ) : '',
+                    'custom_cta_text'    => isset( $override['custom_cta_text'] ) ? sanitize_text_field( (string) $override['custom_cta_text'] ) : '',
+                    'label_override'     => isset( $override['label_override'] ) ? sanitize_text_field( (string) $override['label_override'] ) : '',
+                    'allowed_countries'  => isset( $override['allowed_countries'] ) ? sanitize_text_field( (string) $override['allowed_countries'] ) : '',
+                    'blocked_countries'  => isset( $override['blocked_countries'] ) ? sanitize_text_field( (string) $override['blocked_countries'] ) : '',
+                    'notes'              => isset( $override['notes'] ) ? sanitize_textarea_field( (string) $override['notes'] ) : '',
+                );
+            }
+        }
+
+        $this->offer_repository->save_offer_overrides( $offer_overrides );
+
         return $output;
     }
 
@@ -381,6 +404,8 @@ class TMW_CR_Slot_Admin_Page {
 
         $result = $this->offer_repository->get_filtered_synced_offers_for_admin( $args, $settings );
         $items  = $result['items'];
+        $country = strtoupper( TMW_CR_Slot_Geo_Helper::get_country_code() );
+        $legacy_catalog = array();
         ?>
         <form method="get" class="tmw-cr-filters">
             <input type="hidden" name="page" value="tmw-cr-slot-sidebar-banner" />
@@ -405,13 +430,21 @@ class TMW_CR_Slot_Admin_Page {
                     <th><?php esc_html_e( 'Approval', 'tmw-cr-slot-sidebar-banner' ); ?></th>
                     <th><?php esc_html_e( 'Image', 'tmw-cr-slot-sidebar-banner' ); ?></th>
                     <th><?php esc_html_e( 'Slot', 'tmw-cr-slot-sidebar-banner' ); ?></th>
+                    <th><?php esc_html_e( 'Effective', 'tmw-cr-slot-sidebar-banner' ); ?></th>
+                    <th><?php echo esc_html( sprintf( __( 'Country (%s)', 'tmw-cr-slot-sidebar-banner' ), '' !== $country ? $country : '--' ) ); ?></th>
                 </tr>
             </thead>
             <tbody>
                 <?php if ( empty( $items ) ) : ?>
-                    <tr><td colspan="8"><?php esc_html_e( 'No offers match the current filters.', 'tmw-cr-slot-sidebar-banner' ); ?></td></tr>
+                    <tr><td colspan="10"><?php esc_html_e( 'No offers match the current filters.', 'tmw-cr-slot-sidebar-banner' ); ?></td></tr>
                 <?php else : ?>
                     <?php foreach ( $items as $offer ) : ?>
+                        <?php
+                        $offer_id  = (string) ( $offer['id'] ?? '' );
+                        $override  = $this->offer_repository->get_offer_override( $offer_id );
+                        $allowed   = $this->offer_repository->is_offer_allowed_for_country( $offer_id, $country, $override, $offer, $legacy_catalog );
+                        $is_active = empty( $offer['status'] ) || 'active' === strtolower( (string) $offer['status'] );
+                        ?>
                         <tr>
                             <td><strong><?php echo esc_html( (string) ( $offer['name'] ?? '' ) ); ?></strong></td>
                             <td><code><?php echo esc_html( (string) ( $offer['id'] ?? '' ) ); ?></code></td>
@@ -421,6 +454,8 @@ class TMW_CR_Slot_Admin_Page {
                             <td><?php $this->render_badge( '1' === (string) ( $offer['require_approval'] ?? '' ) ? 'Required' : 'No', 'approval' ); ?></td>
                             <td><?php $this->render_badge( 'manual_override' === (string) ( $offer['image_status'] ?? '' ) ? 'Manual override' : 'Placeholder only', 'manual_override' === (string) ( $offer['image_status'] ?? '' ) ? 'featured' : 'muted' ); ?></td>
                             <td><?php $this->render_badge( ! empty( $offer['is_selected_for_slot'] ) ? 'Selected for slot' : 'Not selected', ! empty( $offer['is_selected_for_slot'] ) ? 'selected' : 'muted' ); ?></td>
+                            <td><?php $this->render_badge( ( $is_active && $allowed ) ? 'Eligible' : 'Excluded', ( $is_active && $allowed ) ? 'selected' : 'muted' ); ?></td>
+                            <td><?php $this->render_badge( $allowed ? 'Allowed' : 'Blocked', $allowed ? 'featured' : 'muted' ); ?></td>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -448,6 +483,7 @@ class TMW_CR_Slot_Admin_Page {
         );
         $result      = $this->offer_repository->get_filtered_synced_offers_for_admin( $args, $settings );
         $offers      = $result['items'];
+        $country     = strtoupper( TMW_CR_Slot_Geo_Helper::get_country_code() );
 
         usort(
             $offers,
@@ -486,13 +522,17 @@ class TMW_CR_Slot_Admin_Page {
                         <th><?php esc_html_e( 'Offer', 'tmw-cr-slot-sidebar-banner' ); ?></th>
                         <th><?php esc_html_e( 'Priority', 'tmw-cr-slot-sidebar-banner' ); ?></th>
                         <th><?php esc_html_e( 'Image override', 'tmw-cr-slot-sidebar-banner' ); ?></th>
+                        <th><?php esc_html_e( 'Final URL', 'tmw-cr-slot-sidebar-banner' ); ?></th>
+                        <th><?php esc_html_e( 'Custom CTA', 'tmw-cr-slot-sidebar-banner' ); ?></th>
+                        <th><?php esc_html_e( 'Allowed countries', 'tmw-cr-slot-sidebar-banner' ); ?></th>
+                        <th><?php esc_html_e( 'Blocked countries', 'tmw-cr-slot-sidebar-banner' ); ?></th>
                         <th><?php esc_html_e( 'Preview', 'tmw-cr-slot-sidebar-banner' ); ?></th>
                         <th><?php esc_html_e( 'Quick action', 'tmw-cr-slot-sidebar-banner' ); ?></th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if ( empty( $offers ) ) : ?>
-                        <tr><td colspan="6"><?php esc_html_e( 'No offers available for slot setup yet. Sync offers first.', 'tmw-cr-slot-sidebar-banner' ); ?></td></tr>
+                        <tr><td colspan="10"><?php esc_html_e( 'No offers available for slot setup yet. Sync offers first.', 'tmw-cr-slot-sidebar-banner' ); ?></td></tr>
                     <?php else : ?>
                         <?php foreach ( $offers as $offer ) : ?>
                             <?php
@@ -500,24 +540,49 @@ class TMW_CR_Slot_Admin_Page {
                             $selected    = ! empty( $offer['is_selected_for_slot'] );
                             $priority    = isset( $settings['slot_offer_priority'][ $offer_id ] ) ? (int) $settings['slot_offer_priority'][ $offer_id ] : 100;
                             $image_value = isset( $settings['offer_image_overrides'][ $offer_id ] ) ? (string) $settings['offer_image_overrides'][ $offer_id ] : '';
+                            $override    = $this->offer_repository->get_offer_override( $offer_id );
+                            $enabled     = ! isset( $override['enabled'] ) || ! empty( $override['enabled'] );
+                            $allowed_raw = ! empty( $override['allowed_countries'] ) ? implode( ',', (array) $override['allowed_countries'] ) : '';
+                            $blocked_raw = ! empty( $override['blocked_countries'] ) ? implode( ',', (array) $override['blocked_countries'] ) : '';
+                            $eligible    = $this->offer_repository->is_offer_allowed_for_country( $offer_id, $country, $override, $offer, array() );
+                            $effective_image = $this->offer_repository->get_effective_image( $offer_id, $settings, array(), $offer, $override );
+                            $effective_url   = $this->offer_repository->get_effective_cta_url( $offer_id, $settings, array( 'cta_url' => (string) $settings['cta_url'] ), $offer, $override );
                             ?>
                             <tr>
-                                <td><input type="checkbox" name="<?php echo esc_attr( $this->option_key ); ?>[slot_offer_ids][]" value="<?php echo esc_attr( $offer_id ); ?>" <?php checked( $selected ); ?> /></td>
+                                <td>
+                                    <input type="checkbox" name="<?php echo esc_attr( $this->option_key ); ?>[slot_offer_ids][]" value="<?php echo esc_attr( $offer_id ); ?>" <?php checked( $selected ); ?> />
+                                    <br />
+                                    <label>
+                                        <input type="checkbox" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][enabled]" value="1" <?php checked( $enabled ); ?> />
+                                        <?php esc_html_e( 'Enabled', 'tmw-cr-slot-sidebar-banner' ); ?>
+                                    </label>
+                                </td>
                                 <td><strong><?php echo esc_html( (string) ( $offer['name'] ?? '' ) ); ?></strong><br /><code><?php echo esc_html( $offer_id ); ?></code></td>
                                 <td><input type="number" min="0" step="1" name="<?php echo esc_attr( $this->option_key ); ?>[slot_offer_priority][<?php echo esc_attr( $offer_id ); ?>]" value="<?php echo esc_attr( (string) $priority ); ?>" style="width:90px;" /></td>
                                 <td>
                                     <input type="url" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_image_overrides][<?php echo esc_attr( $offer_id ); ?>]" value="<?php echo esc_attr( $image_value ); ?>" />
+                                    <input type="url" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][image_url_override]" value="<?php echo esc_attr( (string) ( $override['image_url_override'] ?? '' ) ); ?>" placeholder="<?php esc_attr_e( 'Per-offer image override', 'tmw-cr-slot-sidebar-banner' ); ?>" />
                                     <p class="description"><?php esc_html_e( 'Optional. Leave blank to use generated placeholder image.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
                                 </td>
+                                <td><input type="url" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][final_url_override]" value="<?php echo esc_attr( (string) ( $override['final_url_override'] ?? '' ) ); ?>" placeholder="https://..." /></td>
                                 <td>
-                                    <?php if ( '' !== $image_value ) : ?>
-                                        <img src="<?php echo esc_url( $image_value ); ?>" alt="" style="max-width:70px;height:auto;border-radius:4px;" />
+                                    <input type="text" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][custom_cta_text]" value="<?php echo esc_attr( (string) ( $override['custom_cta_text'] ?? '' ) ); ?>" placeholder="<?php esc_attr_e( 'Custom CTA text', 'tmw-cr-slot-sidebar-banner' ); ?>" />
+                                    <input type="text" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][label_override]" value="<?php echo esc_attr( (string) ( $override['label_override'] ?? '' ) ); ?>" placeholder="<?php esc_attr_e( 'Label override', 'tmw-cr-slot-sidebar-banner' ); ?>" />
+                                    <textarea class="large-text" rows="2" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][notes]" placeholder="<?php esc_attr_e( 'Internal notes', 'tmw-cr-slot-sidebar-banner' ); ?>"><?php echo esc_textarea( (string) ( $override['notes'] ?? '' ) ); ?></textarea>
+                                </td>
+                                <td><input type="text" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][allowed_countries]" value="<?php echo esc_attr( $allowed_raw ); ?>" placeholder="US,CA,GB" /></td>
+                                <td><input type="text" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][blocked_countries]" value="<?php echo esc_attr( $blocked_raw ); ?>" placeholder="FR,DE" /></td>
+                                <td>
+                                    <?php if ( '' !== $effective_image ) : ?>
+                                        <img src="<?php echo esc_url( $effective_image ); ?>" alt="" style="max-width:70px;height:auto;border-radius:4px;" />
                                     <?php else : ?>
                                         <span class="description"><?php esc_html_e( 'Placeholder in use', 'tmw-cr-slot-sidebar-banner' ); ?></span>
                                     <?php endif; ?>
+                                    <p class="description"><strong><?php esc_html_e( '[TMW-CR-DASH] Destination:', 'tmw-cr-slot-sidebar-banner' ); ?></strong> <?php echo esc_html( $effective_url ? $effective_url : '-' ); ?></p>
                                 </td>
                                 <td>
                                     <?php $this->render_badge( $selected ? 'Selected' : 'Not selected', $selected ? 'selected' : 'muted' ); ?>
+                                    <?php $this->render_badge( $eligible ? 'Country eligible' : 'Country blocked', $eligible ? 'featured' : 'muted' ); ?>
                                 </td>
                             </tr>
                         <?php endforeach; ?>

@@ -3,7 +3,7 @@
  * Plugin Name: TMW CR Slot Sidebar Banner
  * Plugin URI: https://themilisofialtd.com/
  * Description: Displays a geo-targeted CrackRevenue slot banner with a 3-reel interface in sidebar areas via shortcode or template tag.
- * Version: 1.5.0
+ * Version: 1.6.0
  * Author: The Milisofia LTD
  * Author URI: https://themilisofialtd.com/
  * License: GPL2
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'TMW_CR_SLOT_BANNER_VERSION', '1.5.0' );
+define( 'TMW_CR_SLOT_BANNER_VERSION', '1.6.0' );
 define( 'TMW_CR_SLOT_BANNER_PATH', plugin_dir_path( __FILE__ ) );
 define( 'TMW_CR_SLOT_BANNER_URL', plugin_dir_url( __FILE__ ) );
 
@@ -51,6 +51,13 @@ class TMW_CR_Slot_Sidebar_Banner {
     const SYNC_META_OPTION_KEY = 'tmw_cr_slot_banner_sync_meta';
 
     /**
+     * Stored offer overrides option.
+     *
+     * @var string
+     */
+    const OFFER_OVERRIDES_OPTION_KEY = 'tmw_cr_slot_banner_offer_overrides';
+
+    /**
      * Single sidebar slot identifier.
      *
      * @var string
@@ -68,7 +75,7 @@ class TMW_CR_Slot_Sidebar_Banner {
      * Constructor.
      */
     public function __construct() {
-        $this->offer_repository = new TMW_CR_Slot_Offer_Repository( self::OFFERS_OPTION_KEY, self::SYNC_META_OPTION_KEY );
+        $this->offer_repository = new TMW_CR_Slot_Offer_Repository( self::OFFERS_OPTION_KEY, self::SYNC_META_OPTION_KEY, self::OFFER_OVERRIDES_OPTION_KEY );
 
         add_action( 'init', array( $this, 'register_shortcode' ) );
         add_action( 'wp_enqueue_scripts', array( $this, 'register_assets' ) );
@@ -481,6 +488,10 @@ function tmw_cr_slot_sidebar_banner_activate() {
                 'offer_count'    => 0,
             )
         );
+    }
+
+    if ( ! get_option( TMW_CR_Slot_Sidebar_Banner::OFFER_OVERRIDES_OPTION_KEY ) ) {
+        update_option( TMW_CR_Slot_Sidebar_Banner::OFFER_OVERRIDES_OPTION_KEY, array() );
     }
 }
 

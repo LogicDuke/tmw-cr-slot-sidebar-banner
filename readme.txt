@@ -3,7 +3,7 @@ Contributors: themilisofia
 Tags: affiliate marketing, crackrevenue, sidebar, banner, shortcode
 Requires at least: 5.8
 Tested up to: 6.4
-Stable tag: 1.5.0
+Stable tag: 1.6.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -41,6 +41,11 @@ Yes. Version 1.3.0 ships with optimized PNG assets inside `assets/img/offers/` s
 
 == Changelog ==
 
+= 1.6.0 =
+* [TMW-CR-CTRL] Added a persistent per-offer control layer via `tmw_cr_slot_banner_offer_overrides` (enabled, final URL, image URL, countries, CTA text, label, notes).
+* [TMW-CR-CTRL] Added effective synced-offer resolution with layered URL/image/CTA fallback rules and country eligibility filtering.
+* [TMW-CR-DASH] Extended Offers and Slot Setup admin views with per-offer enablement, destination/image controls, country controls, and effective status indicators.
+* [TMW-CR-CTRL] Added automated coverage for override resolution, country filtering, legacy fallback behavior, admin override save/render path, and API-key safety.
 
 = 1.5.0 =
 * [TMW-CR-DASH] Rebuilt admin into a WordPress-native dashboard with Overview, Offers, Slot Setup, and Settings tabs.

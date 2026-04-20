@@ -3,7 +3,7 @@
 define( 'ABSPATH', __DIR__ . '/' );
 define( 'HOUR_IN_SECONDS', 3600 );
 define( 'TMW_CR_SLOT_BANNER_PATH', dirname( __DIR__ ) . '/' );
-define( 'TMW_CR_SLOT_BANNER_VERSION', '1.7.0-test' );
+define( 'TMW_CR_SLOT_BANNER_VERSION', '1.8.0-test' );
 
 $GLOBALS['tmw_test_options']      = array();
 $GLOBALS['tmw_test_transients']   = array();
@@ -114,4 +114,5 @@ require_once dirname( __DIR__ ) . '/includes/class-offer-repository.php';
 require_once dirname( __DIR__ ) . '/includes/geo-helper.php';
 require_once dirname( __DIR__ ) . '/includes/class-cr-api-client.php';
 require_once dirname( __DIR__ ) . '/includes/class-offer-sync-service.php';
+require_once dirname( __DIR__ ) . '/includes/class-stats-sync-service.php';
 require_once dirname( __DIR__ ) . '/admin/admin-page.php';

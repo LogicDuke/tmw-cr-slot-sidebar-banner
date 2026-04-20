@@ -3,7 +3,7 @@ Contributors: themilisofia
 Tags: affiliate marketing, crackrevenue, sidebar, banner, shortcode
 Requires at least: 5.8
 Tested up to: 6.4
-Stable tag: 1.7.0
+Stable tag: 1.8.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -40,6 +40,12 @@ Yes. Developers can hook into the `tmw_cr_slot_banner_offers` filter to provide 
 Yes. Version 1.3.0 ships with optimized PNG assets inside `assets/img/offers/` so the slot banner works out of the box. You can still override or extend the catalog with your own creatives via filters.
 
 == Changelog ==
+
+= 1.8.0 =
+* [TMW-CR-STATS] Added server-side CrakRevenue Affiliate_Report/getStats sync with local offer+country aggregation and diagnostics metadata.
+* [TMW-CR-DASH] Added performance summary cards in Overview plus a new Performance admin tab with sortable local metrics (clicks, conversions, payout, EPC, conversion rate).
+* [TMW-CR-OPT] Added runtime optimization engine with rotation modes: manual, payout_desc, conversions_desc, epc_desc, country_epc_desc, and hybrid_score.
+* [TMW-CR-OPT] Added conservative country-aware ranking fallback (country metrics first, then global aggregate) without mutating manual priorities.
 
 = 1.6.0 =
 * [TMW-CR-CTRL] Added a persistent per-offer control layer via `tmw_cr_slot_banner_offer_overrides` (enabled, final URL, image URL, countries, CTA text, label, notes).

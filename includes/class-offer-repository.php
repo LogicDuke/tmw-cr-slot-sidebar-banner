@@ -17,15 +17,23 @@ class TMW_CR_Slot_Offer_Repository {
     /** @var string */
     protected $overrides_option_key;
 
+    /** @var string */
+    protected $stats_option_key;
+
+    /** @var string */
+    protected $stats_meta_option_key;
+
     /**
      * @param string $offers_option_key     Option key for synced offers.
      * @param string $meta_option_key       Option key for sync meta.
      * @param string $overrides_option_key  Option key for offer overrides.
      */
-    public function __construct( $offers_option_key, $meta_option_key, $overrides_option_key = 'tmw_cr_slot_banner_offer_overrides' ) {
+    public function __construct( $offers_option_key, $meta_option_key, $overrides_option_key = 'tmw_cr_slot_banner_offer_overrides', $stats_option_key = 'tmw_cr_slot_banner_offer_stats', $stats_meta_option_key = 'tmw_cr_slot_banner_offer_stats_meta' ) {
         $this->offers_option_key    = $offers_option_key;
         $this->meta_option_key      = $meta_option_key;
         $this->overrides_option_key = $overrides_option_key;
+        $this->stats_option_key     = $stats_option_key;
+        $this->stats_meta_option_key = $stats_meta_option_key;
     }
 
     /**
@@ -87,6 +95,60 @@ class TMW_CR_Slot_Offer_Repository {
         $payload['sample_row_keys']     = sanitize_text_field( (string) $payload['sample_row_keys'] );
 
         update_option( $this->meta_option_key, $payload, false );
+    }
+
+    /**
+     * @return array<string,array<string,mixed>>
+     */
+    public function get_offer_stats() {
+        $stats = get_option( $this->stats_option_key, array() );
+
+        return is_array( $stats ) ? $stats : array();
+    }
+
+    /**
+     * @param array<string,array<string,mixed>> $stats Stats rows.
+     *
+     * @return void
+     */
+    public function save_offer_stats( $stats ) {
+        update_option( $this->stats_option_key, $stats, false );
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    public function get_stats_meta() {
+        $meta = get_option( $this->stats_meta_option_key, array() );
+
+        return is_array( $meta ) ? $meta : array();
+    }
+
+    /**
+     * @param array<string,mixed> $meta Stats metadata.
+     *
+     * @return void
+     */
+    public function save_stats_meta( $meta ) {
+        $existing = $this->get_stats_meta();
+        $defaults = array(
+            'last_stats_synced_at'      => '',
+            'last_stats_error'          => '',
+            'last_stats_raw_rows'       => 0,
+            'last_stats_imported_rows'  => 0,
+            'last_stats_date_start'     => '',
+            'last_stats_date_end'       => '',
+        );
+        $payload  = wp_parse_args( (array) $meta, wp_parse_args( $existing, $defaults ) );
+
+        $payload['last_stats_synced_at']      = sanitize_text_field( (string) $payload['last_stats_synced_at'] );
+        $payload['last_stats_error']          = sanitize_text_field( (string) $payload['last_stats_error'] );
+        $payload['last_stats_raw_rows']       = max( 0, (int) $payload['last_stats_raw_rows'] );
+        $payload['last_stats_imported_rows']  = max( 0, (int) $payload['last_stats_imported_rows'] );
+        $payload['last_stats_date_start']     = sanitize_text_field( (string) $payload['last_stats_date_start'] );
+        $payload['last_stats_date_end']       = sanitize_text_field( (string) $payload['last_stats_date_end'] );
+
+        update_option( $this->stats_meta_option_key, $payload, false );
     }
 
     /**
@@ -186,6 +248,8 @@ class TMW_CR_Slot_Offer_Repository {
     public function get_dashboard_summary( $settings ) {
         $offers         = $this->get_synced_offers();
         $sync_meta      = $this->get_sync_meta();
+        $stats_meta     = $this->get_stats_meta();
+        $performance    = $this->get_performance_summary();
         $selected_ids   = $this->get_selected_offer_ids( $settings );
         $selected_map   = array_flip( $selected_ids );
         $active_count   = 0;
@@ -230,6 +294,15 @@ class TMW_CR_Slot_Offer_Repository {
             'last_skipped_count'       => (int) ( $sync_meta['last_skipped_count'] ?? 0 ),
             'last_soft_failure'        => ! empty( $sync_meta['last_soft_failure'] ) ? 1 : 0,
             'last_error'               => (string) ( $sync_meta['last_error'] ?? '' ),
+            'total_clicks'             => (int) $performance['total_clicks'],
+            'total_conversions'        => (float) $performance['total_conversions'],
+            'total_payout'             => (float) $performance['total_payout'],
+            'top_offer_name'           => (string) $performance['top_offer_name'],
+            'top_country_name'         => (string) $performance['top_country_name'],
+            'last_stats_synced_at'     => (string) ( $stats_meta['last_stats_synced_at'] ?? '' ),
+            'last_stats_date_start'    => (string) ( $stats_meta['last_stats_date_start'] ?? '' ),
+            'last_stats_date_end'      => (string) ( $stats_meta['last_stats_date_end'] ?? '' ),
+            'last_stats_error'         => (string) ( $stats_meta['last_stats_error'] ?? '' ),
         );
     }
 
@@ -525,21 +598,7 @@ class TMW_CR_Slot_Offer_Repository {
 
         $offers = array_values( array_filter( $offers ) );
 
-        if ( ! empty( $priorities ) ) {
-            usort(
-                $offers,
-                static function ( $left, $right ) use ( $priorities ) {
-                    $left_priority  = isset( $priorities[ $left['id'] ] ) ? (int) $priorities[ $left['id'] ] : 9999;
-                    $right_priority = isset( $priorities[ $right['id'] ] ) ? (int) $priorities[ $right['id'] ] : 9999;
-
-                    if ( $left_priority !== $right_priority ) {
-                        return $left_priority <=> $right_priority;
-                    }
-
-                    return strcasecmp( $left['name'], $right['name'] );
-                }
-            );
-        }
+        $offers = $this->rank_offers_for_slot( $offers, $settings, $country, $priorities );
 
         if ( count( $offers ) < 3 ) {
             $used_ids = array();
@@ -571,6 +630,82 @@ class TMW_CR_Slot_Offer_Repository {
         $offers = array_values( array_filter( $offers ) );
 
         return apply_filters( 'tmw_cr_slot_banner_offers', $offers, '', $banner_data );
+    }
+
+    /**
+     * [TMW-CR-OPT] Runtime-only ranking. Never rewrites saved manual priorities.
+     *
+     * @param array<int,array<string,string>> $offers Offers.
+     * @param array<string,mixed>             $settings Settings.
+     * @param string                          $country Country name/code.
+     * @param array<string,mixed>             $priorities Manual priorities.
+     *
+     * @return array<int,array<string,string>>
+     */
+    public function rank_offers_for_slot( $offers, $settings, $country, $priorities = array() ) {
+        $mode = isset( $settings['rotation_mode'] ) ? sanitize_key( (string) $settings['rotation_mode'] ) : 'manual';
+        if ( '' === $mode ) {
+            $mode = 'manual';
+        }
+
+        if ( 'manual' === $mode ) {
+            usort(
+                $offers,
+                static function ( $left, $right ) use ( $priorities ) {
+                    $left_priority  = isset( $priorities[ $left['id'] ] ) ? (int) $priorities[ $left['id'] ] : 9999;
+                    $right_priority = isset( $priorities[ $right['id'] ] ) ? (int) $priorities[ $right['id'] ] : 9999;
+
+                    if ( $left_priority !== $right_priority ) {
+                        return $left_priority <=> $right_priority;
+                    }
+
+                    return strcasecmp( $left['name'], $right['name'] );
+                }
+            );
+
+            return $offers;
+        }
+
+        $country = strtoupper( sanitize_text_field( (string) $country ) );
+        $stats   = $this->get_offer_stats();
+        $scored  = array();
+
+        foreach ( $offers as $offer ) {
+            $offer_id = (string) ( $offer['id'] ?? '' );
+            $metrics  = $this->get_offer_metrics_for_country( $offer_id, $country, $stats );
+            $score    = $this->build_rotation_score( $mode, $metrics );
+
+            $offer['_tmw_score'] = $score;
+            $offer['_tmw_has_country_stats'] = ! empty( $metrics['country_used'] ) ? 1 : 0;
+            $scored[] = $offer;
+        }
+
+        usort(
+            $scored,
+            static function ( $left, $right ) use ( $priorities ) {
+                if ( $left['_tmw_score'] !== $right['_tmw_score'] ) {
+                    return $right['_tmw_score'] <=> $left['_tmw_score'];
+                }
+
+                if ( $left['_tmw_has_country_stats'] !== $right['_tmw_has_country_stats'] ) {
+                    return $right['_tmw_has_country_stats'] <=> $left['_tmw_has_country_stats'];
+                }
+
+                $left_priority  = isset( $priorities[ $left['id'] ] ) ? (int) $priorities[ $left['id'] ] : 9999;
+                $right_priority = isset( $priorities[ $right['id'] ] ) ? (int) $priorities[ $right['id'] ] : 9999;
+                if ( $left_priority !== $right_priority ) {
+                    return $left_priority <=> $right_priority;
+                }
+
+                return strcasecmp( $left['name'], $right['name'] );
+            }
+        );
+
+        foreach ( $scored as $index => $offer ) {
+            unset( $scored[ $index ]['_tmw_score'], $scored[ $index ]['_tmw_has_country_stats'] );
+        }
+
+        return $scored;
     }
 
     /**
@@ -923,6 +1058,205 @@ class TMW_CR_Slot_Offer_Repository {
         }
 
         return (string) ( $banner_data['cta_text'] ?? '' );
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    public function get_performance_summary() {
+        $stats                = $this->get_offer_stats();
+        $total_clicks         = 0;
+        $total_conversions    = 0.0;
+        $total_payout         = 0.0;
+        $offer_totals         = array();
+        $country_totals       = array();
+
+        foreach ( $stats as $row ) {
+            $offer_id   = (string) ( $row['offer_id'] ?? '' );
+            $offer_name = (string) ( $row['offer_name'] ?? $offer_id );
+            $country    = strtoupper( (string) ( $row['country_name'] ?? 'GLOBAL' ) );
+            $clicks     = max( 0, (int) ( $row['clicks'] ?? 0 ) );
+            $conv       = (float) ( $row['conversions'] ?? 0 );
+            $payout     = (float) ( $row['payout'] ?? 0 );
+
+            $total_clicks      += $clicks;
+            $total_conversions += $conv;
+            $total_payout      += $payout;
+
+            if ( '' !== $offer_id ) {
+                if ( ! isset( $offer_totals[ $offer_id ] ) ) {
+                    $offer_totals[ $offer_id ] = array( 'name' => $offer_name, 'payout' => 0.0 );
+                }
+                $offer_totals[ $offer_id ]['payout'] += $payout;
+            }
+
+            if ( ! isset( $country_totals[ $country ] ) ) {
+                $country_totals[ $country ] = 0.0;
+            }
+            $country_totals[ $country ] += $payout;
+        }
+
+        arsort( $country_totals );
+
+        $top_offer_name   = '';
+        $top_country_name = '';
+        $top_offer_payout = -1;
+        foreach ( $offer_totals as $offer_total ) {
+            if ( ! is_array( $offer_total ) ) {
+                continue;
+            }
+            $payout = isset( $offer_total['payout'] ) ? (float) $offer_total['payout'] : 0.0;
+            if ( $payout > $top_offer_payout ) {
+                $top_offer_payout = $payout;
+                $top_offer_name   = isset( $offer_total['name'] ) ? (string) $offer_total['name'] : '';
+            }
+        }
+        if ( ! empty( $country_totals ) ) {
+            $top_country_name = (string) key( $country_totals );
+        }
+
+        return array(
+            'total_clicks'      => $total_clicks,
+            'total_conversions' => round( $total_conversions, 4 ),
+            'total_payout'      => round( $total_payout, 4 ),
+            'top_offer_name'    => $top_offer_name,
+            'top_country_name'  => $top_country_name,
+        );
+    }
+
+    /**
+     * @param string                      $country Country name/code.
+     * @param array<string,mixed>         $args Filters.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function get_performance_rows( $country = '', $args = array() ) {
+        $stats    = $this->get_offer_stats();
+        $country  = strtoupper( sanitize_text_field( (string) $country ) );
+        $grouped  = array();
+
+        foreach ( $stats as $row ) {
+            $offer_id = (string) ( $row['offer_id'] ?? '' );
+            if ( '' === $offer_id ) {
+                continue;
+            }
+
+            $row_country = strtoupper( (string) ( $row['country_name'] ?? 'GLOBAL' ) );
+            if ( '' !== $country && $country !== $row_country ) {
+                continue;
+            }
+
+            if ( ! isset( $grouped[ $offer_id ] ) ) {
+                $grouped[ $offer_id ] = array(
+                    'offer_id'     => $offer_id,
+                    'offer_name'   => (string) ( $row['offer_name'] ?? $offer_id ),
+                    'clicks'       => 0,
+                    'conversions'  => 0.0,
+                    'payout'       => 0.0,
+                    'payout_type'  => (string) ( $row['payout_type'] ?? '' ),
+                );
+            }
+
+            $grouped[ $offer_id ]['clicks'] += (int) ( $row['clicks'] ?? 0 );
+            $grouped[ $offer_id ]['conversions'] += (float) ( $row['conversions'] ?? 0 );
+            $grouped[ $offer_id ]['payout'] += (float) ( $row['payout'] ?? 0 );
+        }
+
+        foreach ( $grouped as $offer_id => $row ) {
+            $grouped[ $offer_id ]['epc'] = $row['clicks'] > 0 ? round( $row['payout'] / $row['clicks'], 6 ) : 0.0;
+            $grouped[ $offer_id ]['conversion_rate'] = $row['clicks'] > 0 ? round( ( $row['conversions'] / $row['clicks'] ) * 100, 4 ) : 0.0;
+        }
+
+        $rows = array_values( $grouped );
+        $sort_by = isset( $args['sort_by'] ) ? sanitize_key( (string) $args['sort_by'] ) : 'payout';
+        $sort_order = isset( $args['sort_order'] ) ? strtolower( (string) $args['sort_order'] ) : 'desc';
+
+        usort(
+            $rows,
+            static function ( $left, $right ) use ( $sort_by, $sort_order ) {
+                $l = isset( $left[ $sort_by ] ) ? $left[ $sort_by ] : 0;
+                $r = isset( $right[ $sort_by ] ) ? $right[ $sort_by ] : 0;
+                if ( $l === $r ) {
+                    return strcasecmp( (string) $left['offer_name'], (string) $right['offer_name'] );
+                }
+
+                if ( 'asc' === $sort_order ) {
+                    return $l <=> $r;
+                }
+
+                return $r <=> $l;
+            }
+        );
+
+        return $rows;
+    }
+
+    /**
+     * @param string                            $offer_id Offer id.
+     * @param string                            $country Country.
+     * @param array<string,array<string,mixed>> $stats Stats map.
+     *
+     * @return array<string,mixed>
+     */
+    protected function get_offer_metrics_for_country( $offer_id, $country, $stats ) {
+        $offer_id = (string) $offer_id;
+        $country  = strtoupper( (string) $country );
+        $country_row = null;
+        $global      = array( 'clicks' => 0, 'conversions' => 0.0, 'payout' => 0.0, 'epc' => 0.0, 'country_used' => '' );
+
+        foreach ( $stats as $row ) {
+            if ( $offer_id !== (string) ( $row['offer_id'] ?? '' ) ) {
+                continue;
+            }
+            $row_country = strtoupper( (string) ( $row['country_name'] ?? 'GLOBAL' ) );
+            $global['clicks'] += (int) ( $row['clicks'] ?? 0 );
+            $global['conversions'] += (float) ( $row['conversions'] ?? 0 );
+            $global['payout'] += (float) ( $row['payout'] ?? 0 );
+
+            if ( '' !== $country && $country === $row_country ) {
+                $country_row = $row;
+            }
+        }
+
+        $global['epc'] = $global['clicks'] > 0 ? round( $global['payout'] / $global['clicks'], 6 ) : 0.0;
+
+        if ( is_array( $country_row ) && (int) ( $country_row['clicks'] ?? 0 ) >= 3 ) {
+            return array(
+                'clicks'      => (int) ( $country_row['clicks'] ?? 0 ),
+                'conversions' => (float) ( $country_row['conversions'] ?? 0 ),
+                'payout'      => (float) ( $country_row['payout'] ?? 0 ),
+                'epc'         => (float) ( $country_row['epc'] ?? 0 ),
+                'country_used' => $country,
+            );
+        }
+
+        return $global;
+    }
+
+    /**
+     * @param string             $mode Rotation mode.
+     * @param array<string,mixed> $metrics Metrics.
+     *
+     * @return float
+     */
+    protected function build_rotation_score( $mode, $metrics ) {
+        $clicks      = (int) ( $metrics['clicks'] ?? 0 );
+        $conversions = (float) ( $metrics['conversions'] ?? 0 );
+        $payout      = (float) ( $metrics['payout'] ?? 0 );
+        $epc         = (float) ( $metrics['epc'] ?? 0 );
+
+        if ( 'payout_desc' === $mode ) {
+            return $payout;
+        }
+        if ( 'conversions_desc' === $mode ) {
+            return $conversions;
+        }
+        if ( 'epc_desc' === $mode || 'country_epc_desc' === $mode ) {
+            return $epc;
+        }
+
+        // [TMW-CR-OPT] hybrid_score: conversions first, payout second, epc third.
+        return ( $conversions * 100000 ) + ( $payout * 100 ) + $epc + ( $clicks / 1000000 );
     }
 
     /**

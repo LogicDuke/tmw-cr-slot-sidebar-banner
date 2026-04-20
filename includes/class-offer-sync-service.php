@@ -36,11 +36,15 @@ class TMW_CR_Slot_Offer_Sync_Service {
      * @return array<string,mixed>|WP_Error
      */
     public static function sync_all( $client, $repository ) {
-        $page        = 1;
-        $limit       = 100;
-        $all_offers  = array();
-        $synced_at   = gmdate( 'c' );
-        $has_results = false;
+        $page                = 1;
+        $limit               = 100;
+        $all_offers          = array();
+        $synced_at           = gmdate( 'c' );
+        $last_response_shape = 'unknown';
+        $sample_row_keys     = '';
+        $raw_row_count       = 0;
+        $imported_count      = 0;
+        $skipped_count       = 0;
 
         do {
             $response = $client->find_all_offers(
@@ -55,64 +59,131 @@ class TMW_CR_Slot_Offer_Sync_Service {
             if ( is_wp_error( $response ) ) {
                 $repository->save_sync_meta(
                     array(
-                        'last_synced_at' => '',
-                        'last_error'     => $response->get_error_message(),
-                        'offer_count'    => count( $repository->get_synced_offers() ),
+                        'last_synced_at'      => '',
+                        'last_error'          => $response->get_error_message(),
+                        'offer_count'         => count( $repository->get_synced_offers() ),
+                        'last_raw_row_count'  => $raw_row_count,
+                        'last_imported_count' => $imported_count,
+                        'last_skipped_count'  => $skipped_count,
+                        'last_response_shape' => $last_response_shape,
+                        'last_soft_failure'   => 0,
+                        'sample_row_keys'     => $sample_row_keys,
                     )
                 );
 
                 return $response;
             }
 
-            $rows = self::extract_offer_rows( $response );
+            $last_response_shape = self::detect_response_shape( $response );
+            $rows                = self::extract_offer_rows( $response );
 
             if ( empty( $rows ) ) {
                 break;
             }
 
-            $has_results = true;
+            $raw_row_count += count( $rows );
+
+            if ( '' === $sample_row_keys ) {
+                $sample_row_keys = self::summarize_row_keys( $rows[0] );
+            }
 
             foreach ( $rows as $row ) {
                 $normalized = self::normalize_offer( $row );
 
                 if ( empty( $normalized['id'] ) ) {
+                    ++$skipped_count;
                     continue;
                 }
 
                 $all_offers[ $normalized['id'] ] = $normalized;
             }
 
+            $imported_count = count( $all_offers );
             ++$page;
         } while ( count( $rows ) >= $limit );
 
-        if ( ! $has_results && empty( $all_offers ) ) {
+        if ( $raw_row_count > 0 && 0 === $imported_count ) {
             $repository->save_sync_meta(
                 array(
-                    'last_synced_at' => $synced_at,
-                    'last_error'     => '',
-                    'offer_count'    => 0,
+                    'last_synced_at'      => $synced_at,
+                    'last_error'          => __( '[TMW-CR-SYNC] Sync preserved existing offers: parser mismatch detected (rows fetched but 0 imported).', 'tmw-cr-slot-sidebar-banner' ),
+                    'offer_count'         => count( $repository->get_synced_offers() ),
+                    'last_raw_row_count'  => $raw_row_count,
+                    'last_imported_count' => 0,
+                    'last_skipped_count'  => $skipped_count,
+                    'last_response_shape' => $last_response_shape,
+                    'last_soft_failure'   => 1,
+                    'sample_row_keys'     => $sample_row_keys,
+                )
+            );
+
+            return array(
+                'offer_count'          => count( $repository->get_synced_offers() ),
+                'last_synced_at'       => $synced_at,
+                'last_raw_row_count'   => $raw_row_count,
+                'last_imported_count'  => 0,
+                'last_skipped_count'   => $skipped_count,
+                'last_response_shape'  => $last_response_shape,
+                'last_soft_failure'    => 1,
+                'preserved_previous'   => true,
+                'sample_row_keys'      => $sample_row_keys,
+            );
+        }
+
+        if ( 0 === $raw_row_count ) {
+            $repository->save_sync_meta(
+                array(
+                    'last_synced_at'      => $synced_at,
+                    'last_error'          => '',
+                    'offer_count'         => 0,
+                    'last_raw_row_count'  => 0,
+                    'last_imported_count' => 0,
+                    'last_skipped_count'  => 0,
+                    'last_response_shape' => $last_response_shape,
+                    'last_soft_failure'   => 0,
+                    'sample_row_keys'     => '',
                 )
             );
             $repository->save_synced_offers( array() );
 
             return array(
-                'offer_count'    => 0,
-                'last_synced_at' => $synced_at,
+                'offer_count'          => 0,
+                'last_synced_at'       => $synced_at,
+                'last_raw_row_count'   => 0,
+                'last_imported_count'  => 0,
+                'last_skipped_count'   => 0,
+                'last_response_shape'  => $last_response_shape,
+                'last_soft_failure'    => 0,
+                'preserved_previous'   => false,
+                'sample_row_keys'      => '',
             );
         }
 
         $repository->save_synced_offers( $all_offers );
         $repository->save_sync_meta(
             array(
-                'last_synced_at' => $synced_at,
-                'last_error'     => '',
-                'offer_count'    => count( $all_offers ),
+                'last_synced_at'      => $synced_at,
+                'last_error'          => '',
+                'offer_count'         => count( $all_offers ),
+                'last_raw_row_count'  => $raw_row_count,
+                'last_imported_count' => count( $all_offers ),
+                'last_skipped_count'  => $skipped_count,
+                'last_response_shape' => $last_response_shape,
+                'last_soft_failure'   => 0,
+                'sample_row_keys'     => $sample_row_keys,
             )
         );
 
         return array(
-            'offer_count'    => count( $all_offers ),
-            'last_synced_at' => $synced_at,
+            'offer_count'          => count( $all_offers ),
+            'last_synced_at'       => $synced_at,
+            'last_raw_row_count'   => $raw_row_count,
+            'last_imported_count'  => count( $all_offers ),
+            'last_skipped_count'   => $skipped_count,
+            'last_response_shape'  => $last_response_shape,
+            'last_soft_failure'    => 0,
+            'preserved_previous'   => false,
+            'sample_row_keys'      => $sample_row_keys,
         );
     }
 
@@ -122,19 +193,87 @@ class TMW_CR_Slot_Offer_Sync_Service {
      * @return array<int,array<string,mixed>>
      */
     public static function extract_offer_rows( $response ) {
+        $candidates = array();
+
         if ( isset( $response['response']['data'] ) && is_array( $response['response']['data'] ) ) {
-            return array_values( $response['response']['data'] );
+            $candidates[] = $response['response']['data'];
         }
 
         if ( isset( $response['data'] ) && is_array( $response['data'] ) ) {
-            return array_values( $response['data'] );
+            $candidates[] = $response['data'];
+        }
+
+        if ( isset( $response['response']['results'] ) && is_array( $response['response']['results'] ) ) {
+            $candidates[] = $response['response']['results'];
+        }
+
+        if ( isset( $response['results'] ) && is_array( $response['results'] ) ) {
+            $candidates[] = $response['results'];
         }
 
         if ( array_is_list( $response ) ) {
-            return array_values( $response );
+            $candidates[] = $response;
+        }
+
+        foreach ( $candidates as $candidate ) {
+            if ( array_is_list( $candidate ) ) {
+                return array_values( $candidate );
+            }
+
+            if ( self::is_keyed_offer_collection( $candidate ) ) {
+                return array_values( $candidate );
+            }
         }
 
         return array();
+    }
+
+    /**
+     * @param array<string,mixed> $response API response.
+     *
+     * @return string
+     */
+    public static function detect_response_shape( $response ) {
+        if ( isset( $response['response']['data'] ) && is_array( $response['response']['data'] ) ) {
+            return array_is_list( $response['response']['data'] ) ? 'response.data' : 'response.data:keyed';
+        }
+
+        if ( isset( $response['data'] ) && is_array( $response['data'] ) ) {
+            return array_is_list( $response['data'] ) ? 'data' : 'data:keyed';
+        }
+
+        if ( isset( $response['response']['results'] ) && is_array( $response['response']['results'] ) ) {
+            return array_is_list( $response['response']['results'] ) ? 'response.results' : 'response.results:keyed';
+        }
+
+        if ( isset( $response['results'] ) && is_array( $response['results'] ) ) {
+            return array_is_list( $response['results'] ) ? 'results' : 'results:keyed';
+        }
+
+        if ( array_is_list( $response ) ) {
+            return 'list';
+        }
+
+        return 'unknown';
+    }
+
+    /**
+     * @param array<string,mixed> $row Row candidate.
+     *
+     * @return string
+     */
+    public static function summarize_row_keys( $row ) {
+        $unwrapped = self::unwrap_offer_row( $row );
+
+        if ( ! is_array( $unwrapped ) || empty( $unwrapped ) ) {
+            return '';
+        }
+
+        $keys = array_slice( array_keys( $unwrapped ), 0, 10 );
+        $keys = array_map( 'sanitize_key', $keys );
+        $keys = array_filter( $keys );
+
+        return implode( ',', $keys );
     }
 
     /**
@@ -143,11 +282,12 @@ class TMW_CR_Slot_Offer_Sync_Service {
      * @return array<string,mixed>
      */
     public static function normalize_offer( $offer ) {
+        $offer        = self::unwrap_offer_row( $offer );
         $featured_raw = isset( $offer['featured'] ) ? (string) $offer['featured'] : '';
         $is_featured  = '' !== $featured_raw && '0000-00-00 00:00:00' !== $featured_raw;
 
         return array(
-            'id'              => (string) ( $offer['id'] ?? '' ),
+            'id'              => (string) ( $offer['id'] ?? $offer['ID'] ?? $offer['offer_id'] ?? '' ),
             'name'            => sanitize_text_field( (string) ( $offer['name'] ?? '' ) ),
             'description'     => sanitize_textarea_field( (string) ( $offer['description'] ?? '' ) ),
             'preview_url'     => esc_url_raw( (string) ( $offer['preview_url'] ?? '' ) ),
@@ -160,6 +300,42 @@ class TMW_CR_Slot_Offer_Sync_Service {
             'is_featured'     => $is_featured,
             'currency'        => sanitize_text_field( (string) ( $offer['currency'] ?? '' ) ),
         );
+    }
+
+    /**
+     * @param array<string,mixed> $offer Raw row.
+     *
+     * @return array<string,mixed>
+     */
+    protected static function unwrap_offer_row( $offer ) {
+        if ( isset( $offer['Offer'] ) && is_array( $offer['Offer'] ) ) {
+            return $offer['Offer'];
+        }
+
+        if ( isset( $offer['offer'] ) && is_array( $offer['offer'] ) ) {
+            return $offer['offer'];
+        }
+
+        return $offer;
+    }
+
+    /**
+     * @param array<mixed> $candidate Potential row collection.
+     *
+     * @return bool
+     */
+    protected static function is_keyed_offer_collection( $candidate ) {
+        if ( ! is_array( $candidate ) || empty( $candidate ) || array_is_list( $candidate ) ) {
+            return false;
+        }
+
+        foreach ( $candidate as $row ) {
+            if ( ! is_array( $row ) ) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

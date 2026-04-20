@@ -126,18 +126,56 @@ class TMW_CR_Slot_Admin_Page {
             $this->redirect_with_notice( 'error', $result->get_error_message() );
         }
 
-        $rows    = TMW_CR_Slot_Offer_Sync_Service::extract_offer_rows( $result );
-        $message = ! empty( $rows )
-            ? __( 'CrakRevenue connection successful.', 'tmw-cr-slot-sidebar-banner' )
-            : __( 'CrakRevenue connection successful, but no offers were returned for the test request.', 'tmw-cr-slot-sidebar-banner' );
+        $rows            = TMW_CR_Slot_Offer_Sync_Service::extract_offer_rows( $result );
+        $response_shape  = TMW_CR_Slot_Offer_Sync_Service::detect_response_shape( $result );
+        $raw_count       = count( $rows );
+        $importable      = 0;
 
-        $this->redirect_with_notice( 'success', $message );
+        foreach ( $rows as $row ) {
+            $normalized = TMW_CR_Slot_Offer_Sync_Service::normalize_offer( $row );
+            if ( '' !== (string) $normalized['id'] ) {
+                ++$importable;
+            }
+        }
+
+        if ( $raw_count > 0 && 0 === $importable ) {
+            $this->redirect_with_notice(
+                'error',
+                sprintf(
+                    /* translators: 1: raw rows, 2: response shape */
+                    __( '[TMW-CR-API] Connection succeeded (%1$d row(s), shape: %2$s) but rows look non-importable.', 'tmw-cr-slot-sidebar-banner' ),
+                    $raw_count,
+                    $response_shape
+                )
+            );
+        }
+
+        if ( $raw_count > 0 ) {
+            $this->redirect_with_notice(
+                'success',
+                sprintf(
+                    /* translators: 1: raw rows, 2: response shape */
+                    __( '[TMW-CR-API] Connection successful. Detected %1$d row(s) (shape: %2$s).', 'tmw-cr-slot-sidebar-banner' ),
+                    $raw_count,
+                    $response_shape
+                )
+            );
+        }
+
+        $this->redirect_with_notice(
+            'success',
+            sprintf(
+                __( '[TMW-CR-API] Connection successful but no rows were returned (shape: %s).', 'tmw-cr-slot-sidebar-banner' ),
+                $response_shape
+            )
+        );
     }
 
     /**
      * @return void
      */
     public function handle_sync_offers() {
+
         $this->assert_admin_action( 'tmw_cr_slot_banner_sync_offers' );
 
         $client = $this->build_api_client();
@@ -147,8 +185,26 @@ class TMW_CR_Slot_Admin_Page {
             $this->redirect_with_notice( 'error', $result->get_error_message() );
         }
 
-        $count = isset( $result['offer_count'] ) ? (int) $result['offer_count'] : 0;
-        $this->redirect_with_notice( 'success', sprintf( __( 'Offer sync completed. %d offers stored locally.', 'tmw-cr-slot-sidebar-banner' ), $count ) );
+        $count          = isset( $result['offer_count'] ) ? (int) $result['offer_count'] : 0;
+        $raw_count      = isset( $result['last_raw_row_count'] ) ? (int) $result['last_raw_row_count'] : 0;
+        $imported_count = isset( $result['last_imported_count'] ) ? (int) $result['last_imported_count'] : $count;
+        $skipped_count  = isset( $result['last_skipped_count'] ) ? (int) $result['last_skipped_count'] : 0;
+        $preserved      = ! empty( $result['preserved_previous'] );
+
+        $message = sprintf(
+            /* translators: 1: imported count, 2: raw row count, 3: skipped count, 4: stored count */
+            __( '[TMW-CR-SYNC] Sync complete. Imported: %1$d, Raw: %2$d, Skipped: %3$d, Stored: %4$d.', 'tmw-cr-slot-sidebar-banner' ),
+            $imported_count,
+            $raw_count,
+            $skipped_count,
+            $count
+        );
+
+        if ( $preserved ) {
+            $message .= ' ' . __( 'Previous synced offers were preserved due to parser soft-failure.', 'tmw-cr-slot-sidebar-banner' );
+        }
+
+        $this->redirect_with_notice( 'success', $message );
     }
 
     /**
@@ -180,6 +236,12 @@ class TMW_CR_Slot_Admin_Page {
                 <p><strong><?php esc_html_e( 'Stored key', 'tmw-cr-slot-sidebar-banner' ); ?>:</strong> <?php echo esc_html( $client->get_masked_api_key() ? $client->get_masked_api_key() : __( 'Not configured', 'tmw-cr-slot-sidebar-banner' ) ); ?></p>
                 <p><strong><?php esc_html_e( 'Last sync', 'tmw-cr-slot-sidebar-banner' ); ?>:</strong> <?php echo ! empty( $sync_meta['last_synced_at'] ) ? esc_html( (string) $sync_meta['last_synced_at'] ) : esc_html__( 'Never', 'tmw-cr-slot-sidebar-banner' ); ?></p>
                 <p><strong><?php esc_html_e( 'Stored offers', 'tmw-cr-slot-sidebar-banner' ); ?>:</strong> <?php echo esc_html( (string) (int) ( $sync_meta['offer_count'] ?? count( $synced_offers ) ) ); ?></p>
+                <p><strong><?php esc_html_e( 'Last raw row count', 'tmw-cr-slot-sidebar-banner' ); ?>:</strong> <?php echo esc_html( (string) (int) ( $sync_meta['last_raw_row_count'] ?? 0 ) ); ?></p>
+                <p><strong><?php esc_html_e( 'Last imported count', 'tmw-cr-slot-sidebar-banner' ); ?>:</strong> <?php echo esc_html( (string) (int) ( $sync_meta['last_imported_count'] ?? 0 ) ); ?></p>
+                <p><strong><?php esc_html_e( 'Last skipped count', 'tmw-cr-slot-sidebar-banner' ); ?>:</strong> <?php echo esc_html( (string) (int) ( $sync_meta['last_skipped_count'] ?? 0 ) ); ?></p>
+                <p><strong><?php esc_html_e( 'Last response shape', 'tmw-cr-slot-sidebar-banner' ); ?>:</strong> <?php echo ! empty( $sync_meta['last_response_shape'] ) ? esc_html( (string) $sync_meta['last_response_shape'] ) : esc_html__( 'Unknown', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+                <p><strong><?php esc_html_e( 'Last parser soft-failure', 'tmw-cr-slot-sidebar-banner' ); ?>:</strong> <?php echo ! empty( $sync_meta['last_soft_failure'] ) ? esc_html__( 'Yes', 'tmw-cr-slot-sidebar-banner' ) : esc_html__( 'No', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+                <p><strong><?php esc_html_e( 'Sample row keys', 'tmw-cr-slot-sidebar-banner' ); ?>:</strong> <?php echo ! empty( $sync_meta['sample_row_keys'] ) ? esc_html( (string) $sync_meta['sample_row_keys'] ) : esc_html__( 'N/A', 'tmw-cr-slot-sidebar-banner' ); ?></p>
                 <?php if ( ! empty( $sync_meta['last_error'] ) ) : ?>
                     <p><strong><?php esc_html_e( 'Last sync error', 'tmw-cr-slot-sidebar-banner' ); ?>:</strong> <?php echo esc_html( (string) $sync_meta['last_error'] ); ?></p>
                 <?php endif; ?>

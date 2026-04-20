@@ -3,7 +3,7 @@
 define( 'ABSPATH', __DIR__ . '/' );
 define( 'HOUR_IN_SECONDS', 3600 );
 define( 'TMW_CR_SLOT_BANNER_PATH', dirname( __DIR__ ) . '/' );
-define( 'TMW_CR_SLOT_BANNER_VERSION', '1.4.0-test' );
+define( 'TMW_CR_SLOT_BANNER_VERSION', '1.4.1-test' );
 
 $GLOBALS['tmw_test_options']      = array();
 $GLOBALS['tmw_test_transients']   = array();

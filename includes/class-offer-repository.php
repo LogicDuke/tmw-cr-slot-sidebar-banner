@@ -110,6 +110,250 @@ class TMW_CR_Slot_Offer_Repository {
     }
 
     /**
+     * @param array<string,mixed> $settings Settings payload.
+     *
+     * @return int
+     */
+    public function get_selected_offer_count( $settings ) {
+        return count( $this->get_selected_offer_ids( $settings ) );
+    }
+
+    /**
+     * @param array<string,mixed> $settings Settings payload.
+     *
+     * @return array<string,mixed>
+     */
+    public function get_dashboard_summary( $settings ) {
+        $offers         = $this->get_synced_offers();
+        $sync_meta      = $this->get_sync_meta();
+        $selected_ids   = $this->get_selected_offer_ids( $settings );
+        $selected_map   = array_flip( $selected_ids );
+        $active_count   = 0;
+        $featured_count = 0;
+        $approval_count = 0;
+        $manual_images  = 0;
+
+        foreach ( $offers as $offer ) {
+            $offer_id = (string) ( $offer['id'] ?? '' );
+
+            if ( '' === $offer_id ) {
+                continue;
+            }
+
+            if ( 'active' === strtolower( (string) ( $offer['status'] ?? '' ) ) ) {
+                ++$active_count;
+            }
+
+            if ( ! empty( $offer['is_featured'] ) ) {
+                ++$featured_count;
+            }
+
+            if ( '1' === (string) ( $offer['require_approval'] ?? '' ) ) {
+                ++$approval_count;
+            }
+
+            if ( isset( $selected_map[ $offer_id ] ) && 'manual_override' === $this->get_image_status_for_offer( $offer_id, $settings ) ) {
+                ++$manual_images;
+            }
+        }
+
+        return array(
+            'stored_offers'            => count( $offers ),
+            'selected_slot_offers'     => count( $selected_ids ),
+            'active_synced_offers'     => $active_count,
+            'featured_synced_offers'   => $featured_count,
+            'approval_required_offers' => $approval_count,
+            'manual_image_overrides'   => $manual_images,
+            'last_sync_time'           => (string) ( $sync_meta['last_synced_at'] ?? '' ),
+            'last_raw_row_count'       => (int) ( $sync_meta['last_raw_row_count'] ?? 0 ),
+            'last_imported_count'      => (int) ( $sync_meta['last_imported_count'] ?? 0 ),
+            'last_skipped_count'       => (int) ( $sync_meta['last_skipped_count'] ?? 0 ),
+            'last_soft_failure'        => ! empty( $sync_meta['last_soft_failure'] ) ? 1 : 0,
+            'last_error'               => (string) ( $sync_meta['last_error'] ?? '' ),
+        );
+    }
+
+    /**
+     * @param array<string,mixed> $args Query args.
+     * @param array<string,mixed> $settings Settings payload.
+     *
+     * @return array<string,mixed>
+     */
+    public function get_filtered_synced_offers_for_admin( $args, $settings ) {
+        $defaults = array(
+            'search'            => '',
+            'status'            => '',
+            'featured'          => '',
+            'approval_required' => '',
+            'payout_type'       => '',
+            'image_status'      => '',
+            'sort_by'           => 'name',
+            'sort_order'        => 'asc',
+            'page'              => 1,
+            'per_page'          => 25,
+            'selected_only'     => false,
+            'include_all'       => false,
+        );
+
+        $query       = wp_parse_args( (array) $args, $defaults );
+        $selected    = array_flip( $this->get_selected_offer_ids( $settings ) );
+        $search      = strtolower( trim( (string) $query['search'] ) );
+        $status      = strtolower( trim( (string) $query['status'] ) );
+        $featured    = strtolower( trim( (string) $query['featured'] ) );
+        $approval    = strtolower( trim( (string) $query['approval_required'] ) );
+        $payout_type = strtolower( trim( (string) $query['payout_type'] ) );
+        $image       = strtolower( trim( (string) $query['image_status'] ) );
+        $offers      = array_values( $this->get_synced_offers() );
+
+        $filtered = array();
+
+        foreach ( $offers as $offer ) {
+            $offer_id = (string) ( $offer['id'] ?? '' );
+            if ( '' === $offer_id ) {
+                continue;
+            }
+
+            $is_selected = isset( $selected[ $offer_id ] );
+            if ( ! empty( $query['selected_only'] ) && ! $is_selected ) {
+                continue;
+            }
+
+            if ( '' !== $search ) {
+                $haystack = strtolower( $offer_id . ' ' . (string) ( $offer['name'] ?? '' ) );
+                if ( false === strpos( $haystack, $search ) ) {
+                    continue;
+                }
+            }
+
+            $offer_status = strtolower( (string) ( $offer['status'] ?? '' ) );
+            if ( '' !== $status && $status !== $offer_status ) {
+                continue;
+            }
+
+            if ( '' !== $featured ) {
+                $is_featured = ! empty( $offer['is_featured'] );
+                if ( ( 'yes' === $featured && ! $is_featured ) || ( 'no' === $featured && $is_featured ) ) {
+                    continue;
+                }
+            }
+
+            if ( '' !== $approval ) {
+                $needs_approval = '1' === (string) ( $offer['require_approval'] ?? '' );
+                if ( ( 'yes' === $approval && ! $needs_approval ) || ( 'no' === $approval && $needs_approval ) ) {
+                    continue;
+                }
+            }
+
+            $offer_payout_type = strtolower( (string) ( $offer['payout_type'] ?? '' ) );
+            if ( '' !== $payout_type && $payout_type !== $offer_payout_type ) {
+                continue;
+            }
+
+            $image_status = $this->get_image_status_for_offer( $offer_id, $settings );
+            if ( '' !== $image && $image !== $image_status ) {
+                continue;
+            }
+
+            $offer['is_selected_for_slot'] = $is_selected;
+            $offer['image_status']         = $image_status;
+            $filtered[]                    = $offer;
+        }
+
+        $sort_by    = in_array( $query['sort_by'], array( 'name', 'id', 'status', 'payout', 'featured' ), true ) ? $query['sort_by'] : 'name';
+        $sort_order = 'desc' === strtolower( (string) $query['sort_order'] ) ? 'desc' : 'asc';
+
+        usort(
+            $filtered,
+            static function ( $left, $right ) use ( $sort_by, $sort_order ) {
+                switch ( $sort_by ) {
+                    case 'id':
+                        $left_value  = (string) ( $left['id'] ?? '' );
+                        $right_value = (string) ( $right['id'] ?? '' );
+                        break;
+                    case 'status':
+                        $left_value  = (string) ( $left['status'] ?? '' );
+                        $right_value = (string) ( $right['status'] ?? '' );
+                        break;
+                    case 'payout':
+                        $left_value  = (float) ( $left['default_payout'] ?? 0 );
+                        $right_value = (float) ( $right['default_payout'] ?? 0 );
+                        break;
+                    case 'featured':
+                        $left_value  = ! empty( $left['is_featured'] ) ? 1 : 0;
+                        $right_value = ! empty( $right['is_featured'] ) ? 1 : 0;
+                        break;
+                    case 'name':
+                    default:
+                        $left_value  = (string) ( $left['name'] ?? '' );
+                        $right_value = (string) ( $right['name'] ?? '' );
+                        break;
+                }
+
+                if ( $left_value === $right_value ) {
+                    return strcasecmp( (string) ( $left['name'] ?? '' ), (string) ( $right['name'] ?? '' ) );
+                }
+
+                $comparison = is_string( $left_value ) ? strcasecmp( $left_value, (string) $right_value ) : ( $left_value <=> $right_value );
+
+                return 'desc' === $sort_order ? -1 * $comparison : $comparison;
+            }
+        );
+
+        $total    = count( $filtered );
+        $per_page = max( 1, (int) $query['per_page'] );
+        $page     = max( 1, (int) $query['page'] );
+        $pages    = max( 1, (int) ceil( $total / $per_page ) );
+        if ( $page > $pages ) {
+            $page = $pages;
+        }
+
+        $offset = ( $page - 1 ) * $per_page;
+
+        return array(
+            'items'    => array_slice( $filtered, $offset, $per_page ),
+            'total'    => $total,
+            'page'     => $page,
+            'per_page' => $per_page,
+            'pages'    => $pages,
+            'sort_by'  => $sort_by,
+            'order'    => $sort_order,
+        );
+    }
+
+    /**
+     * @param string $offer_id Offer ID.
+     * @param array<string,mixed> $settings Settings payload.
+     *
+     * @return string
+     */
+    public function get_image_status_for_offer( $offer_id, $settings ) {
+        $offer_id     = (string) $offer_id;
+        $selected_ids = $this->get_selected_offer_ids( $settings );
+        if ( ! in_array( $offer_id, $selected_ids, true ) ) {
+            return 'not_selected';
+        }
+
+        $overrides = isset( $settings['offer_image_overrides'] ) && is_array( $settings['offer_image_overrides'] ) ? $settings['offer_image_overrides'] : array();
+
+        if ( ! empty( $overrides[ $offer_id ] ) ) {
+            return 'manual_override';
+        }
+
+        return 'placeholder_only';
+    }
+
+    /**
+     * @param array<string,mixed> $settings Settings payload.
+     *
+     * @return array<int,string>
+     */
+    protected function get_selected_offer_ids( $settings ) {
+        $selected = isset( $settings['slot_offer_ids'] ) && is_array( $settings['slot_offer_ids'] ) ? $settings['slot_offer_ids'] : array();
+
+        return array_values( array_unique( array_filter( array_map( 'strval', $selected ) ) ) );
+    }
+
+    /**
      * Builds frontend offers for the sidebar slot.
      *
      * @param string                      $slot_key     Slot identifier.

@@ -1,0 +1,64 @@
+.tmw-cr-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 12px;
+    margin: 14px 0 20px;
+}
+
+.tmw-cr-card {
+    background: #fff;
+    border: 1px solid #dcdcde;
+    border-radius: 6px;
+    padding: 12px;
+}
+
+.tmw-cr-card__label {
+    margin: 0;
+    font-size: 12px;
+    color: #50575e;
+}
+
+.tmw-cr-card__value {
+    margin: 8px 0 0;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.tmw-cr-actions-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+}
+
+.tmw-cr-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 14px 0;
+}
+
+.tmw-cr-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    line-height: 1.7;
+    border: 1px solid transparent;
+}
+
+.tmw-cr-badge--status,
+.tmw-cr-badge--approval,
+.tmw-cr-badge--selected,
+.tmw-cr-badge--featured {
+    background: #edf7ed;
+    border-color: #b7ddb9;
+    color: #1f6f32;
+}
+
+.tmw-cr-badge--muted {
+    background: #f6f7f7;
+    border-color: #dcdcde;
+    color: #50575e;
+}

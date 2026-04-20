@@ -555,10 +555,117 @@ $tests['render_page_shows_sync_diagnostics_and_hides_api_key'] = function() {
     $page->render_page();
     $html = ob_get_clean();
 
-    tmw_assert_contains( 'Last raw row count', $html, 'Admin page should show raw row diagnostics.' );
+    tmw_assert_contains( 'Last raw/imported/skipped', $html, 'Admin page should show raw row diagnostics.' );
     tmw_assert_contains( 'response.data:keyed', $html, 'Admin page should show response shape diagnostics.' );
     tmw_assert_true( false === strpos( $html, 'super-secret-key' ), 'Rendered admin HTML must not leak raw API key.' );
     tmw_assert_contains( '************-key', $html, 'Rendered admin HTML should show masked API key only.' );
+};
+
+
+$tests['dashboard_summary_counts_and_image_status'] = function() {
+    tmw_reset_test_state();
+
+    $settings = array(
+        'slot_offer_ids' => array( '11', '13' ),
+        'offer_image_overrides' => array( '11' => 'https://img.test/11.png' ),
+        'slot_offer_priority' => array( '11' => 2, '13' => 1 ),
+    );
+
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repository->save_synced_offers(
+        array(
+            '11' => array( 'id' => '11', 'name' => 'One', 'status' => 'active', 'is_featured' => true, 'require_approval' => '1' ),
+            '12' => array( 'id' => '12', 'name' => 'Two', 'status' => 'paused', 'is_featured' => false, 'require_approval' => '0' ),
+            '13' => array( 'id' => '13', 'name' => 'Three', 'status' => 'active', 'is_featured' => true, 'require_approval' => '1' ),
+        )
+    );
+    $repository->save_sync_meta( array( 'last_synced_at' => '2026-04-20T00:00:00+00:00', 'last_raw_row_count' => 9, 'last_imported_count' => 3, 'last_skipped_count' => 6, 'last_soft_failure' => 1 ) );
+
+    $summary = $repository->get_dashboard_summary( $settings );
+
+    tmw_assert_same( 3, (int) $summary['stored_offers'], 'Summary should include stored offers count.' );
+    tmw_assert_same( 2, (int) $summary['selected_slot_offers'], 'Summary should include selected count.' );
+    tmw_assert_same( 2, (int) $summary['active_synced_offers'], 'Summary should include active count.' );
+    tmw_assert_same( 2, (int) $summary['featured_synced_offers'], 'Summary should include featured count.' );
+    tmw_assert_same( 2, (int) $summary['approval_required_offers'], 'Summary should include approval count.' );
+    tmw_assert_same( 1, (int) $summary['manual_image_overrides'], 'Summary should include selected offers with manual image override.' );
+
+    tmw_assert_same( 'manual_override', $repository->get_image_status_for_offer( '11', $settings ), 'Image status should detect manual overrides.' );
+    tmw_assert_same( 'placeholder_only', $repository->get_image_status_for_offer( '13', $settings ), 'Image status should detect placeholder-only selected offers.' );
+    tmw_assert_same( 'not_selected', $repository->get_image_status_for_offer( '12', $settings ), 'Image status should detect unselected offers.' );
+};
+
+$tests['filtered_synced_offers_search_filter_sort_and_selected_indicator'] = function() {
+    tmw_reset_test_state();
+
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repository->save_synced_offers(
+        array(
+            '21' => array( 'id' => '21', 'name' => 'Alpha Slots', 'status' => 'active', 'is_featured' => true, 'require_approval' => '1', 'payout_type' => 'cpa', 'default_payout' => '22.00' ),
+            '22' => array( 'id' => '22', 'name' => 'Bravo Slots', 'status' => 'active', 'is_featured' => false, 'require_approval' => '0', 'payout_type' => 'revshare', 'default_payout' => '80.00' ),
+            '23' => array( 'id' => '23', 'name' => 'Charlie', 'status' => 'paused', 'is_featured' => false, 'require_approval' => '1', 'payout_type' => 'cpa', 'default_payout' => '10.00' ),
+        )
+    );
+
+    $settings = array(
+        'slot_offer_ids' => array( '21' ),
+        'offer_image_overrides' => array( '21' => 'https://img.test/21.png' ),
+    );
+
+    $result = $repository->get_filtered_synced_offers_for_admin(
+        array(
+            'search' => 'slots',
+            'status' => 'active',
+            'featured' => 'yes',
+            'approval_required' => 'yes',
+            'payout_type' => 'cpa',
+            'image_status' => 'manual_override',
+            'sort_by' => 'name',
+            'sort_order' => 'asc',
+            'page' => 1,
+            'per_page' => 10,
+        ),
+        $settings
+    );
+
+    tmw_assert_same( 1, (int) $result['total'], 'Filter should narrow to one offer.' );
+    tmw_assert_same( '21', (string) $result['items'][0]['id'], 'Matching offer should be returned.' );
+    tmw_assert_true( ! empty( $result['items'][0]['is_selected_for_slot'] ), 'Result rows should include selected indicator.' );
+};
+
+$tests['render_page_shows_dashboard_tabs_and_sections'] = function() {
+    tmw_reset_test_state();
+
+    update_option(
+        TMW_CR_Slot_Sidebar_Banner::OPTION_KEY,
+        array(
+            'cr_api_key' => 'hidden-api-key',
+            'slot_offer_ids' => array( '10' ),
+            'slot_offer_priority' => array( '10' => 2 ),
+            'offer_image_overrides' => array( '10' => 'https://img.test/10.png' ),
+        )
+    );
+
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repository->save_synced_offers(
+        array(
+            '10' => array( 'id' => '10', 'name' => 'Offer Ten', 'status' => 'active', 'default_payout' => '50.00', 'currency' => 'USD', 'payout_type' => 'cpa', 'require_approval' => '1', 'is_featured' => true ),
+        )
+    );
+
+    $page = new TMW_CR_Slot_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repository, 'sidebar' );
+
+    $_GET = array( 'tab' => 'overview' );
+    ob_start();
+    $page->render_page();
+    $html = ob_get_clean();
+
+    tmw_assert_contains( 'Overview', $html, 'Dashboard should render Overview tab.' );
+    tmw_assert_contains( 'Offers', $html, 'Dashboard should render Offers tab.' );
+    tmw_assert_contains( 'Slot Setup', $html, 'Dashboard should render Slot Setup tab.' );
+    tmw_assert_contains( 'Settings', $html, 'Dashboard should render Settings tab.' );
+    tmw_assert_contains( 'Last raw/imported/skipped', $html, 'Overview cards should render sync count summary.' );
+    tmw_assert_true( false === strpos( $html, 'hidden-api-key' ), 'Overview should never leak API key.' );
 };
 
 $failures = array();

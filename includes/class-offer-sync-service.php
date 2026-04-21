@@ -24,6 +24,15 @@ class TMW_CR_Slot_Offer_Sync_Service {
             'require_approval',
             'featured',
             'currency',
+            'tags',
+            'tag',
+            'vertical',
+            'niche',
+            'performs_in',
+            'optimized_for',
+            'accepted_countries',
+            'accepted_country',
+            'promotion_method',
         );
     }
 
@@ -257,6 +266,77 @@ class TMW_CR_Slot_Offer_Sync_Service {
             'featured'        => $featured_raw,
             'is_featured'     => $is_featured,
             'currency'        => sanitize_text_field( (string) ( $offer['currency'] ?? '' ) ),
+            'tags'            => self::normalize_list_field( self::pick_first_value( $offer, array( 'tags', 'tag', 'labels', 'offer_tags' ) ) ),
+            'vertical'        => sanitize_text_field( (string) self::pick_first_value( $offer, array( 'vertical', 'category', 'offer_vertical' ) ) ),
+            'performs_in'     => self::normalize_country_list_field( self::pick_first_value( $offer, array( 'performs_in', 'top_countries', 'performing_countries' ) ) ),
+            'optimized_for'   => self::normalize_list_field( self::pick_first_value( $offer, array( 'optimized_for', 'optimization_goal', 'device_targets' ) ) ),
+            'accepted_countries' => self::normalize_country_list_field( self::pick_first_value( $offer, array( 'accepted_countries', 'accepted_country', 'countries', 'country_codes' ) ) ),
+            'niche'           => self::normalize_list_field( self::pick_first_value( $offer, array( 'niche', 'niches' ) ) ),
+            'promotion_method' => self::normalize_list_field( self::pick_first_value( $offer, array( 'promotion_method', 'promotion_methods', 'traffic_types' ) ) ),
+        );
+    }
+
+    /**
+     * @param array<string,mixed> $offer Offer row.
+     * @param array<int,string>   $keys Candidate keys.
+     *
+     * @return mixed
+     */
+    protected static function pick_first_value( $offer, $keys ) {
+        foreach ( $keys as $key ) {
+            if ( array_key_exists( $key, $offer ) ) {
+                return $offer[ $key ];
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @param mixed $value Raw value.
+     *
+     * @return array<int,string>
+     */
+    protected static function normalize_list_field( $value ) {
+        $items = array();
+
+        if ( is_array( $value ) ) {
+            $items = $value;
+        } elseif ( is_string( $value ) ) {
+            $items = preg_split( '/[,|]/', $value );
+        } elseif ( is_scalar( $value ) ) {
+            $items = array( (string) $value );
+        }
+
+        $normalized = array();
+        foreach ( (array) $items as $item ) {
+            $item = sanitize_text_field( trim( (string) $item ) );
+            if ( '' === $item ) {
+                continue;
+            }
+            $normalized[] = $item;
+        }
+
+        return array_values( array_unique( $normalized ) );
+    }
+
+    /**
+     * @param mixed $value Raw value.
+     *
+     * @return array<int,string>
+     */
+    protected static function normalize_country_list_field( $value ) {
+        $countries = self::normalize_list_field( $value );
+
+        return array_values(
+            array_unique(
+                array_map(
+                    static function ( $country ) {
+                        return strtoupper( sanitize_text_field( (string) $country ) );
+                    },
+                    $countries
+                )
+            )
         );
     }
 

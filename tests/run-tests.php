@@ -1010,6 +1010,163 @@ $tests['filtered_synced_offers_search_filter_sort_and_selected_indicator'] = fun
     tmw_assert_true( ! empty( $result['items'][0]['is_selected_for_slot'] ), 'Result rows should include selected indicator.' );
 };
 
+$tests['dashboard_filter_model_and_extended_offer_filters'] = function() {
+    tmw_reset_test_state();
+
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repository->save_synced_offers(
+        array(
+            '31' => array(
+                'id' => '31',
+                'name' => 'Geo CPA',
+                'status' => 'active',
+                'payout_type' => 'cpa',
+                'tags' => array( 'vip', 'cash' ),
+                'vertical' => 'casino',
+                'performs_in' => array( 'US', 'CA' ),
+                'optimized_for' => array( 'mobile' ),
+                'accepted_countries' => array( 'US', 'GB' ),
+                'niche' => array( 'slots' ),
+                'promotion_method' => array( 'seo' ),
+            ),
+            '32' => array(
+                'id' => '32',
+                'name' => 'Global Revshare',
+                'status' => 'paused',
+                'payout_type' => 'revshare',
+                'tags' => array( 'stream' ),
+                'vertical' => 'sportsbook',
+                'performs_in' => array( 'DE' ),
+                'optimized_for' => array( 'desktop' ),
+                'accepted_countries' => array( 'DE' ),
+                'niche' => array( 'live' ),
+                'promotion_method' => array( 'ppc' ),
+            ),
+        )
+    );
+
+    $model = $repository->get_dashboard_filter_model();
+    tmw_assert_true( in_array( 'vip', (array) $model['supported']['tag'], true ), 'Filter model should include tag values.' );
+    tmw_assert_true( in_array( 'casino', (array) $model['supported']['vertical'], true ), 'Filter model should include vertical values.' );
+    tmw_assert_true( in_array( 'US', (array) $model['supported']['performs_in'], true ), 'Filter model should include performs_in values.' );
+    tmw_assert_true( in_array( 'US', (array) $model['supported']['accepted_country'], true ), 'Filter model should include accepted country values.' );
+
+    $settings = array( 'slot_offer_ids' => array( '31', '32' ) );
+    $result = $repository->get_filtered_synced_offers_for_admin(
+        array(
+            'tag' => 'vip',
+            'vertical' => 'casino',
+            'payout_type' => 'cpa',
+            'performs_in' => 'US',
+            'optimized_for' => 'mobile',
+            'accepted_country' => 'US',
+            'niche' => 'slots',
+            'status' => 'active',
+            'promotion_method' => 'seo',
+            'page' => 1,
+            'per_page' => 25,
+        ),
+        $settings
+    );
+    tmw_assert_same( 1, (int) $result['total'], 'Extended dashboard filters should deterministically match one offer.' );
+    tmw_assert_same( '31', (string) $result['items'][0]['id'], 'Extended dashboard filters should return expected offer.' );
+};
+
+$tests['dashboard_filters_backward_compatibility_and_override_fallback'] = function() {
+    tmw_reset_test_state();
+    update_option(
+        TMW_CR_Slot_Sidebar_Banner::OPTION_KEY,
+        array(
+            'offer_overrides' => array(),
+        )
+    );
+
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repository->save_synced_offers(
+        array(
+            '41' => array( 'id' => '41', 'name' => 'Legacy Offer', 'status' => 'active', 'payout_type' => 'cpa' ),
+            '42' => array( 'id' => '42', 'name' => 'Metadata Offer', 'status' => 'active', 'payout_type' => 'cpa', 'tags' => array( 'organic' ) ),
+        )
+    );
+    $repository->save_offer_overrides(
+        array(
+            '41' => array(
+                'dashboard_tags' => 'legacy-tag',
+                'dashboard_performs_in' => 'US',
+                'dashboard_accepted_countries' => 'US',
+                'dashboard_optimized_for' => 'mobile',
+                'dashboard_niche' => 'slots',
+                'dashboard_promotion_method' => 'seo',
+                'dashboard_vertical' => 'casino',
+            ),
+        )
+    );
+
+    $result = $repository->get_filtered_synced_offers_for_admin(
+        array(
+            'tag' => 'legacy-tag',
+            'vertical' => 'casino',
+            'performs_in' => 'US',
+            'optimized_for' => 'mobile',
+            'accepted_country' => 'US',
+            'niche' => 'slots',
+            'promotion_method' => 'seo',
+        ),
+        array()
+    );
+
+    tmw_assert_same( 1, (int) $result['total'], 'Legacy offers should remain filterable through override metadata fallback.' );
+    tmw_assert_same( '41', (string) $result['items'][0]['id'], 'Override metadata fallback should resolve missing synced fields.' );
+};
+
+$tests['offers_tab_renders_expanded_filter_controls'] = function() {
+    tmw_reset_test_state();
+
+    update_option(
+        TMW_CR_Slot_Sidebar_Banner::OPTION_KEY,
+        array(
+            'cr_api_key' => 'key',
+            'slot_offer_ids' => array(),
+            'slot_offer_priority' => array(),
+            'offer_image_overrides' => array(),
+        )
+    );
+
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repository->save_synced_offers(
+        array(
+            '51' => array(
+                'id' => '51',
+                'name' => 'Filter UI Offer',
+                'status' => 'active',
+                'payout_type' => 'cpa',
+                'tags' => array( 'vip' ),
+                'vertical' => 'casino',
+                'performs_in' => array( 'US' ),
+                'optimized_for' => array( 'mobile' ),
+                'accepted_countries' => array( 'US' ),
+                'niche' => array( 'slots' ),
+                'promotion_method' => array( 'seo' ),
+            ),
+        )
+    );
+
+    $_GET = array( 'tab' => 'offers' );
+    $page = new TMW_CR_Slot_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repository, 'sidebar' );
+    ob_start();
+    $page->render_page();
+    $html = ob_get_clean();
+
+    tmw_assert_contains( 'name="tag"', $html, 'Offers tab should render Tag filter select.' );
+    tmw_assert_contains( 'name="vertical"', $html, 'Offers tab should render Vertical filter select.' );
+    tmw_assert_contains( 'name="performs_in"', $html, 'Offers tab should render Performs In filter select.' );
+    tmw_assert_contains( 'name="optimized_for"', $html, 'Offers tab should render Optimized For filter select.' );
+    tmw_assert_contains( 'name="accepted_country"', $html, 'Offers tab should render Accepted Country filter select.' );
+    tmw_assert_contains( 'name="niche"', $html, 'Offers tab should render Niche filter select.' );
+    tmw_assert_contains( 'name="promotion_method"', $html, 'Offers tab should render Promotion Method filter select.' );
+    tmw_assert_contains( 'Clear all', $html, 'Offers tab should render clear-all action.' );
+};
+
 $tests['render_page_shows_dashboard_tabs_and_sections'] = function() {
     tmw_reset_test_state();
 

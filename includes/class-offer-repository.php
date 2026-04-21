@@ -334,27 +334,40 @@ class TMW_CR_Slot_Offer_Repository {
     public function get_dashboard_filter_model() {
         $offers = $this->get_synced_offers();
         $supported = array(
-            'status' => array(),
+            'tag' => array(),
+            'vertical' => array(),
             'payout_type' => array(),
-            'accepted_country' => array( 'source' => 'stats.country_name' ),
+            'performs_in' => array(),
+            'optimized_for' => array(),
+            'accepted_country' => array(),
+            'niche' => array(),
+            'status' => array(),
+            'promotion_method' => array(),
         );
-        $todo = array(
-            'tag' => 'TODO: map when offer sync exposes tag taxonomy.',
-            'vertical' => 'TODO: map when offer payload includes vertical.',
-            'performs_in' => 'TODO: map when performance cohort fields are synced.',
-            'optimized_for' => 'TODO: map when optimization_goal becomes available.',
-            'niche' => 'TODO: map when niche metadata exists.',
-            'promotion_method' => 'TODO: map when promotion methods are synced.',
-        );
+        $todo = array();
 
-        foreach ( $offers as $offer ) {
-            $status = sanitize_key( (string) ( $offer['status'] ?? '' ) );
-            $payout = sanitize_key( (string) ( $offer['payout_type'] ?? '' ) );
-            if ( '' !== $status ) {
-                $supported['status'][ $status ] = $status;
+        foreach ( $offers as $offer_id => $offer ) {
+            $meta = $this->get_offer_dashboard_metadata( (string) $offer_id, $offer );
+
+            foreach ( $supported as $field_key => $values ) {
+                $field_values = isset( $meta[ $field_key ] ) ? (array) $meta[ $field_key ] : array();
+                foreach ( $field_values as $value ) {
+                    $value = (string) $value;
+                    if ( '' === $value ) {
+                        continue;
+                    }
+                    $supported[ $field_key ][ $value ] = $value;
+                }
             }
-            if ( '' !== $payout ) {
-                $supported['payout_type'][ $payout ] = $payout;
+        }
+
+        foreach ( $supported as $field_key => $values ) {
+            if ( ! empty( $values ) ) {
+                ksort( $values, SORT_NATURAL | SORT_FLAG_CASE );
+                $supported[ $field_key ] = array_values( $values );
+            } else {
+                $supported[ $field_key ] = array();
+                $todo[ $field_key ]      = __( 'No synced values yet. Use richer API fields or local offer override metadata to populate this filter.', 'tmw-cr-slot-sidebar-banner' );
             }
         }
 
@@ -374,9 +387,16 @@ class TMW_CR_Slot_Offer_Repository {
         $defaults = array(
             'search'            => '',
             'status'            => '',
+            'tag'               => '',
+            'vertical'          => '',
             'featured'          => '',
             'approval_required' => '',
             'payout_type'       => '',
+            'performs_in'       => '',
+            'optimized_for'     => '',
+            'accepted_country'  => '',
+            'niche'             => '',
+            'promotion_method'  => '',
             'image_status'      => '',
             'sort_by'           => 'name',
             'sort_order'        => 'asc',
@@ -390,9 +410,16 @@ class TMW_CR_Slot_Offer_Repository {
         $selected    = array_flip( $this->get_selected_offer_ids( $settings ) );
         $search      = strtolower( trim( (string) $query['search'] ) );
         $status      = strtolower( trim( (string) $query['status'] ) );
+        $tag         = strtolower( trim( (string) $query['tag'] ) );
+        $vertical    = strtolower( trim( (string) $query['vertical'] ) );
         $featured    = strtolower( trim( (string) $query['featured'] ) );
         $approval    = strtolower( trim( (string) $query['approval_required'] ) );
         $payout_type = strtolower( trim( (string) $query['payout_type'] ) );
+        $performs_in = strtoupper( trim( (string) $query['performs_in'] ) );
+        $optimized   = strtolower( trim( (string) $query['optimized_for'] ) );
+        $accepted_country = strtoupper( trim( (string) $query['accepted_country'] ) );
+        $niche       = strtolower( trim( (string) $query['niche'] ) );
+        $promotion_method = strtolower( trim( (string) $query['promotion_method'] ) );
         $image       = strtolower( trim( (string) $query['image_status'] ) );
         $offers         = array_values( $this->get_synced_offers() );
         $legacy_catalog = $this->get_default_legacy_catalog();
@@ -420,6 +447,15 @@ class TMW_CR_Slot_Offer_Repository {
             if ( '' !== $status && $status !== $offer_status ) {
                 continue;
             }
+            $offer_meta = $this->get_offer_dashboard_metadata( $offer_id, $offer );
+
+            if ( '' !== $tag && ! $this->value_in_filter_set( $tag, (array) ( $offer_meta['tag'] ?? array() ) ) ) {
+                continue;
+            }
+
+            if ( '' !== $vertical && ! $this->value_in_filter_set( $vertical, (array) ( $offer_meta['vertical'] ?? array() ) ) ) {
+                continue;
+            }
 
             if ( '' !== $featured ) {
                 $is_featured = ! empty( $offer['is_featured'] );
@@ -439,12 +475,28 @@ class TMW_CR_Slot_Offer_Repository {
             if ( '' !== $payout_type && $payout_type !== $offer_payout_type ) {
                 continue;
             }
+            if ( '' !== $performs_in && ! $this->value_in_filter_set( $performs_in, (array) ( $offer_meta['performs_in'] ?? array() ), true ) ) {
+                continue;
+            }
+            if ( '' !== $optimized && ! $this->value_in_filter_set( $optimized, (array) ( $offer_meta['optimized_for'] ?? array() ) ) ) {
+                continue;
+            }
+            if ( '' !== $accepted_country && ! $this->value_in_filter_set( $accepted_country, (array) ( $offer_meta['accepted_country'] ?? array() ), true ) ) {
+                continue;
+            }
+            if ( '' !== $niche && ! $this->value_in_filter_set( $niche, (array) ( $offer_meta['niche'] ?? array() ) ) ) {
+                continue;
+            }
+            if ( '' !== $promotion_method && ! $this->value_in_filter_set( $promotion_method, (array) ( $offer_meta['promotion_method'] ?? array() ) ) ) {
+                continue;
+            }
 
             $image_status = $this->get_image_status_for_offer( $offer_id, $settings, $legacy_catalog );
             if ( '' !== $image && $image !== $image_status ) {
                 continue;
             }
 
+            $offer['dashboard_metadata']   = $offer_meta;
             $offer['is_selected_for_slot'] = $is_selected;
             $offer['image_status']         = $image_status;
             $filtered[]                    = $offer;
@@ -1502,7 +1554,110 @@ class TMW_CR_Slot_Offer_Repository {
             'custom_cta_text'   => ! empty( $override['custom_cta_text'] ) ? sanitize_text_field( (string) $override['custom_cta_text'] ) : '',
             'label_override'    => ! empty( $override['label_override'] ) ? sanitize_text_field( (string) $override['label_override'] ) : '',
             'notes'             => ! empty( $override['notes'] ) ? sanitize_textarea_field( (string) $override['notes'] ) : '',
+            'dashboard_tags'    => $this->sanitize_list_values( isset( $override['dashboard_tags'] ) ? $override['dashboard_tags'] : array() ),
+            'dashboard_vertical' => ! empty( $override['dashboard_vertical'] ) ? sanitize_text_field( (string) $override['dashboard_vertical'] ) : '',
+            'dashboard_performs_in' => $this->sanitize_country_codes( isset( $override['dashboard_performs_in'] ) ? $override['dashboard_performs_in'] : array() ),
+            'dashboard_optimized_for' => $this->sanitize_list_values( isset( $override['dashboard_optimized_for'] ) ? $override['dashboard_optimized_for'] : array() ),
+            'dashboard_accepted_countries' => $this->sanitize_country_codes( isset( $override['dashboard_accepted_countries'] ) ? $override['dashboard_accepted_countries'] : array() ),
+            'dashboard_niche'   => $this->sanitize_list_values( isset( $override['dashboard_niche'] ) ? $override['dashboard_niche'] : array() ),
+            'dashboard_promotion_method' => $this->sanitize_list_values( isset( $override['dashboard_promotion_method'] ) ? $override['dashboard_promotion_method'] : array() ),
         );
+    }
+
+    /**
+     * @param string              $offer_id Offer ID.
+     * @param array<string,mixed> $offer Offer row.
+     *
+     * @return array<string,array<int,string>>
+     */
+    protected function get_offer_dashboard_metadata( $offer_id, $offer ) {
+        $override = $this->get_offer_override( $offer_id );
+
+        $status = sanitize_key( (string) ( $offer['status'] ?? '' ) );
+        $vertical = sanitize_text_field( (string) ( $offer['vertical'] ?? '' ) );
+        if ( '' === $vertical && ! empty( $override['dashboard_vertical'] ) ) {
+            $vertical = sanitize_text_field( (string) $override['dashboard_vertical'] );
+        }
+
+        return array(
+            'tag' => $this->merge_preferred_values(
+                $this->sanitize_list_values( isset( $offer['tags'] ) ? $offer['tags'] : array() ),
+                $this->sanitize_list_values( isset( $override['dashboard_tags'] ) ? $override['dashboard_tags'] : array() )
+            ),
+            'vertical' => '' !== $vertical ? array( $vertical ) : array(),
+            'payout_type' => $this->sanitize_list_values( isset( $offer['payout_type'] ) ? $offer['payout_type'] : '' ),
+            'performs_in' => $this->merge_preferred_values(
+                $this->sanitize_country_codes( isset( $offer['performs_in'] ) ? $offer['performs_in'] : array() ),
+                $this->sanitize_country_codes( isset( $override['dashboard_performs_in'] ) ? $override['dashboard_performs_in'] : array() )
+            ),
+            'optimized_for' => $this->merge_preferred_values(
+                $this->sanitize_list_values( isset( $offer['optimized_for'] ) ? $offer['optimized_for'] : array() ),
+                $this->sanitize_list_values( isset( $override['dashboard_optimized_for'] ) ? $override['dashboard_optimized_for'] : array() )
+            ),
+            'accepted_country' => $this->merge_preferred_values(
+                $this->sanitize_country_codes( isset( $offer['accepted_countries'] ) ? $offer['accepted_countries'] : array() ),
+                $this->sanitize_country_codes( isset( $override['dashboard_accepted_countries'] ) ? $override['dashboard_accepted_countries'] : array() )
+            ),
+            'niche' => $this->merge_preferred_values(
+                $this->sanitize_list_values( isset( $offer['niche'] ) ? $offer['niche'] : array() ),
+                $this->sanitize_list_values( isset( $override['dashboard_niche'] ) ? $override['dashboard_niche'] : array() )
+            ),
+            'status' => '' !== $status ? array( $status ) : array(),
+            'promotion_method' => $this->merge_preferred_values(
+                $this->sanitize_list_values( isset( $offer['promotion_method'] ) ? $offer['promotion_method'] : array() ),
+                $this->sanitize_list_values( isset( $override['dashboard_promotion_method'] ) ? $override['dashboard_promotion_method'] : array() )
+            ),
+        );
+    }
+
+    /**
+     * @param string                 $needle Filter value.
+     * @param array<int,string>      $values Values.
+     * @param bool                   $uppercase Normalize to uppercase.
+     *
+     * @return bool
+     */
+    protected function value_in_filter_set( $needle, $values, $uppercase = false ) {
+        foreach ( $values as $value ) {
+            $hay = $uppercase ? strtoupper( (string) $value ) : strtolower( (string) $value );
+            if ( $needle === $hay ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<int,string> $primary First source.
+     * @param array<int,string> $fallback Fallback source.
+     *
+     * @return array<int,string>
+     */
+    protected function merge_preferred_values( $primary, $fallback ) {
+        $values = ! empty( $primary ) ? $primary : $fallback;
+
+        return array_values( array_unique( array_filter( array_map( 'strval', (array) $values ) ) ) );
+    }
+
+    /**
+     * @param array<int|string,mixed>|string $raw Raw list payload.
+     *
+     * @return array<int,string>
+     */
+    protected function sanitize_list_values( $raw ) {
+        $values = is_array( $raw ) ? $raw : preg_split( '/[,|]/', (string) $raw );
+        $clean  = array();
+
+        foreach ( (array) $values as $value ) {
+            $value = sanitize_text_field( trim( (string) $value ) );
+            if ( '' === $value ) {
+                continue;
+            }
+            $clean[] = $value;
+        }
+
+        return array_values( array_unique( $clean ) );
     }
 
     /**

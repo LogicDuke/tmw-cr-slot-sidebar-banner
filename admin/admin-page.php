@@ -522,7 +522,7 @@ class TMW_CR_Slot_Admin_Page {
             'status'            => $this->read_multi_query_values( 'status', true ),
             'featured'          => isset( $_GET['featured'] ) ? sanitize_key( wp_unslash( $_GET['featured'] ) ) : '',
             'approval_required' => isset( $_GET['approval_required'] ) ? sanitize_key( wp_unslash( $_GET['approval_required'] ) ) : '',
-            'payout_type'       => $this->read_multi_query_values( 'payout_type', true ),
+            'payout_type'       => $this->read_multi_query_values( 'payout_type' ),
             'performs_in'       => $this->read_multi_query_values( 'performs_in', true ),
             'optimized_for'     => $this->read_multi_query_values( 'optimized_for' ),
             'accepted_country'  => $this->read_multi_query_values( 'accepted_country', true ),
@@ -542,7 +542,14 @@ class TMW_CR_Slot_Admin_Page {
         $country        = strtoupper( TMW_CR_Slot_Geo_Helper::get_country_code() );
         $tag_options = $this->build_filter_option_map( (array) ( $filter_model['supported']['tag'] ?? array() ) );
         $vertical_options = $this->build_filter_option_map( (array) ( $filter_model['supported']['vertical'] ?? array() ) );
-        $payout_options = $this->build_filter_option_map( (array) ( $filter_model['supported']['payout_type'] ?? array() ) );
+        $payout_options = $this->build_filter_option_map(
+            (array) ( $filter_model['supported']['payout_type'] ?? array() ),
+            array(
+                'revshare' => 'Revshare',
+                'revshare_lifetime' => 'Revshare Lifetime',
+                'multi_cpa' => 'Multi-CPA',
+            )
+        );
         $performs_in_options = $country_options;
         $optimized_for_options = $this->build_filter_option_map( (array) ( $filter_model['supported']['optimized_for'] ?? array() ) );
         $accepted_country_options = $country_options;

@@ -3,7 +3,7 @@ Contributors: themilisofia
 Tags: affiliate marketing, crackrevenue, sidebar, banner, shortcode
 Requires at least: 5.8
 Tested up to: 6.4
-Stable tag: 1.8.2
+Stable tag: 1.8.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -40,6 +40,12 @@ Yes. Developers can hook into the `tmw_cr_slot_banner_offers` filter to provide 
 Yes. Version 1.3.0 ships with optimized PNG assets inside `assets/img/offers/` so the slot banner works out of the box. You can still override or extend the catalog with your own creatives via filters.
 
 == Changelog ==
+
+= 1.8.3 =
+* [TMW-CR-DASH] Replaced basic Offers-tab selects for Tag, Vertical, Payout Type, Performs In, Optimized For, Accepted Country, Niche, Status, and Promotion Method with PDF-style filter panels (search where needed, checkbox lists, per-panel Clear All, and active-count badges).
+* [TMW-CR-FILTERS] Added multi-value query handling so selected filter values persist in URL args and are applied as deterministic intersection filters server-side.
+* [TMW-CR-META] Added a local dashboard metadata layer for tag, vertical, performs_in, optimized_for, accepted_country, niche, and promotion_method to preserve valid synced metadata when API payloads are sparse.
+* [TMW-CR-UX] Added full country-list panel options for Performs In and Accepted Country to align interaction model and list depth with the operator PDF workflow.
 
 = 1.8.2 =
 * [TMW-CR-DASH] Expanded Offers-tab operator filters to include Tag, Vertical, Payout Type, Performs In, Optimized For, Accepted Country, Niche, Status, and Promotion Method with WordPress-native controls.

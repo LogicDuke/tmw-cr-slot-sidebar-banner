@@ -39,6 +39,68 @@
     margin: 14px 0;
 }
 
+.tmw-cr-filter-panel {
+    position: relative;
+}
+
+.tmw-cr-filter-panel__toggle {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.tmw-cr-filter-panel__count {
+    background: #2271b1;
+    color: #fff;
+    border-radius: 999px;
+    min-width: 18px;
+    text-align: center;
+    padding: 0 6px;
+    font-size: 11px;
+    line-height: 18px;
+}
+
+.tmw-cr-filter-panel__count.is-empty {
+    background: #dcdcde;
+    color: #3c434a;
+}
+
+.tmw-cr-filter-panel__card {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    width: 260px;
+    z-index: 20;
+    background: #fff;
+    border: 1px solid #dcdcde;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .15);
+    padding: 10px;
+}
+
+.tmw-cr-filter-panel__actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.tmw-cr-filter-panel__search {
+    width: 100%;
+}
+
+.tmw-cr-filter-panel__list {
+    max-height: 220px;
+    overflow: auto;
+    border-top: 1px solid #f0f0f1;
+    padding-top: 8px;
+}
+
+.tmw-cr-filter-panel__list label {
+    display: block;
+    margin-bottom: 6px;
+}
+
 .tmw-cr-badge {
     display: inline-block;
     padding: 2px 8px;

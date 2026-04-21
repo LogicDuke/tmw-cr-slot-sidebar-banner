@@ -543,7 +543,7 @@ class TMW_CR_Slot_Admin_Page {
         $tag_options = $this->build_filter_option_map( (array) ( $filter_model['supported']['tag'] ?? array() ) );
         $vertical_options = $this->build_filter_option_map( (array) ( $filter_model['supported']['vertical'] ?? array() ) );
         $payout_options = $this->build_filter_option_map( (array) ( $filter_model['supported']['payout_type'] ?? array() ) );
-        $performs_in_options = $this->build_filter_option_map( (array) ( $filter_model['supported']['performs_in'] ?? array() ), $country_options );
+        $performs_in_options = $country_options;
         $optimized_for_options = $this->build_filter_option_map( (array) ( $filter_model['supported']['optimized_for'] ?? array() ) );
         $accepted_country_options = $country_options;
         $niche_options = $this->build_filter_option_map( (array) ( $filter_model['supported']['niche'] ?? array() ) );
@@ -1102,9 +1102,10 @@ class TMW_CR_Slot_Admin_Page {
         <div class="tmw-cr-filter-panel" data-filter-name="<?php echo esc_attr( $name ); ?>">
             <button type="button" class="button button-secondary tmw-cr-filter-panel__toggle" aria-expanded="false">
                 <span><?php echo esc_html( $label ); ?></span>
-                <span class="tmw-cr-filter-panel__count<?php echo $count > 0 ? '' : ' is-empty'; ?>"><?php echo esc_html( (string) $count ); ?></span>
+                <span class="tmw-cr-filter-panel__count<?php echo $count > 0 ? '' : ' is-empty'; ?>"<?php echo 0 === $count ? ' hidden' : ''; ?>><?php echo $count > 0 ? esc_html( (string) $count ) : ''; ?></span>
             </button>
             <div class="tmw-cr-filter-panel__card" hidden>
+                <div class="tmw-cr-filter-panel__title"><?php echo esc_html( $label ); ?></div>
                 <div class="tmw-cr-filter-panel__actions">
                     <?php if ( $searchable ) : ?>
                         <input type="search" class="tmw-cr-filter-panel__search" placeholder="<?php esc_attr_e( 'Search…', 'tmw-cr-slot-sidebar-banner' ); ?>" />

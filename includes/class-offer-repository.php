@@ -138,6 +138,10 @@ class TMW_CR_Slot_Offer_Repository {
             'last_stats_imported_rows'  => 0,
             'last_stats_date_start'     => '',
             'last_stats_date_end'       => '',
+            'last_stats_response_shape' => '',
+            'last_stats_sample_row_keys' => '',
+            'last_stats_soft_failure'   => '',
+            'last_stats_preserved_previous' => 0,
             'last_scheduled_run_at'     => '',
             'last_scheduled_result'     => '',
             'last_scheduled_message'    => '',
@@ -150,6 +154,10 @@ class TMW_CR_Slot_Offer_Repository {
         $payload['last_stats_imported_rows']  = max( 0, (int) $payload['last_stats_imported_rows'] );
         $payload['last_stats_date_start']     = sanitize_text_field( (string) $payload['last_stats_date_start'] );
         $payload['last_stats_date_end']       = sanitize_text_field( (string) $payload['last_stats_date_end'] );
+        $payload['last_stats_response_shape'] = sanitize_text_field( substr( (string) $payload['last_stats_response_shape'], 0, 120 ) );
+        $payload['last_stats_sample_row_keys'] = sanitize_text_field( substr( (string) $payload['last_stats_sample_row_keys'], 0, 120 ) );
+        $payload['last_stats_soft_failure']   = sanitize_key( substr( (string) $payload['last_stats_soft_failure'], 0, 64 ) );
+        $payload['last_stats_preserved_previous'] = ! empty( $payload['last_stats_preserved_previous'] ) ? 1 : 0;
         $payload['last_scheduled_run_at']     = sanitize_text_field( (string) $payload['last_scheduled_run_at'] );
         $payload['last_scheduled_result']     = sanitize_text_field( (string) $payload['last_scheduled_result'] );
         $payload['last_scheduled_message']    = sanitize_text_field( (string) $payload['last_scheduled_message'] );
@@ -309,8 +317,50 @@ class TMW_CR_Slot_Offer_Repository {
             'last_stats_date_start'    => (string) ( $stats_meta['last_stats_date_start'] ?? '' ),
             'last_stats_date_end'      => (string) ( $stats_meta['last_stats_date_end'] ?? '' ),
             'last_stats_error'         => (string) ( $stats_meta['last_stats_error'] ?? '' ),
+            'last_stats_response_shape' => (string) ( $stats_meta['last_stats_response_shape'] ?? '' ),
+            'last_stats_sample_row_keys' => (string) ( $stats_meta['last_stats_sample_row_keys'] ?? '' ),
+            'last_stats_soft_failure'  => (string) ( $stats_meta['last_stats_soft_failure'] ?? '' ),
+            'last_stats_preserved_previous' => ! empty( $stats_meta['last_stats_preserved_previous'] ) ? 1 : 0,
             'last_scheduled_run_at'    => (string) ( $stats_meta['last_scheduled_run_at'] ?? '' ),
             'last_scheduled_result'    => (string) ( $stats_meta['last_scheduled_result'] ?? '' ),
+        );
+    }
+
+    /**
+     * [TMW-CR-DASH] Filter configuration scaffold aligned with operator PDF where available.
+     *
+     * @return array<string,mixed>
+     */
+    public function get_dashboard_filter_model() {
+        $offers = $this->get_synced_offers();
+        $supported = array(
+            'status' => array(),
+            'payout_type' => array(),
+            'accepted_country' => array( 'source' => 'stats.country_name' ),
+        );
+        $todo = array(
+            'tag' => 'TODO: map when offer sync exposes tag taxonomy.',
+            'vertical' => 'TODO: map when offer payload includes vertical.',
+            'performs_in' => 'TODO: map when performance cohort fields are synced.',
+            'optimized_for' => 'TODO: map when optimization_goal becomes available.',
+            'niche' => 'TODO: map when niche metadata exists.',
+            'promotion_method' => 'TODO: map when promotion methods are synced.',
+        );
+
+        foreach ( $offers as $offer ) {
+            $status = sanitize_key( (string) ( $offer['status'] ?? '' ) );
+            $payout = sanitize_key( (string) ( $offer['payout_type'] ?? '' ) );
+            if ( '' !== $status ) {
+                $supported['status'][ $status ] = $status;
+            }
+            if ( '' !== $payout ) {
+                $supported['payout_type'][ $payout ] = $payout;
+            }
+        }
+
+        return array(
+            'supported' => $supported,
+            'todo' => $todo,
         );
     }
 
@@ -1150,11 +1200,18 @@ class TMW_CR_Slot_Offer_Repository {
     public function get_performance_rows( $country = '', $args = array() ) {
         $stats    = $this->get_offer_stats();
         $country  = strtoupper( sanitize_text_field( (string) $country ) );
+        $status_filter = sanitize_key( (string) ( $args['status'] ?? '' ) );
+        $payout_type_filter = sanitize_key( (string) ( $args['payout_type'] ?? '' ) );
+        $offers_map = $this->get_synced_offers();
         $grouped  = array();
 
         foreach ( $stats as $row ) {
             $offer_id = (string) ( $row['offer_id'] ?? '' );
             if ( '' === $offer_id ) {
+                continue;
+            }
+            $offer = isset( $offers_map[ $offer_id ] ) && is_array( $offers_map[ $offer_id ] ) ? $offers_map[ $offer_id ] : array();
+            if ( '' !== $status_filter && $status_filter !== sanitize_key( (string) ( $offer['status'] ?? '' ) ) ) {
                 continue;
             }
 
@@ -1170,7 +1227,8 @@ class TMW_CR_Slot_Offer_Repository {
                     'clicks'       => 0,
                     'conversions'  => 0.0,
                     'payout'       => 0.0,
-                    'payout_type'  => (string) ( $row['payout_type'] ?? '' ),
+                    'payout_type'  => (string) ( $row['payout_type'] ?? ( $offer['payout_type'] ?? '' ) ),
+                    'status'       => (string) ( $offer['status'] ?? '' ),
                 );
             }
 
@@ -1180,6 +1238,10 @@ class TMW_CR_Slot_Offer_Repository {
         }
 
         foreach ( $grouped as $offer_id => $row ) {
+            if ( '' !== $payout_type_filter && $payout_type_filter !== sanitize_key( (string) ( $row['payout_type'] ?? '' ) ) ) {
+                unset( $grouped[ $offer_id ] );
+                continue;
+            }
             $grouped[ $offer_id ]['epc'] = $row['clicks'] > 0 ? round( $row['payout'] / $row['clicks'], 6 ) : 0.0;
             $grouped[ $offer_id ]['conversion_rate'] = $row['clicks'] > 0 ? round( ( $row['conversions'] / $row['clicks'] ) * 100, 4 ) : 0.0;
         }

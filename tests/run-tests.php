@@ -1123,6 +1123,168 @@ $tests['stats_sync_storage_and_transport_failure_preserves_existing'] = function
     tmw_assert_same( $stored, $stored_after, 'Transport failure should preserve existing stats.' );
 };
 
+$tests['stats_extracts_grouped_rows_from_supported_envelopes'] = function() {
+    tmw_reset_test_state();
+
+    $rows_a = TMW_CR_Slot_Stats_Sync_Service::extract_stats_rows(
+        array(
+            'response' => array(
+                'status' => 'ok',
+                'data' => array(
+                    array(
+                        'Stat' => array( 'offer_id' => '100', 'clicks' => 12, 'conversions' => 2, 'payout' => 30, 'payout_type' => 'cpa' ),
+                        'Offer' => array( 'name' => 'Offer 100' ),
+                        'Country' => array( 'name' => 'US' ),
+                    ),
+                ),
+            ),
+        )
+    );
+    tmw_assert_same( 1, count( $rows_a ), 'response.data list should be extracted as stats rows.' );
+
+    $rows_b = TMW_CR_Slot_Stats_Sync_Service::extract_stats_rows(
+        array(
+            'response' => array(
+                'data' => array(
+                    'data' => array(
+                        array(
+                            'Stat' => array( 'offer_id' => '101', 'clicks' => 8, 'conversions' => 1, 'payout' => 9, 'payout_type' => 'revshare' ),
+                            'Offer' => array( 'name' => 'Offer 101' ),
+                            'Country' => array( 'name' => 'CA' ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+    );
+    tmw_assert_same( 1, count( $rows_b ), 'response.data.data list should be extracted as stats rows.' );
+
+    $rows_c = TMW_CR_Slot_Stats_Sync_Service::extract_stats_rows(
+        array(
+            'response' => array(
+                'results' => array(
+                    array(
+                        'Stat' => array( 'offer_id' => '102', 'clicks' => 30, 'conversions' => 3, 'payout' => 40, 'payout_type' => 'hybrid' ),
+                        'Offer' => array( 'name' => 'Offer 102' ),
+                        'Country' => array( 'name' => 'GB' ),
+                    ),
+                ),
+            ),
+        )
+    );
+    tmw_assert_same( 1, count( $rows_c ), 'response.results list should be extracted as stats rows.' );
+};
+
+$tests['stats_does_not_treat_metadata_wrapper_as_row'] = function() {
+    tmw_reset_test_state();
+    $rows = TMW_CR_Slot_Stats_Sync_Service::extract_stats_rows(
+        array(
+            'response' => array(
+                'status' => 'success',
+                'httpStatus' => 200,
+                'errors' => array(),
+                'errorMessage' => '',
+                'data' => array(
+                    'status' => 'ok',
+                    'httpStatus' => 200,
+                ),
+            ),
+        )
+    );
+    tmw_assert_same( 0, count( $rows ), 'Metadata-only wrappers should never be treated as stats rows.' );
+};
+
+$tests['stats_sync_parser_soft_failure_preserves_previous_data'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
+    $repository->save_offer_stats(
+        array(
+            'old|GLOBAL' => array( 'offer_id' => 'old', 'offer_name' => 'Old', 'country_name' => 'GLOBAL', 'clicks' => 5, 'conversions' => 1, 'payout' => 7, 'epc' => 1.4 ),
+        )
+    );
+
+    $GLOBALS['tmw_test_remote_get'] = static function () {
+        return array(
+            'response' => array( 'code' => 200 ),
+            'body'     => wp_json_encode(
+                array(
+                    'response' => array(
+                        'data' => array(
+                            array(
+                                'Stat' => array( 'clicks' => 30, 'conversions' => 2, 'payout' => 15 ),
+                                'Country' => array( 'name' => 'US' ),
+                            ),
+                        ),
+                    ),
+                )
+            ),
+        );
+    };
+
+    $client = new TMW_CR_Slot_CR_API_Client( 'apikey' );
+    $result = TMW_CR_Slot_Stats_Sync_Service::sync( $client, $repository, array( 'preset' => '7d' ) );
+    tmw_assert_true( ! is_wp_error( $result ), 'Parser soft failure should return a non-error sync result.' );
+    tmw_assert_same( 1, (int) ( $result['last_stats_raw_rows'] ?? 0 ), 'Raw rows should still report detected candidate rows.' );
+    tmw_assert_same( 0, (int) ( $result['last_stats_imported_rows'] ?? 0 ), 'Rows without offer_id should remain skipped.' );
+    tmw_assert_true( ! empty( $result['preserved_previous'] ), 'raw>0 and imported=0 should preserve previous stats.' );
+
+    $stored = $repository->get_offer_stats();
+    tmw_assert_true( isset( $stored['old|GLOBAL'] ), 'Existing stats should remain stored on parser soft failure.' );
+    $meta = $repository->get_stats_meta();
+    tmw_assert_same( 'parser_mismatch', (string) ( $meta['last_stats_soft_failure'] ?? '' ), 'Meta should store parser soft-failure reason.' );
+    tmw_assert_true( ! empty( $meta['last_stats_preserved_previous'] ), 'Meta should mark preserved_previous for parser mismatch.' );
+};
+
+$tests['stats_sync_imports_real_grouped_rows_and_normalizes_country'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
+    $GLOBALS['tmw_test_remote_get'] = static function () {
+        return array(
+            'response' => array( 'code' => 200 ),
+            'body'     => wp_json_encode(
+                array(
+                    'response' => array(
+                        'data' => array(
+                            'data' => array(
+                                array(
+                                    'stat' => array( 'offer_id' => '500', 'clicks' => '20', 'conversions' => '2', 'payout' => '30.00', 'payout_type' => 'CPA' ),
+                                    'offer' => array( 'name' => 'Offer 500' ),
+                                    'country' => array( 'name' => '' ),
+                                ),
+                            ),
+                        ),
+                    ),
+                )
+            ),
+        );
+    };
+    $client = new TMW_CR_Slot_CR_API_Client( 'apikey' );
+    $result = TMW_CR_Slot_Stats_Sync_Service::sync( $client, $repository, array( 'preset' => '7d' ) );
+    tmw_assert_true( ! is_wp_error( $result ), 'Grouped rows in nested envelope should sync without error.' );
+    tmw_assert_same( 1, (int) ( $result['last_stats_imported_rows'] ?? 0 ), 'Grouped row should import once offer_id is present.' );
+    tmw_assert_same( 'root.response.data.data.list', (string) ( $result['last_stats_response_shape'] ?? '' ), 'Shape diagnostics should track nested envelope path.' );
+
+    $stored = $repository->get_offer_stats();
+    tmw_assert_true( isset( $stored['500|GLOBAL'] ), 'Empty country should normalize to GLOBAL.' );
+    tmw_assert_same( 20, (int) $stored['500|GLOBAL']['clicks'], 'Numeric clicks should be sanitized and stored.' );
+};
+
+$tests['performance_tab_shows_stats_parser_diagnostics'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'cr_api_key' => 'secure', 'rotation_mode' => 'safe_hybrid_score', 'optimization_enabled' => 1 ) );
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
+    $repository->save_synced_offers( array( '901' => array( 'id' => '901', 'name' => 'Offer 901', 'status' => 'active', 'payout_type' => 'cpa' ) ) );
+    $repository->save_offer_stats( array( '901|GLOBAL' => array( 'offer_id' => '901', 'offer_name' => 'Offer 901', 'country_name' => 'GLOBAL', 'clicks' => 10, 'conversions' => 1, 'payout' => 9, 'epc' => 0.9, 'payout_type' => 'cpa' ) ) );
+    $repository->save_stats_meta( array( 'last_stats_response_shape' => 'root.response.data.list', 'last_stats_sample_row_keys' => 'Stat,Offer,Country', 'last_stats_soft_failure' => 'parser_mismatch', 'last_stats_preserved_previous' => 1 ) );
+    $_GET = array( 'tab' => 'performance' );
+    $page = new TMW_CR_Slot_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repository, 'sidebar' );
+    ob_start();
+    $page->render_page();
+    $html = ob_get_clean();
+    tmw_assert_contains( 'Shape: root.response.data.list', $html, 'Performance tab should show stats response shape diagnostics.' );
+    tmw_assert_contains( 'Parser soft-failure preserved previous stats', $html, 'Performance tab should show preserved-previous soft-failure badge.' );
+};
+
 $tests['runtime_ranking_modes_and_country_fallback'] = function() {
     tmw_reset_test_state();
     $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );

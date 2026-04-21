@@ -1054,15 +1054,15 @@ $tests['dashboard_filter_model_and_extended_offer_filters'] = function() {
     $settings = array( 'slot_offer_ids' => array( '31', '32' ) );
     $result = $repository->get_filtered_synced_offers_for_admin(
         array(
-            'tag' => 'vip',
-            'vertical' => 'casino',
-            'payout_type' => 'cpa',
-            'performs_in' => 'US',
-            'optimized_for' => 'mobile',
-            'accepted_country' => 'US',
-            'niche' => 'slots',
-            'status' => 'active',
-            'promotion_method' => 'seo',
+            'tag' => array( 'vip' ),
+            'vertical' => array( 'casino' ),
+            'payout_type' => array( 'cpa' ),
+            'performs_in' => array( 'US' ),
+            'optimized_for' => array( 'mobile' ),
+            'accepted_country' => array( 'US' ),
+            'niche' => array( 'slots' ),
+            'status' => array( 'active' ),
+            'promotion_method' => array( 'seo' ),
             'page' => 1,
             'per_page' => 25,
         ),
@@ -1104,13 +1104,13 @@ $tests['dashboard_filters_backward_compatibility_and_override_fallback'] = funct
 
     $result = $repository->get_filtered_synced_offers_for_admin(
         array(
-            'tag' => 'legacy-tag',
-            'vertical' => 'casino',
-            'performs_in' => 'US',
-            'optimized_for' => 'mobile',
-            'accepted_country' => 'US',
-            'niche' => 'slots',
-            'promotion_method' => 'seo',
+            'tag' => array( 'legacy-tag' ),
+            'vertical' => array( 'casino' ),
+            'performs_in' => array( 'US' ),
+            'optimized_for' => array( 'mobile' ),
+            'accepted_country' => array( 'US' ),
+            'niche' => array( 'slots' ),
+            'promotion_method' => array( 'seo' ),
         ),
         array()
     );
@@ -1157,14 +1157,47 @@ $tests['offers_tab_renders_expanded_filter_controls'] = function() {
     $page->render_page();
     $html = ob_get_clean();
 
-    tmw_assert_contains( 'name="tag"', $html, 'Offers tab should render Tag filter select.' );
-    tmw_assert_contains( 'name="vertical"', $html, 'Offers tab should render Vertical filter select.' );
-    tmw_assert_contains( 'name="performs_in"', $html, 'Offers tab should render Performs In filter select.' );
-    tmw_assert_contains( 'name="optimized_for"', $html, 'Offers tab should render Optimized For filter select.' );
-    tmw_assert_contains( 'name="accepted_country"', $html, 'Offers tab should render Accepted Country filter select.' );
-    tmw_assert_contains( 'name="niche"', $html, 'Offers tab should render Niche filter select.' );
-    tmw_assert_contains( 'name="promotion_method"', $html, 'Offers tab should render Promotion Method filter select.' );
+    tmw_assert_contains( 'name="tag[]"', $html, 'Offers tab should render Tag filter panel checkboxes.' );
+    tmw_assert_contains( 'name="vertical[]"', $html, 'Offers tab should render Vertical filter panel checkboxes.' );
+    tmw_assert_contains( 'name="performs_in[]"', $html, 'Offers tab should render Performs In filter panel checkboxes.' );
+    tmw_assert_contains( 'name="optimized_for[]"', $html, 'Offers tab should render Optimized For filter panel checkboxes.' );
+    tmw_assert_contains( 'name="accepted_country[]"', $html, 'Offers tab should render Accepted Country filter panel checkboxes.' );
+    tmw_assert_contains( 'name="niche[]"', $html, 'Offers tab should render Niche filter panel checkboxes.' );
+    tmw_assert_contains( 'name="promotion_method[]"', $html, 'Offers tab should render Promotion Method filter panel checkboxes.' );
+    tmw_assert_contains( 'tmw-cr-filter-panel__clear', $html, 'Offers tab should render panel Clear All actions.' );
     tmw_assert_contains( 'Clear all', $html, 'Offers tab should render clear-all action.' );
+};
+
+$tests['dashboard_local_metadata_layer_preserves_missing_api_families'] = function() {
+    tmw_reset_test_state();
+
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repository->save_synced_offers(
+        array(
+            '601' => array(
+                'id' => '601',
+                'name' => 'Rich Meta Offer',
+                'status' => 'active',
+                'tags' => array( 'vip' ),
+                'vertical' => 'casino',
+                'performs_in' => array( 'US' ),
+                'accepted_countries' => array( 'US' ),
+            ),
+        )
+    );
+    $repository->save_synced_offers(
+        array(
+            '601' => array(
+                'id' => '601',
+                'name' => 'Missing Meta Offer',
+                'status' => 'active',
+            ),
+        )
+    );
+
+    $model = $repository->get_dashboard_filter_model();
+    tmw_assert_true( in_array( 'vip', (array) $model['supported']['tag'], true ), 'Local metadata layer should keep prior synced tag metadata when API payload is sparse.' );
+    tmw_assert_true( in_array( 'US', (array) $model['supported']['performs_in'], true ), 'Local metadata layer should keep prior country metadata when API payload is sparse.' );
 };
 
 $tests['render_page_shows_dashboard_tabs_and_sections'] = function() {

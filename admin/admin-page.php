@@ -71,6 +71,13 @@ class TMW_CR_Slot_Admin_Page {
             array(),
             TMW_CR_SLOT_BANNER_VERSION
         );
+        wp_enqueue_script(
+            'tmw-cr-slot-admin-dashboard',
+            TMW_CR_Slot_Sidebar_Banner::asset_url( 'assets/js/admin-dashboard.js' ),
+            array(),
+            TMW_CR_SLOT_BANNER_VERSION,
+            true
+        );
     }
 
     /**
@@ -507,19 +514,20 @@ class TMW_CR_Slot_Admin_Page {
      * @return void
      */
     protected function render_offers_tab( $settings ) {
+        $country_options = $this->get_country_options();
         $args = array(
             'search'            => isset( $_GET['search'] ) ? sanitize_text_field( wp_unslash( $_GET['search'] ) ) : '',
-            'tag'               => isset( $_GET['tag'] ) ? sanitize_text_field( wp_unslash( $_GET['tag'] ) ) : '',
-            'vertical'          => isset( $_GET['vertical'] ) ? sanitize_text_field( wp_unslash( $_GET['vertical'] ) ) : '',
-            'status'            => isset( $_GET['status'] ) ? sanitize_key( wp_unslash( $_GET['status'] ) ) : '',
+            'tag'               => $this->read_multi_query_values( 'tag' ),
+            'vertical'          => $this->read_multi_query_values( 'vertical' ),
+            'status'            => $this->read_multi_query_values( 'status', true ),
             'featured'          => isset( $_GET['featured'] ) ? sanitize_key( wp_unslash( $_GET['featured'] ) ) : '',
             'approval_required' => isset( $_GET['approval_required'] ) ? sanitize_key( wp_unslash( $_GET['approval_required'] ) ) : '',
-            'payout_type'       => isset( $_GET['payout_type'] ) ? sanitize_key( wp_unslash( $_GET['payout_type'] ) ) : '',
-            'performs_in'       => isset( $_GET['performs_in'] ) ? sanitize_text_field( wp_unslash( $_GET['performs_in'] ) ) : '',
-            'optimized_for'     => isset( $_GET['optimized_for'] ) ? sanitize_text_field( wp_unslash( $_GET['optimized_for'] ) ) : '',
-            'accepted_country'  => isset( $_GET['accepted_country'] ) ? sanitize_text_field( wp_unslash( $_GET['accepted_country'] ) ) : '',
-            'niche'             => isset( $_GET['niche'] ) ? sanitize_text_field( wp_unslash( $_GET['niche'] ) ) : '',
-            'promotion_method'  => isset( $_GET['promotion_method'] ) ? sanitize_text_field( wp_unslash( $_GET['promotion_method'] ) ) : '',
+            'payout_type'       => $this->read_multi_query_values( 'payout_type', true ),
+            'performs_in'       => $this->read_multi_query_values( 'performs_in', true ),
+            'optimized_for'     => $this->read_multi_query_values( 'optimized_for' ),
+            'accepted_country'  => $this->read_multi_query_values( 'accepted_country', true ),
+            'niche'             => $this->read_multi_query_values( 'niche' ),
+            'promotion_method'  => $this->read_multi_query_values( 'promotion_method' ),
             'image_status'      => isset( $_GET['image_status'] ) ? sanitize_key( wp_unslash( $_GET['image_status'] ) ) : '',
             'sort_by'           => isset( $_GET['sort_by'] ) ? sanitize_key( wp_unslash( $_GET['sort_by'] ) ) : 'name',
             'sort_order'        => isset( $_GET['sort_order'] ) ? sanitize_key( wp_unslash( $_GET['sort_order'] ) ) : 'asc',
@@ -532,29 +540,29 @@ class TMW_CR_Slot_Admin_Page {
         $result         = $this->offer_repository->get_filtered_synced_offers_for_admin( $args, $settings );
         $items          = $result['items'];
         $country        = strtoupper( TMW_CR_Slot_Geo_Helper::get_country_code() );
-        $tag_options = $this->build_filter_options( 'Tag: any', (array) ( $filter_model['supported']['tag'] ?? array() ) );
-        $vertical_options = $this->build_filter_options( 'Vertical: any', (array) ( $filter_model['supported']['vertical'] ?? array() ) );
-        $payout_options = $this->build_filter_options( 'Payout type: any', (array) ( $filter_model['supported']['payout_type'] ?? array() ) );
-        $performs_in_options = $this->build_filter_options( 'Performs in: any', (array) ( $filter_model['supported']['performs_in'] ?? array() ) );
-        $optimized_for_options = $this->build_filter_options( 'Optimized for: any', (array) ( $filter_model['supported']['optimized_for'] ?? array() ) );
-        $accepted_country_options = $this->build_filter_options( 'Accepted country: any', (array) ( $filter_model['supported']['accepted_country'] ?? array() ) );
-        $niche_options = $this->build_filter_options( 'Niche: any', (array) ( $filter_model['supported']['niche'] ?? array() ) );
-        $status_options = $this->build_filter_options( 'Status: any', (array) ( $filter_model['supported']['status'] ?? array() ) );
-        $promotion_options = $this->build_filter_options( 'Promotion method: any', (array) ( $filter_model['supported']['promotion_method'] ?? array() ) );
+        $tag_options = $this->build_filter_option_map( (array) ( $filter_model['supported']['tag'] ?? array() ) );
+        $vertical_options = $this->build_filter_option_map( (array) ( $filter_model['supported']['vertical'] ?? array() ) );
+        $payout_options = $this->build_filter_option_map( (array) ( $filter_model['supported']['payout_type'] ?? array() ) );
+        $performs_in_options = $this->build_filter_option_map( (array) ( $filter_model['supported']['performs_in'] ?? array() ), $country_options );
+        $optimized_for_options = $this->build_filter_option_map( (array) ( $filter_model['supported']['optimized_for'] ?? array() ) );
+        $accepted_country_options = $country_options;
+        $niche_options = $this->build_filter_option_map( (array) ( $filter_model['supported']['niche'] ?? array() ) );
+        $status_options = $this->build_filter_option_map( (array) ( $filter_model['supported']['status'] ?? array() ) );
+        $promotion_options = $this->build_filter_option_map( (array) ( $filter_model['supported']['promotion_method'] ?? array() ) );
         ?>
-        <form method="get" class="tmw-cr-filters">
+        <form method="get" class="tmw-cr-filters tmw-cr-filters--offers">
             <input type="hidden" name="page" value="tmw-cr-slot-sidebar-banner" />
             <input type="hidden" name="tab" value="offers" />
             <input type="search" name="search" value="<?php echo esc_attr( $args['search'] ); ?>" placeholder="<?php esc_attr_e( 'Search by offer name or id', 'tmw-cr-slot-sidebar-banner' ); ?>" />
-            <?php $this->render_filter_select( 'tag', $args['tag'], $tag_options ); ?>
-            <?php $this->render_filter_select( 'vertical', $args['vertical'], $vertical_options ); ?>
-            <?php $this->render_filter_select( 'payout_type', $args['payout_type'], $payout_options ); ?>
-            <?php $this->render_filter_select( 'performs_in', $args['performs_in'], $performs_in_options ); ?>
-            <?php $this->render_filter_select( 'optimized_for', $args['optimized_for'], $optimized_for_options ); ?>
-            <?php $this->render_filter_select( 'accepted_country', $args['accepted_country'], $accepted_country_options ); ?>
-            <?php $this->render_filter_select( 'niche', $args['niche'], $niche_options ); ?>
-            <?php $this->render_filter_select( 'status', $args['status'], $status_options ); ?>
-            <?php $this->render_filter_select( 'promotion_method', $args['promotion_method'], $promotion_options ); ?>
+            <?php $this->render_filter_panel( 'tag', __( 'Tag', 'tmw-cr-slot-sidebar-banner' ), $args['tag'], $tag_options, true ); ?>
+            <?php $this->render_filter_panel( 'vertical', __( 'Vertical', 'tmw-cr-slot-sidebar-banner' ), $args['vertical'], $vertical_options, true ); ?>
+            <?php $this->render_filter_panel( 'payout_type', __( 'Payout Type', 'tmw-cr-slot-sidebar-banner' ), $args['payout_type'], $payout_options, false ); ?>
+            <?php $this->render_filter_panel( 'performs_in', __( 'Performs In', 'tmw-cr-slot-sidebar-banner' ), $args['performs_in'], $performs_in_options, true ); ?>
+            <?php $this->render_filter_panel( 'optimized_for', __( 'Optimized For', 'tmw-cr-slot-sidebar-banner' ), $args['optimized_for'], $optimized_for_options, true ); ?>
+            <?php $this->render_filter_panel( 'accepted_country', __( 'Accepted Country', 'tmw-cr-slot-sidebar-banner' ), $args['accepted_country'], $accepted_country_options, true ); ?>
+            <?php $this->render_filter_panel( 'niche', __( 'Niche', 'tmw-cr-slot-sidebar-banner' ), $args['niche'], $niche_options, true ); ?>
+            <?php $this->render_filter_panel( 'status', __( 'Status', 'tmw-cr-slot-sidebar-banner' ), $args['status'], $status_options, false ); ?>
+            <?php $this->render_filter_panel( 'promotion_method', __( 'Promotion Method', 'tmw-cr-slot-sidebar-banner' ), $args['promotion_method'], $promotion_options, true ); ?>
             <?php $this->render_filter_select( 'featured', $args['featured'], array( '' => 'Featured: any', 'yes' => 'Featured: yes', 'no' => 'Featured: no' ) ); ?>
             <?php $this->render_filter_select( 'approval_required', $args['approval_required'], array( '' => 'Approval: any', 'yes' => 'Approval required', 'no' => 'Approval not required' ) ); ?>
             <?php $this->render_filter_select( 'image_status', $args['image_status'], array( '' => 'Image status: any', 'manual_override' => 'Manual override', 'auto_local' => 'Auto local', 'auto_remote' => 'Auto remote', 'placeholder_only' => 'Placeholder' ) ); ?>
@@ -1080,22 +1088,93 @@ class TMW_CR_Slot_Admin_Page {
     }
 
     /**
-     * @param string            $default_label Default label.
-     * @param array<int,string> $values Values.
+     * @param string            $name Filter name.
+     * @param string            $label Label.
+     * @param array<int,string> $selected Selected values.
+     * @param array<string,string> $options Options.
+     * @param bool              $searchable Searchable panel.
+     *
+     * @return void
+     */
+    protected function render_filter_panel( $name, $label, $selected, $options, $searchable ) {
+        $count = count( $selected );
+        ?>
+        <div class="tmw-cr-filter-panel" data-filter-name="<?php echo esc_attr( $name ); ?>">
+            <button type="button" class="button button-secondary tmw-cr-filter-panel__toggle" aria-expanded="false">
+                <span><?php echo esc_html( $label ); ?></span>
+                <span class="tmw-cr-filter-panel__count<?php echo $count > 0 ? '' : ' is-empty'; ?>"><?php echo esc_html( (string) $count ); ?></span>
+            </button>
+            <div class="tmw-cr-filter-panel__card" hidden>
+                <div class="tmw-cr-filter-panel__actions">
+                    <?php if ( $searchable ) : ?>
+                        <input type="search" class="tmw-cr-filter-panel__search" placeholder="<?php esc_attr_e( 'Search…', 'tmw-cr-slot-sidebar-banner' ); ?>" />
+                    <?php endif; ?>
+                    <button type="button" class="button-link tmw-cr-filter-panel__clear"><?php esc_html_e( 'Clear All', 'tmw-cr-slot-sidebar-banner' ); ?></button>
+                </div>
+                <div class="tmw-cr-filter-panel__list">
+                    <?php foreach ( $options as $option_value => $option_label ) : ?>
+                        <label data-filter-label="<?php echo esc_attr( strtolower( $option_label ) ); ?>">
+                            <input type="checkbox" name="<?php echo esc_attr( $name ); ?>[]" value="<?php echo esc_attr( $option_value ); ?>" <?php checked( in_array( $option_value, $selected, true ) ); ?> />
+                            <span><?php echo esc_html( $option_label ); ?></span>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+        </div>
+        <?php
+    }
+
+    /**
+     * @param array<int,string>       $values Values.
+     * @param array<string,string>|null $override_labels Label map.
      *
      * @return array<string,string>
      */
-    protected function build_filter_options( $default_label, $values ) {
-        $options = array( '' => $default_label );
+    protected function build_filter_option_map( $values, $override_labels = null ) {
+        $options = array();
         foreach ( $values as $value ) {
             $value = trim( (string) $value );
             if ( '' === $value ) {
                 continue;
             }
-            $options[ $value ] = strtoupper( $value ) === $value ? $value : ucwords( str_replace( array( '_', '-' ), ' ', $value ) );
+            $options[ $value ] = isset( $override_labels[ $value ] ) ? $override_labels[ $value ] : ( strtoupper( $value ) === $value ? $value : ucwords( str_replace( array( '_', '-' ), ' ', $value ) ) );
         }
 
         return $options;
+    }
+
+    /**
+     * @param string $key Query key.
+     * @param bool   $force_uppercase Uppercase items.
+     *
+     * @return array<int,string>
+     */
+    protected function read_multi_query_values( $key, $force_uppercase = false ) {
+        if ( ! isset( $_GET[ $key ] ) ) {
+            return array();
+        }
+        $raw = wp_unslash( $_GET[ $key ] );
+        $raw = is_array( $raw ) ? $raw : explode( ',', (string) $raw );
+        $values = array();
+        foreach ( $raw as $value ) {
+            $value = sanitize_text_field( (string) $value );
+            $value = trim( $value );
+            if ( '' === $value ) {
+                continue;
+            }
+            $values[] = $force_uppercase ? strtoupper( $value ) : $value;
+        }
+
+        return array_values( array_unique( $values ) );
+    }
+
+    /**
+     * @return array<string,string>
+     */
+    protected function get_country_options() {
+        return array(
+            'US' => 'United States', 'CA' => 'Canada', 'GB' => 'United Kingdom', 'AU' => 'Australia', 'DE' => 'Germany', 'FR' => 'France', 'IT' => 'Italy', 'ES' => 'Spain', 'BR' => 'Brazil', 'MX' => 'Mexico', 'JP' => 'Japan', 'IN' => 'India', 'NL' => 'Netherlands', 'SE' => 'Sweden', 'NO' => 'Norway', 'DK' => 'Denmark', 'FI' => 'Finland', 'IE' => 'Ireland', 'CH' => 'Switzerland', 'AT' => 'Austria', 'BE' => 'Belgium', 'PL' => 'Poland', 'PT' => 'Portugal', 'NZ' => 'New Zealand', 'ZA' => 'South Africa', 'AR' => 'Argentina', 'CL' => 'Chile', 'CO' => 'Colombia', 'PE' => 'Peru', 'VE' => 'Venezuela', 'EC' => 'Ecuador', 'UY' => 'Uruguay', 'PY' => 'Paraguay', 'BO' => 'Bolivia', 'CR' => 'Costa Rica', 'PA' => 'Panama', 'DO' => 'Dominican Republic', 'PR' => 'Puerto Rico', 'GT' => 'Guatemala', 'SV' => 'El Salvador', 'HN' => 'Honduras', 'NI' => 'Nicaragua', 'JM' => 'Jamaica', 'TT' => 'Trinidad and Tobago', 'IS' => 'Iceland', 'LU' => 'Luxembourg', 'CZ' => 'Czechia', 'SK' => 'Slovakia', 'HU' => 'Hungary', 'RO' => 'Romania', 'BG' => 'Bulgaria', 'HR' => 'Croatia', 'SI' => 'Slovenia', 'GR' => 'Greece', 'TR' => 'Turkey', 'CY' => 'Cyprus', 'MT' => 'Malta', 'EE' => 'Estonia', 'LV' => 'Latvia', 'LT' => 'Lithuania', 'UA' => 'Ukraine', 'MD' => 'Moldova', 'RS' => 'Serbia', 'ME' => 'Montenegro', 'AL' => 'Albania', 'MK' => 'North Macedonia', 'BA' => 'Bosnia and Herzegovina', 'IL' => 'Israel', 'AE' => 'United Arab Emirates', 'SA' => 'Saudi Arabia', 'QA' => 'Qatar', 'KW' => 'Kuwait', 'BH' => 'Bahrain', 'OM' => 'Oman', 'JO' => 'Jordan', 'LB' => 'Lebanon', 'EG' => 'Egypt', 'MA' => 'Morocco', 'DZ' => 'Algeria', 'TN' => 'Tunisia', 'KE' => 'Kenya', 'NG' => 'Nigeria', 'GH' => 'Ghana', 'UG' => 'Uganda', 'TZ' => 'Tanzania', 'RW' => 'Rwanda', 'ET' => 'Ethiopia', 'PK' => 'Pakistan', 'BD' => 'Bangladesh', 'LK' => 'Sri Lanka', 'NP' => 'Nepal', 'TH' => 'Thailand', 'VN' => 'Vietnam', 'MY' => 'Malaysia', 'SG' => 'Singapore', 'PH' => 'Philippines', 'ID' => 'Indonesia', 'KR' => 'South Korea', 'TW' => 'Taiwan', 'HK' => 'Hong Kong', 'CN' => 'China'
+        );
     }
 
     /**

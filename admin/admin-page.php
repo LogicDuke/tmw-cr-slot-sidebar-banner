@@ -172,6 +172,13 @@ class TMW_CR_Slot_Admin_Page {
                     'allowed_countries'  => isset( $override['allowed_countries'] ) ? sanitize_text_field( (string) $override['allowed_countries'] ) : '',
                     'blocked_countries'  => isset( $override['blocked_countries'] ) ? sanitize_text_field( (string) $override['blocked_countries'] ) : '',
                     'notes'              => isset( $override['notes'] ) ? sanitize_textarea_field( (string) $override['notes'] ) : '',
+                    'dashboard_tags'     => isset( $override['dashboard_tags'] ) ? sanitize_text_field( (string) $override['dashboard_tags'] ) : '',
+                    'dashboard_vertical' => isset( $override['dashboard_vertical'] ) ? sanitize_text_field( (string) $override['dashboard_vertical'] ) : '',
+                    'dashboard_performs_in' => isset( $override['dashboard_performs_in'] ) ? sanitize_text_field( (string) $override['dashboard_performs_in'] ) : '',
+                    'dashboard_optimized_for' => isset( $override['dashboard_optimized_for'] ) ? sanitize_text_field( (string) $override['dashboard_optimized_for'] ) : '',
+                    'dashboard_accepted_countries' => isset( $override['dashboard_accepted_countries'] ) ? sanitize_text_field( (string) $override['dashboard_accepted_countries'] ) : '',
+                    'dashboard_niche'    => isset( $override['dashboard_niche'] ) ? sanitize_text_field( (string) $override['dashboard_niche'] ) : '',
+                    'dashboard_promotion_method' => isset( $override['dashboard_promotion_method'] ) ? sanitize_text_field( (string) $override['dashboard_promotion_method'] ) : '',
                 );
             }
         }
@@ -502,10 +509,17 @@ class TMW_CR_Slot_Admin_Page {
     protected function render_offers_tab( $settings ) {
         $args = array(
             'search'            => isset( $_GET['search'] ) ? sanitize_text_field( wp_unslash( $_GET['search'] ) ) : '',
+            'tag'               => isset( $_GET['tag'] ) ? sanitize_text_field( wp_unslash( $_GET['tag'] ) ) : '',
+            'vertical'          => isset( $_GET['vertical'] ) ? sanitize_text_field( wp_unslash( $_GET['vertical'] ) ) : '',
             'status'            => isset( $_GET['status'] ) ? sanitize_key( wp_unslash( $_GET['status'] ) ) : '',
             'featured'          => isset( $_GET['featured'] ) ? sanitize_key( wp_unslash( $_GET['featured'] ) ) : '',
             'approval_required' => isset( $_GET['approval_required'] ) ? sanitize_key( wp_unslash( $_GET['approval_required'] ) ) : '',
             'payout_type'       => isset( $_GET['payout_type'] ) ? sanitize_key( wp_unslash( $_GET['payout_type'] ) ) : '',
+            'performs_in'       => isset( $_GET['performs_in'] ) ? sanitize_text_field( wp_unslash( $_GET['performs_in'] ) ) : '',
+            'optimized_for'     => isset( $_GET['optimized_for'] ) ? sanitize_text_field( wp_unslash( $_GET['optimized_for'] ) ) : '',
+            'accepted_country'  => isset( $_GET['accepted_country'] ) ? sanitize_text_field( wp_unslash( $_GET['accepted_country'] ) ) : '',
+            'niche'             => isset( $_GET['niche'] ) ? sanitize_text_field( wp_unslash( $_GET['niche'] ) ) : '',
+            'promotion_method'  => isset( $_GET['promotion_method'] ) ? sanitize_text_field( wp_unslash( $_GET['promotion_method'] ) ) : '',
             'image_status'      => isset( $_GET['image_status'] ) ? sanitize_key( wp_unslash( $_GET['image_status'] ) ) : '',
             'sort_by'           => isset( $_GET['sort_by'] ) ? sanitize_key( wp_unslash( $_GET['sort_by'] ) ) : 'name',
             'sort_order'        => isset( $_GET['sort_order'] ) ? sanitize_key( wp_unslash( $_GET['sort_order'] ) ) : 'asc',
@@ -514,20 +528,38 @@ class TMW_CR_Slot_Admin_Page {
         );
 
         $legacy_catalog = TMW_CR_Slot_Sidebar_Banner::get_offer_catalog_defaults();
+        $filter_model    = $this->offer_repository->get_dashboard_filter_model();
         $result         = $this->offer_repository->get_filtered_synced_offers_for_admin( $args, $settings );
         $items          = $result['items'];
         $country        = strtoupper( TMW_CR_Slot_Geo_Helper::get_country_code() );
+        $tag_options = $this->build_filter_options( 'Tag: any', (array) ( $filter_model['supported']['tag'] ?? array() ) );
+        $vertical_options = $this->build_filter_options( 'Vertical: any', (array) ( $filter_model['supported']['vertical'] ?? array() ) );
+        $payout_options = $this->build_filter_options( 'Payout type: any', (array) ( $filter_model['supported']['payout_type'] ?? array() ) );
+        $performs_in_options = $this->build_filter_options( 'Performs in: any', (array) ( $filter_model['supported']['performs_in'] ?? array() ) );
+        $optimized_for_options = $this->build_filter_options( 'Optimized for: any', (array) ( $filter_model['supported']['optimized_for'] ?? array() ) );
+        $accepted_country_options = $this->build_filter_options( 'Accepted country: any', (array) ( $filter_model['supported']['accepted_country'] ?? array() ) );
+        $niche_options = $this->build_filter_options( 'Niche: any', (array) ( $filter_model['supported']['niche'] ?? array() ) );
+        $status_options = $this->build_filter_options( 'Status: any', (array) ( $filter_model['supported']['status'] ?? array() ) );
+        $promotion_options = $this->build_filter_options( 'Promotion method: any', (array) ( $filter_model['supported']['promotion_method'] ?? array() ) );
         ?>
         <form method="get" class="tmw-cr-filters">
             <input type="hidden" name="page" value="tmw-cr-slot-sidebar-banner" />
             <input type="hidden" name="tab" value="offers" />
             <input type="search" name="search" value="<?php echo esc_attr( $args['search'] ); ?>" placeholder="<?php esc_attr_e( 'Search by offer name or id', 'tmw-cr-slot-sidebar-banner' ); ?>" />
-            <?php $this->render_filter_select( 'status', $args['status'], array( '' => 'All status', 'active' => 'Active', 'paused' => 'Paused' ) ); ?>
+            <?php $this->render_filter_select( 'tag', $args['tag'], $tag_options ); ?>
+            <?php $this->render_filter_select( 'vertical', $args['vertical'], $vertical_options ); ?>
+            <?php $this->render_filter_select( 'payout_type', $args['payout_type'], $payout_options ); ?>
+            <?php $this->render_filter_select( 'performs_in', $args['performs_in'], $performs_in_options ); ?>
+            <?php $this->render_filter_select( 'optimized_for', $args['optimized_for'], $optimized_for_options ); ?>
+            <?php $this->render_filter_select( 'accepted_country', $args['accepted_country'], $accepted_country_options ); ?>
+            <?php $this->render_filter_select( 'niche', $args['niche'], $niche_options ); ?>
+            <?php $this->render_filter_select( 'status', $args['status'], $status_options ); ?>
+            <?php $this->render_filter_select( 'promotion_method', $args['promotion_method'], $promotion_options ); ?>
             <?php $this->render_filter_select( 'featured', $args['featured'], array( '' => 'Featured: any', 'yes' => 'Featured: yes', 'no' => 'Featured: no' ) ); ?>
             <?php $this->render_filter_select( 'approval_required', $args['approval_required'], array( '' => 'Approval: any', 'yes' => 'Approval required', 'no' => 'Approval not required' ) ); ?>
-            <?php $this->render_filter_select( 'payout_type', $args['payout_type'], array( '' => 'Payout type: any', 'cpa' => 'CPA', 'revshare' => 'Revshare', 'hybrid' => 'Hybrid', 'cpa_both' => 'CPA both' ) ); ?>
             <?php $this->render_filter_select( 'image_status', $args['image_status'], array( '' => 'Image status: any', 'manual_override' => 'Manual override', 'auto_local' => 'Auto local', 'auto_remote' => 'Auto remote', 'placeholder_only' => 'Placeholder' ) ); ?>
             <?php submit_button( __( 'Apply', 'tmw-cr-slot-sidebar-banner' ), 'secondary', '', false ); ?>
+            <a class="button button-secondary" href="<?php echo esc_url( add_query_arg( array( 'page' => 'tmw-cr-slot-sidebar-banner', 'tab' => 'offers' ), admin_url( 'options-general.php' ) ) ); ?>"><?php esc_html_e( 'Clear all', 'tmw-cr-slot-sidebar-banner' ); ?></a>
         </form>
 
         <table class="widefat striped">
@@ -1045,6 +1077,25 @@ class TMW_CR_Slot_Admin_Page {
             echo '<option value="' . esc_attr( $option_value ) . '" ' . selected( $value, $option_value, false ) . '>' . esc_html( $label ) . '</option>';
         }
         echo '</select>';
+    }
+
+    /**
+     * @param string            $default_label Default label.
+     * @param array<int,string> $values Values.
+     *
+     * @return array<string,string>
+     */
+    protected function build_filter_options( $default_label, $values ) {
+        $options = array( '' => $default_label );
+        foreach ( $values as $value ) {
+            $value = trim( (string) $value );
+            if ( '' === $value ) {
+                continue;
+            }
+            $options[ $value ] = strtoupper( $value ) === $value ? $value : ucwords( str_replace( array( '_', '-' ), ' ', $value ) );
+        }
+
+        return $options;
     }
 
     /**

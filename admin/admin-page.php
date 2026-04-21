@@ -294,16 +294,44 @@ class TMW_CR_Slot_Admin_Page {
             $this->redirect_with_notice( 'error', $result->get_error_message() );
         }
 
-        $message = sprintf(
-            __( '[TMW-CR-STATS] Stats sync complete. Raw rows: %1$d, Imported rows: %2$d, Range: %3$s to %4$s.', 'tmw-cr-slot-sidebar-banner' ),
-            (int) ( $result['last_stats_raw_rows'] ?? 0 ),
-            (int) ( $result['last_stats_imported_rows'] ?? 0 ),
-            (string) ( $result['last_stats_date_start'] ?? '' ),
-            (string) ( $result['last_stats_date_end'] ?? '' )
-        );
+        $raw_rows = (int) ( $result['last_stats_raw_rows'] ?? 0 );
+        $imported_rows = (int) ( $result['last_stats_imported_rows'] ?? 0 );
+        $date_start = (string) ( $result['last_stats_date_start'] ?? '' );
+        $date_end = (string) ( $result['last_stats_date_end'] ?? '' );
+        $shape = sanitize_text_field( (string) ( $result['last_stats_response_shape'] ?? 'unknown' ) );
+        $preserved = ! empty( $result['preserved_previous'] );
 
-        if ( ! empty( $result['preserved_previous'] ) ) {
-            $message .= ' ' . __( 'Previous local stats were preserved due to a parser mismatch.', 'tmw-cr-slot-sidebar-banner' );
+        if ( $raw_rows > 0 && $imported_rows > 0 ) {
+            $message = sprintf(
+                __( '[TMW-CR-STATS] API success with importable rows. Raw rows: %1$d, Imported rows: %2$d, Range: %3$s to %4$s, Shape: %5$s.', 'tmw-cr-slot-sidebar-banner' ),
+                $raw_rows,
+                $imported_rows,
+                $date_start,
+                $date_end,
+                $shape
+            );
+        } elseif ( 0 === $raw_rows ) {
+            $message = sprintf(
+                __( '[TMW-CR-STATS] API success with no rows returned. Raw rows: %1$d, Imported rows: %2$d, Range: %3$s to %4$s, Shape: %5$s.', 'tmw-cr-slot-sidebar-banner' ),
+                $raw_rows,
+                $imported_rows,
+                $date_start,
+                $date_end,
+                $shape
+            );
+        } else {
+            $message = sprintf(
+                __( '[TMW-CR-STATS] API success but parser mismatch (0 imported). Raw rows: %1$d, Imported rows: %2$d, Range: %3$s to %4$s, Shape: %5$s.', 'tmw-cr-slot-sidebar-banner' ),
+                $raw_rows,
+                $imported_rows,
+                $date_start,
+                $date_end,
+                $shape
+            );
+        }
+
+        if ( $preserved ) {
+            $message .= ' ' . __( 'Previous local stats were preserved due to parser soft-failure.', 'tmw-cr-slot-sidebar-banner' );
         }
 
         $this->redirect_with_notice( 'success', $message );
@@ -728,17 +756,22 @@ class TMW_CR_Slot_Admin_Page {
     protected function render_performance_tab() {
         $settings   = TMW_CR_Slot_Sidebar_Banner::get_settings();
         $country    = isset( $_GET['country'] ) ? sanitize_text_field( wp_unslash( $_GET['country'] ) ) : '';
+        $status_filter = isset( $_GET['status'] ) ? sanitize_key( wp_unslash( $_GET['status'] ) ) : '';
+        $payout_type_filter = isset( $_GET['payout_type'] ) ? sanitize_key( wp_unslash( $_GET['payout_type'] ) ) : '';
         $sort_by    = isset( $_GET['sort_by'] ) ? sanitize_key( wp_unslash( $_GET['sort_by'] ) ) : 'payout';
         $sort_order = isset( $_GET['sort_order'] ) ? sanitize_key( wp_unslash( $_GET['sort_order'] ) ) : 'desc';
         $rows       = $this->offer_repository->get_performance_rows(
             $country,
             array(
+                'status'     => $status_filter,
+                'payout_type'=> $payout_type_filter,
                 'sort_by'    => $sort_by,
                 'sort_order' => $sort_order,
             )
         );
         $summary = $this->offer_repository->get_performance_summary();
         $stats_meta = $this->offer_repository->get_stats_meta();
+        $filter_model = $this->offer_repository->get_dashboard_filter_model();
         $next_cron = wp_next_scheduled( TMW_CR_Slot_Sidebar_Banner::STATS_SYNC_CRON_HOOK );
         $explain_rows = $this->offer_repository->get_optimization_explain_rows( $country, $settings, 10 );
         ?>
@@ -765,6 +798,18 @@ class TMW_CR_Slot_Admin_Page {
             <input type="hidden" name="page" value="tmw-cr-slot-sidebar-banner" />
             <input type="hidden" name="tab" value="performance" />
             <label><?php esc_html_e( 'Country', 'tmw-cr-slot-sidebar-banner' ); ?> <input type="text" name="country" value="<?php echo esc_attr( $country ); ?>" placeholder="US / Canada / GLOBAL" /></label>
+            <?php
+            $status_options = array( '' => 'Status: any' );
+            foreach ( (array) ( $filter_model['supported']['status'] ?? array() ) as $status_option ) {
+                $status_options[ $status_option ] = strtoupper( $status_option );
+            }
+            $payout_options = array( '' => 'Payout type: any' );
+            foreach ( (array) ( $filter_model['supported']['payout_type'] ?? array() ) as $type_option ) {
+                $payout_options[ $type_option ] = strtoupper( str_replace( '_', ' ', $type_option ) );
+            }
+            ?>
+            <?php $this->render_filter_select( 'status', $status_filter, $status_options ); ?>
+            <?php $this->render_filter_select( 'payout_type', $payout_type_filter, $payout_options ); ?>
             <label><?php esc_html_e( 'Sort by', 'tmw-cr-slot-sidebar-banner' ); ?>
                 <select name="sort_by">
                     <option value="payout" <?php selected( $sort_by, 'payout' ); ?>>payout</option>
@@ -784,6 +829,19 @@ class TMW_CR_Slot_Admin_Page {
         </form>
 
         <p><strong>[TMW-CR-DASH]</strong> <?php echo esc_html( sprintf( 'Top offer: %s | Top country: %s | Total payout: %.2f', (string) $summary['top_offer_name'], (string) $summary['top_country_name'], (float) $summary['total_payout'] ) ); ?></p>
+        <p><strong>[TMW-CR-STATS]</strong> <?php echo esc_html( sprintf( 'Shape: %s | Sample keys: %s | Soft failure: %s', (string) ( $stats_meta['last_stats_response_shape'] ?? 'unknown' ), (string) ( $stats_meta['last_stats_sample_row_keys'] ?? 'n/a' ), (string) ( $stats_meta['last_stats_soft_failure'] ?? 'none' ) ) ); ?>
+            <?php if ( ! empty( $stats_meta['last_stats_preserved_previous'] ) ) : ?>
+                <span class="tmw-cr-badge tmw-cr-badge-warn"><?php esc_html_e( 'Parser soft-failure preserved previous stats', 'tmw-cr-slot-sidebar-banner' ); ?></span>
+            <?php endif; ?>
+        </p>
+        <details>
+            <summary><?php esc_html_e( '[TMW-CR-DASH] Operator filter roadmap scaffold', 'tmw-cr-slot-sidebar-banner' ); ?></summary>
+            <ul>
+                <?php foreach ( (array) ( $filter_model['todo'] ?? array() ) as $todo_key => $todo_message ) : ?>
+                    <li><strong><?php echo esc_html( ucwords( str_replace( '_', ' ', (string) $todo_key ) ) ); ?>:</strong> <?php echo esc_html( (string) $todo_message ); ?></li>
+                <?php endforeach; ?>
+            </ul>
+        </details>
 
         <table class="widefat striped">
             <thead>

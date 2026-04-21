@@ -3,7 +3,7 @@ Contributors: themilisofia
 Tags: affiliate marketing, crackrevenue, sidebar, banner, shortcode
 Requires at least: 5.8
 Tested up to: 6.4
-Stable tag: 1.9.0
+Stable tag: 1.8.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -40,6 +40,13 @@ Yes. Developers can hook into the `tmw_cr_slot_banner_offers` filter to provide 
 Yes. Version 1.3.0 ships with optimized PNG assets inside `assets/img/offers/` so the slot banner works out of the box. You can still override or extend the catalog with your own creatives via filters.
 
 == Changelog ==
+
+= 1.8.1 =
+* [TMW-CR-STATS] Hardened Affiliate_Report/getStats row extraction with allowlisted recursive envelope unwrapping (`response`, `data`, `results`, `report`, `rows`) and strict stats-row candidate detection.
+* [TMW-CR-STATS] Added parser diagnostics metadata (`last_stats_response_shape`, `last_stats_sample_row_keys`, `last_stats_soft_failure`, `last_stats_preserved_previous`) without storing raw response bodies.
+* [TMW-CR-STATS] Improved sync notice messaging for API-success-with-imports, API-success-no-rows, parser mismatch soft-failure, and preserved-previous outcomes.
+* [TMW-CR-DASH] Added Performance-tab parser diagnostics display and PDF-aligned operator filter scaffolding (supported: Status, Payout Type, Accepted Country; TODO stubs for unsupported fields).
+* [TMW-CR-TEST] Expanded tests for nested getStats envelope shapes, metadata-wrapper rejection, parser soft-failure preservation, and grouped-row imports.
 
 = 1.8.0 =
 * [TMW-CR-STATS] Added server-side CrakRevenue Affiliate_Report/getStats sync with local offer+country aggregation and diagnostics metadata.

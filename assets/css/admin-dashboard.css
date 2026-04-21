@@ -50,8 +50,9 @@
 }
 
 .tmw-cr-filter-panel__count {
-    background: #2271b1;
-    color: #fff;
+    background: #f0f6fc;
+    color: #1d4f7a;
+    border: 1px solid #c5d9ed;
     border-radius: 999px;
     min-width: 18px;
     text-align: center;
@@ -61,8 +62,7 @@
 }
 
 .tmw-cr-filter-panel__count.is-empty {
-    background: #dcdcde;
-    color: #3c434a;
+    display: none;
 }
 
 .tmw-cr-filter-panel__card {
@@ -82,6 +82,12 @@
     display: flex;
     align-items: center;
     gap: 10px;
+    margin-bottom: 8px;
+}
+
+.tmw-cr-filter-panel__title {
+    font-size: 13px;
+    font-weight: 600;
     margin-bottom: 8px;
 }
 

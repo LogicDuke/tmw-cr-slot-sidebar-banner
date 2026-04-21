@@ -28,8 +28,9 @@
         });
         const countNode = root.querySelector('.tmw-cr-filter-panel__count');
         if (countNode) {
-            countNode.textContent = String(count);
+            countNode.textContent = count > 0 ? String(count) : '';
             countNode.classList.toggle('is-empty', count === 0);
+            countNode.hidden = count === 0;
         }
     };
 

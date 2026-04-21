@@ -375,6 +375,7 @@ class TMW_CR_Slot_Offer_Repository {
             'status' => array(),
             'promotion_method' => array(),
         );
+        $seeded_supported = $this->get_dashboard_filter_seed_options();
         $todo = array();
 
         foreach ( $offers as $offer_id => $offer ) {
@@ -389,6 +390,19 @@ class TMW_CR_Slot_Offer_Repository {
                     }
                     $supported[ $field_key ][ $value ] = $value;
                 }
+            }
+        }
+
+        foreach ( $seeded_supported as $field_key => $seed_values ) {
+            if ( ! isset( $supported[ $field_key ] ) || ! is_array( $seed_values ) ) {
+                continue;
+            }
+            foreach ( $seed_values as $seed_value ) {
+                $seed_value = (string) $seed_value;
+                if ( '' === $seed_value ) {
+                    continue;
+                }
+                $supported[ $field_key ][ $seed_value ] = $seed_value;
             }
         }
 
@@ -1746,6 +1760,17 @@ class TMW_CR_Slot_Offer_Repository {
         }
 
         update_option( $this->dashboard_meta_option_key, $payload, false );
+    }
+
+    /**
+     * @return array<string,array<int,string>>
+     */
+    protected function get_dashboard_filter_seed_options() {
+        return array(
+            'tag' => array( 'New', 'Exclusive', 'Top Offer', 'Hot Pick' ),
+            'vertical' => array( 'Adult Gaming', 'Adult Paysite - VOD', 'AI', 'Cam', 'Dating', 'Fansite', 'Gaming', 'Health', 'Mainstream', 'Male Enhancement', 'Other' ),
+            'payout_type' => array( 'CPC', 'CPI', 'CPM', 'DOI', 'Multi-CPA', 'PPS', 'Revshare', 'Revshare Lifetime', 'SOI' ),
+        );
     }
 
     /**

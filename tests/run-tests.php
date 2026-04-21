@@ -1072,6 +1072,92 @@ $tests['dashboard_filter_model_and_extended_offer_filters'] = function() {
     tmw_assert_same( '31', (string) $result['items'][0]['id'], 'Extended dashboard filters should return expected offer.' );
 };
 
+$tests['dashboard_payout_filter_maps_revshare_to_cr_payout_values'] = function() {
+    tmw_reset_test_state();
+
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repository->save_synced_offers(
+        array(
+            '71' => array( 'id' => '71', 'name' => 'Rev Offer', 'status' => 'active', 'payout_type' => 'cpa_percentage' ),
+            '72' => array( 'id' => '72', 'name' => 'Lifetime Offer', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+        )
+    );
+
+    $model = $repository->get_dashboard_filter_model();
+    tmw_assert_true( in_array( 'revshare', (array) $model['supported']['payout_type'], true ), 'Payout filter model should expose canonical revshare option.' );
+    tmw_assert_true( ! in_array( 'cpa_percentage', (array) $model['supported']['payout_type'], true ), 'Raw payout type values should not leak into canonical filter options.' );
+
+    $result = $repository->get_filtered_synced_offers_for_admin(
+        array(
+            'payout_type' => array( 'revshare' ),
+        ),
+        array()
+    );
+
+    tmw_assert_same( 1, (int) $result['total'], 'Revshare filter should map to intended stored payout values.' );
+    tmw_assert_same( '71', (string) $result['items'][0]['id'], 'Revshare filter should return cpa_percentage offer.' );
+};
+
+$tests['dashboard_payout_filter_maps_revshare_lifetime_to_cr_payout_values'] = function() {
+    tmw_reset_test_state();
+
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repository->save_synced_offers(
+        array(
+            '81' => array( 'id' => '81', 'name' => 'Rev Offer', 'status' => 'active', 'payout_type' => 'cpa_percentage' ),
+            '82' => array( 'id' => '82', 'name' => 'Lifetime Offer', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+        )
+    );
+
+    $result = $repository->get_filtered_synced_offers_for_admin(
+        array(
+            'payout_type' => array( 'revshare_lifetime' ),
+        ),
+        array()
+    );
+
+    tmw_assert_same( 1, (int) $result['total'], 'Revshare Lifetime filter should map to intended stored payout values.' );
+    tmw_assert_same( '82', (string) $result['items'][0]['id'], 'Revshare Lifetime filter should return cpa_flat offer.' );
+};
+
+$tests['dashboard_combined_vertical_and_payout_filters_prevent_false_negatives'] = function() {
+    tmw_reset_test_state();
+
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repository->save_synced_offers(
+        array(
+            '91' => array( 'id' => '91', 'name' => 'Cam Rev Offer', 'status' => 'active', 'vertical' => 'cam', 'payout_type' => 'cpa_percentage' ),
+            '92' => array( 'id' => '92', 'name' => 'Casino Rev Offer', 'status' => 'active', 'vertical' => 'casino', 'payout_type' => 'cpa_percentage' ),
+        )
+    );
+
+    $result = $repository->get_filtered_synced_offers_for_admin(
+        array(
+            'vertical' => array( 'cam' ),
+            'payout_type' => array( 'revshare' ),
+        ),
+        array()
+    );
+
+    tmw_assert_same( 1, (int) $result['total'], 'Combined cam + payout filter should no longer false-negative valid offers.' );
+    tmw_assert_same( '91', (string) $result['items'][0]['id'], 'Combined filters should return the intended cam offer.' );
+};
+
+$tests['dashboard_filter_model_only_shows_metadata_backed_values'] = function() {
+    tmw_reset_test_state();
+
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repository->save_synced_offers(
+        array(
+            '101' => array( 'id' => '101', 'name' => 'No Metadata', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+        )
+    );
+
+    $model = $repository->get_dashboard_filter_model();
+    tmw_assert_same( array(), (array) $model['supported']['tag'], 'Metadata-backed filters should not show seeded options when offers do not provide metadata.' );
+    tmw_assert_true( ! empty( $model['todo']['tag'] ), 'Metadata-backed filters should expose todo guidance when no values are available.' );
+};
+
 $tests['dashboard_filters_backward_compatibility_and_override_fallback'] = function() {
     tmw_reset_test_state();
     update_option(

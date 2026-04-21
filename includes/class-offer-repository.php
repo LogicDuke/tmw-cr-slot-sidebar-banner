@@ -375,7 +375,6 @@ class TMW_CR_Slot_Offer_Repository {
             'status' => array(),
             'promotion_method' => array(),
         );
-        $seeded_supported = $this->get_dashboard_filter_seed_options();
         $todo = array();
 
         foreach ( $offers as $offer_id => $offer ) {
@@ -384,25 +383,12 @@ class TMW_CR_Slot_Offer_Repository {
             foreach ( $supported as $field_key => $values ) {
                 $field_values = isset( $meta[ $field_key ] ) ? (array) $meta[ $field_key ] : array();
                 foreach ( $field_values as $value ) {
-                    $value = (string) $value;
+                    $value = $this->normalize_filter_family_value( $field_key, $value );
                     if ( '' === $value ) {
                         continue;
                     }
                     $supported[ $field_key ][ $value ] = $value;
                 }
-            }
-        }
-
-        foreach ( $seeded_supported as $field_key => $seed_values ) {
-            if ( ! isset( $supported[ $field_key ] ) || ! is_array( $seed_values ) ) {
-                continue;
-            }
-            foreach ( $seed_values as $seed_value ) {
-                $seed_value = (string) $seed_value;
-                if ( '' === $seed_value ) {
-                    continue;
-                }
-                $supported[ $field_key ][ $seed_value ] = $seed_value;
             }
         }
 
@@ -454,17 +440,17 @@ class TMW_CR_Slot_Offer_Repository {
         $query       = wp_parse_args( (array) $args, $defaults );
         $selected    = array_flip( $this->get_selected_offer_ids( $settings ) );
         $search      = strtolower( trim( (string) $query['search'] ) );
-        $status_values   = $this->normalize_query_values( $query['status'] );
-        $tag_values      = $this->normalize_query_values( $query['tag'] );
-        $vertical_values = $this->normalize_query_values( $query['vertical'] );
+        $status_values   = $this->normalize_query_values( $query['status'], 'status' );
+        $tag_values      = $this->normalize_query_values( $query['tag'], 'tag' );
+        $vertical_values = $this->normalize_query_values( $query['vertical'], 'vertical' );
         $featured    = strtolower( trim( (string) $query['featured'] ) );
         $approval    = strtolower( trim( (string) $query['approval_required'] ) );
-        $payout_values    = $this->normalize_query_values( $query['payout_type'] );
-        $performs_values  = $this->normalize_query_values( $query['performs_in'], true );
-        $optimized_values = $this->normalize_query_values( $query['optimized_for'] );
-        $accepted_values  = $this->normalize_query_values( $query['accepted_country'], true );
-        $niche_values     = $this->normalize_query_values( $query['niche'] );
-        $promotion_values = $this->normalize_query_values( $query['promotion_method'] );
+        $payout_values    = $this->normalize_query_values( $query['payout_type'], 'payout_type' );
+        $performs_values  = $this->normalize_query_values( $query['performs_in'], 'performs_in' );
+        $optimized_values = $this->normalize_query_values( $query['optimized_for'], 'optimized_for' );
+        $accepted_values  = $this->normalize_query_values( $query['accepted_country'], 'accepted_country' );
+        $niche_values     = $this->normalize_query_values( $query['niche'], 'niche' );
+        $promotion_values = $this->normalize_query_values( $query['promotion_method'], 'promotion_method' );
         $image       = strtolower( trim( (string) $query['image_status'] ) );
         $offers         = array_values( $this->get_synced_offers() );
         $legacy_catalog = $this->get_default_legacy_catalog();
@@ -516,8 +502,7 @@ class TMW_CR_Slot_Offer_Repository {
                 }
             }
 
-            $offer_payout_type = strtolower( (string) ( $offer['payout_type'] ?? '' ) );
-            if ( ! empty( $payout_values ) && ! in_array( $offer_payout_type, $payout_values, true ) ) {
+            if ( ! empty( $payout_values ) && ! $this->values_intersect_filter_set( $payout_values, (array) ( $offer_meta['payout_type'] ?? array() ) ) ) {
                 continue;
             }
             if ( ! empty( $performs_values ) && ! $this->values_intersect_filter_set( $performs_values, (array) ( $offer_meta['performs_in'] ?? array() ), true ) ) {
@@ -1626,7 +1611,7 @@ class TMW_CR_Slot_Offer_Repository {
             $vertical = sanitize_text_field( (string) $override['dashboard_vertical'] );
         }
 
-        return array(
+        $meta = array(
             'tag' => $this->merge_preferred_values(
                 $this->sanitize_list_values( isset( $offer['tags'] ) ? $offer['tags'] : array() ),
                 $this->sanitize_list_values( isset( $local_meta['tag'] ) ? $local_meta['tag'] : array() ),
@@ -1665,6 +1650,20 @@ class TMW_CR_Slot_Offer_Repository {
                 $this->sanitize_list_values( isset( $override['dashboard_promotion_method'] ) ? $override['dashboard_promotion_method'] : array() )
             ),
         );
+
+        foreach ( $meta as $family => $values ) {
+            $normalized = array();
+            foreach ( (array) $values as $value ) {
+                $value = $this->normalize_filter_family_value( $family, $value );
+                if ( '' === $value ) {
+                    continue;
+                }
+                $normalized[] = $value;
+            }
+            $meta[ $family ] = array_values( array_unique( $normalized ) );
+        }
+
+        return $meta;
     }
 
     /**
@@ -1697,16 +1696,16 @@ class TMW_CR_Slot_Offer_Repository {
      *
      * @return array<int,string>
      */
-    protected function normalize_query_values( $raw, $uppercase = false ) {
+    protected function normalize_query_values( $raw, $family = '' ) {
         $values = is_array( $raw ) ? $raw : explode( ',', (string) $raw );
         $clean  = array();
 
         foreach ( (array) $values as $value ) {
-            $value = sanitize_text_field( trim( (string) $value ) );
+            $value = $this->normalize_filter_family_value( $family, $value );
             if ( '' === $value ) {
                 continue;
             }
-            $clean[] = $uppercase ? strtoupper( $value ) : strtolower( $value );
+            $clean[] = $value;
         }
 
         return array_values( array_unique( $clean ) );
@@ -1763,14 +1762,43 @@ class TMW_CR_Slot_Offer_Repository {
     }
 
     /**
-     * @return array<string,array<int,string>>
+     * @param string $family Filter family.
+     * @param mixed  $value Raw value.
+     *
+     * @return string
      */
-    protected function get_dashboard_filter_seed_options() {
-        return array(
-            'tag' => array( 'New', 'Exclusive', 'Top Offer', 'Hot Pick' ),
-            'vertical' => array( 'Adult Gaming', 'Adult Paysite - VOD', 'AI', 'Cam', 'Dating', 'Fansite', 'Gaming', 'Health', 'Mainstream', 'Male Enhancement', 'Other' ),
-            'payout_type' => array( 'CPC', 'CPI', 'CPM', 'DOI', 'Multi-CPA', 'PPS', 'Revshare', 'Revshare Lifetime', 'SOI' ),
-        );
+    protected function normalize_filter_family_value( $family, $value ) {
+        $family = sanitize_key( (string) $family );
+        $value  = sanitize_text_field( trim( (string) $value ) );
+        if ( '' === $value ) {
+            return '';
+        }
+
+        if ( in_array( $family, array( 'performs_in', 'accepted_country' ), true ) ) {
+            return strtoupper( $value );
+        }
+
+        $normalized_key = str_replace( '-', '_', sanitize_key( $value ) );
+
+        if ( 'payout_type' === $family ) {
+            $aliases = array(
+                'cpa_percentage' => 'revshare',
+                'revshare' => 'revshare',
+                'revenue_share' => 'revshare',
+                'cpa_flat' => 'revshare_lifetime',
+                'revshare_lifetime' => 'revshare_lifetime',
+                'pps' => 'revshare_lifetime',
+                'cpa_both' => 'multi_cpa',
+                'multi_cpa' => 'multi_cpa',
+                'hybrid' => 'multi_cpa',
+            );
+
+            if ( isset( $aliases[ $normalized_key ] ) ) {
+                return $aliases[ $normalized_key ];
+            }
+        }
+
+        return strtolower( $value );
     }
 
     /**

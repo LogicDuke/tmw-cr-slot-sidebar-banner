@@ -233,6 +233,7 @@ class TMW_CR_Slot_Admin_Page {
         }
 
         if ( $raw_count > 0 ) {
+            TMW_CR_Slot_Offer_Sync_Service::log_geo_audit_rows( $rows, 'test_connection' );
             $this->redirect_with_notice(
                 'success',
                 sprintf(
@@ -283,6 +284,11 @@ class TMW_CR_Slot_Admin_Page {
 
         if ( $preserved ) {
             $message .= ' ' . __( 'Previous synced offers were preserved due to parser soft-failure.', 'tmw-cr-slot-sidebar-banner' );
+        }
+
+        $synced_offers = array_values( $this->offer_repository->get_synced_offers() );
+        if ( ! empty( $synced_offers ) ) {
+            TMW_CR_Slot_Offer_Sync_Service::log_geo_audit_rows( $synced_offers, 'post_sync' );
         }
 
         $this->redirect_with_notice( 'success', $message );

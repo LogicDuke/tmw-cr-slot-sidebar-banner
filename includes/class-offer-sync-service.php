@@ -282,6 +282,55 @@ class TMW_CR_Slot_Offer_Sync_Service {
      *
      * @return mixed
      */
+
+    /**
+     * Emits safe geo audit diagnostics for offer rows.
+     *
+     * @param array<int,array<string,mixed>> $rows Offer rows.
+     * @param string                          $source Source label.
+     *
+     * @return void
+     */
+    public static function log_geo_audit_rows( $rows, $source = 'unknown' ) {
+        $country_fields = array( 'accepted_countries', 'accepted_country', 'countries', 'country_codes', 'performs_in', 'top_countries', 'performing_countries', 'optimized_for' );
+
+        foreach ( (array) $rows as $row ) {
+            $raw        = self::unwrap_offer_row( is_array( $row ) ? $row : array() );
+            $normalized = self::normalize_offer( is_array( $row ) ? $row : array() );
+
+            if ( '' === (string) $normalized['id'] ) {
+                continue;
+            }
+
+            $present = array();
+            foreach ( $country_fields as $field ) {
+                if ( array_key_exists( $field, $raw ) && '' !== trim( (string) wp_json_encode( $raw[ $field ] ) ) && '[]' !== wp_json_encode( $raw[ $field ] ) ) {
+                    $present[] = $field;
+                }
+            }
+
+            $accepted = array_slice( (array) ( $normalized['accepted_countries'] ?? array() ), 0, 10 );
+            $performs = array_slice( (array) ( $normalized['performs_in'] ?? array() ), 0, 10 );
+            $optimized = array_slice( (array) ( $normalized['optimized_for'] ?? array() ), 0, 10 );
+
+            error_log(
+                sprintf(
+                    '[TMW-BANNER-GEO-AUDIT] source=%1$s offer_id=%2$s name="%3$s" payout_type=%4$s status=%5$s fields_present=%6$s accepted_count=%7$d accepted_sample=%8$s performs_count=%9$d performs_sample=%10$s optimized_sample=%11$s',
+                    sanitize_key( (string) $source ),
+                    sanitize_text_field( (string) $normalized['id'] ),
+                    sanitize_text_field( (string) $normalized['name'] ),
+                    sanitize_text_field( (string) $normalized['payout_type'] ),
+                    sanitize_text_field( (string) $normalized['status'] ),
+                    implode( ',', array_map( 'sanitize_key', $present ) ),
+                    count( (array) ( $normalized['accepted_countries'] ?? array() ) ),
+                    implode( ',', array_map( 'sanitize_text_field', $accepted ) ),
+                    count( (array) ( $normalized['performs_in'] ?? array() ) ),
+                    implode( ',', array_map( 'sanitize_text_field', $performs ) ),
+                    implode( ',', array_map( 'sanitize_text_field', $optimized ) )
+                )
+            );
+        }
+    }
     protected static function pick_first_value( $offer, $keys ) {
         foreach ( $keys as $key ) {
             if ( array_key_exists( $key, $offer ) ) {

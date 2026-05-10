@@ -1418,10 +1418,6 @@ class TMW_CR_Slot_Offer_Repository {
             return esc_url_raw( add_query_arg( $query_args, $base_url ) );
         }
 
-        if ( ! empty( $offer['preview_url'] ) ) {
-            return esc_url_raw( (string) $offer['preview_url'] );
-        }
-
         return '';
     }
 
@@ -1558,18 +1554,26 @@ class TMW_CR_Slot_Offer_Repository {
         unset( $settings );
 
         if ( ! empty( $override['final_url_override'] ) ) {
+            $this->log_frontend_cta_source( $offer_id, 'final_url_override' );
             return esc_url_raw( (string) $override['final_url_override'] );
         }
 
+        $tracking_url = isset( $synced_offer['tracking_url'] ) ? esc_url_raw( (string) $synced_offer['tracking_url'] ) : '';
+        if ( '' !== $tracking_url && 'tracking_url' === $this->classify_url_audit_reason( $tracking_url ) ) {
+            $this->log_tracking_url_synced( $offer_id, $tracking_url );
+            $this->log_frontend_cta_source( $offer_id, 'tracking_url' );
+            return $tracking_url;
+        }
+
+        $this->log_tracking_url_missing( $offer_id, '' === $tracking_url ? 'api_field_missing' : 'invalid_tracking_url' );
+
         $fallback = $this->build_cta_url( $banner_data, $synced_offer );
-        if ( '' !== $fallback ) {
+        if ( '' !== $fallback && $this->is_valid_frontend_winner_cta_url( $fallback ) ) {
+            $this->log_frontend_cta_source( $offer_id, 'global_cta_url' );
             return $fallback;
         }
 
-        if ( ! empty( $synced_offer['preview_url'] ) ) {
-            return esc_url_raw( (string) $synced_offer['preview_url'] );
-        }
-
+        $this->log_frontend_cta_source( $offer_id, 'none' );
         return '';
     }
 
@@ -1672,6 +1676,19 @@ class TMW_CR_Slot_Offer_Repository {
             return 'preview_template_only';
         }
         return 'raw_advertiser_only';
+    }
+
+    protected function log_tracking_url_synced( $offer_id, $url ) {
+        $host = (string) parse_url( (string) $url, PHP_URL_HOST );
+        error_log( sprintf( '[TMW-BANNER-LINK] tracking_url_synced offer_id=%1$s host="%2$s"', sanitize_text_field( (string) $offer_id ), sanitize_text_field( strtolower( $host ) ) ) );
+    }
+
+    protected function log_tracking_url_missing( $offer_id, $reason ) {
+        error_log( sprintf( '[TMW-BANNER-LINK] tracking_url_missing offer_id=%1$s reason="%2$s"', sanitize_text_field( (string) $offer_id ), sanitize_key( (string) $reason ) ) );
+    }
+
+    protected function log_frontend_cta_source( $offer_id, $source ) {
+        error_log( sprintf( '[TMW-BANNER-LINK] frontend_cta_source offer_id=%1$s source="%2$s"', sanitize_text_field( (string) $offer_id ), sanitize_key( (string) $source ) ) );
     }
 
     /**

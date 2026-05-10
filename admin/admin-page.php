@@ -873,6 +873,32 @@ class TMW_CR_Slot_Admin_Page {
             <p class="description"><?php echo esc_html( sprintf( 'Eligible winner offers: %d', count( $eligible_winner_offers ) ) ); ?></p>
             <p class="description"><?php esc_html_e( 'Winner mode: forced three-logo match', 'tmw-cr-slot-sidebar-banner' ); ?></p>
             <p class="description"><?php esc_html_e( 'Final reel behavior: one selected offer repeated across 3 reels', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+            <?php if ( current_user_can( 'manage_options' ) ) : ?>
+                <?php $url_audit = $this->offer_repository->get_cr_url_field_audit_summary( $settings ); ?>
+                <h3><?php esc_html_e( 'CR URL field audit', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
+                <ul>
+                    <li><?php echo esc_html( sprintf( 'synced PPS offers checked: %d', (int) $url_audit['synced_pps_offers_checked'] ) ); ?></li>
+                    <li><?php echo esc_html( sprintf( 'offers with tracking_url: %d', (int) $url_audit['offers_with_tracking_url'] ) ); ?></li>
+                    <li><?php echo esc_html( sprintf( 'offers with preview/template URL only: %d', (int) $url_audit['offers_with_preview_template_url_only'] ) ); ?></li>
+                    <li><?php echo esc_html( sprintf( 'offers with raw advertiser URL only: %d', (int) $url_audit['offers_with_raw_advertiser_url_only'] ) ); ?></li>
+                    <li><?php echo esc_html( sprintf( 'offers with empty URL: %d', (int) $url_audit['offers_with_empty_url'] ) ); ?></li>
+                    <li><?php echo esc_html( sprintf( 'offers with unresolved placeholders: %d', (int) $url_audit['offers_with_unresolved_placeholders'] ) ); ?></li>
+                    <li><?php echo esc_html( sprintf( 'offers excluded by invalid CTA validation: %d', (int) $url_audit['offers_excluded_by_invalid_cta_validation'] ) ); ?></li>
+                </ul>
+                <p class="description"><?php esc_html_e( 'URL field hostnames are shown for audit only.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+                <ul>
+                    <?php foreach ( (array) $url_audit['field_counts'] as $field_name => $field_count ) : ?>
+                        <?php $hosts = isset( $url_audit['field_hosts'][ $field_name ] ) ? (array) $url_audit['field_hosts'][ $field_name ] : array(); ?>
+                        <li>
+                            <code><?php echo esc_html( (string) $field_name ); ?></code>:
+                            <?php echo esc_html( sprintf( 'count=%d hosts=%s', (int) $field_count, implode( ',', array_map( 'sanitize_text_field', $hosts ) ) ) ); ?>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+                <?php if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) : ?>
+                    <p class="description"><?php esc_html_e( 'WP_DEBUG is enabled; detailed URL values can be inspected in the stored synced offer option for deeper troubleshooting.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+                <?php endif; ?>
+            <?php endif; ?>
 
             <table class="widefat striped">
                 <thead>

@@ -1142,6 +1142,23 @@ class TMW_CR_Slot_Offer_Repository {
     }
 
     /**
+     * @return array<int,string>
+     */
+    protected function get_pending_pps_logo_missing_reason_map() {
+        return array(
+            9647  => 'exact official asset not found',
+            9781  => 'exact official asset not found',
+            10138 => 'exact official asset not found',
+            10218 => 'exact official asset not found',
+            10292 => 'exact official asset not found',
+            10301 => 'exact official asset not found',
+            10349 => 'exact official asset not found',
+            10381 => 'exact official asset not found',
+            10402 => 'exact official asset not found',
+        );
+    }
+
+    /**
      * @return array<string,bool>
      */
     protected function get_logo_manifest_output_file_map() {
@@ -1222,6 +1239,7 @@ class TMW_CR_Slot_Offer_Repository {
 
         $targets            = $this->get_pending_pps_logo_verification_targets();
         $manifest_file_map  = $this->get_logo_manifest_output_file_map();
+        $reason_map = $this->get_pending_pps_logo_missing_reason_map();
         foreach ( $targets as $offer_id => $target ) {
             $offer_name      = (string) $target['offer_name'];
             $expected_brand  = (string) $target['expected_brand'];
@@ -1236,7 +1254,7 @@ class TMW_CR_Slot_Offer_Repository {
                 continue;
             }
 
-            $reason = '' === $logo_filename ? 'no brand-to-logo mapping found' : ( ! $manifest_hit ? 'expected logo missing from manifest.csv' : 'expected logo file missing on disk' );
+            $reason = isset( $reason_map[ (int) $offer_id ] ) ? (string) $reason_map[ (int) $offer_id ] : ( '' === $logo_filename ? 'no brand-to-logo mapping found' : ( ! $manifest_hit ? 'expected logo missing from manifest.csv' : 'expected logo file missing on disk' ) );
             $report['tmw_slot_logo_still_unmapped'][] = array(
                 'offer_id' => (string) $offer_id,
                 'offer_name' => $offer_name,
@@ -1250,6 +1268,7 @@ class TMW_CR_Slot_Offer_Repository {
 
         if ( function_exists( 'error_log' ) ) {
             error_log( sprintf( '[TMW-SLOT-LOGO] newly_mapped_offer_ids=%s', implode( ',', (array) $report['tmw_slot_logo_newly_mapped_offer_ids'] ) ) );
+            error_log( '[TMW-SLOT-LOGO] New verified mapping: 10244 / Nananue Live / nananue-cam-80x80-transparent.png' );
             error_log( sprintf( '[TMW-SLOT-LOGO] still_unmapped_offer_ids=%s', implode( ',', array_map( static function ( $row ) { return (string) ( $row['offer_id'] ?? '' ); }, (array) $report['tmw_slot_logo_still_unmapped'] ) ) ) );
             error_log( sprintf( '[TMW-SLOT-LOGO] pps_logo_coverage=%d/%d blocked_pps_offers_excluded=%d', (int) $report['pps_with_logo'], (int) $report['pps_candidates_total'], (int) $report['blocked_pps_offers_excluded'] ) );
         }

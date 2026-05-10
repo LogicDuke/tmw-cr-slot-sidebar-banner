@@ -339,6 +339,7 @@ class TMW_CR_Slot_Sidebar_Banner {
             data-default-cta-text="<?php echo esc_attr( $banner_data['cta_text'] ); ?>"
             data-default-cta-url="<?php echo esc_url( $banner_data['cta_url'] ); ?>"
             data-slot-offers="<?php echo esc_attr( wp_json_encode( $slot_data['offers'] ) ); ?>"
+            data-debug-enabled="<?php echo esc_attr( ( defined( 'WP_DEBUG' ) && WP_DEBUG ) ? '1' : '0' ); ?>"
         >
             <header class="tmw-cr-slot-banner__header">
                 <h3 class="tmw-cr-slot-banner__headline"><?php echo esc_html( $banner_data['headline'] ); ?></h3>

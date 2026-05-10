@@ -201,17 +201,26 @@
 
     function setResult(state, prepareForSpin) {
         var results = [];
+        var winner = null;
+
+        if (state.offers.length) {
+            winner = state.offers[Math.floor(Math.random() * state.offers.length)];
+
+            if (state.debugEnabled && window.console && typeof window.console.debug === 'function') {
+                window.console.debug('[TMW-BANNER-WINNER] spin_start eligible_count=' + state.offers.length);
+                window.console.debug('[TMW-BANNER-WINNER] winner_selected offer_id=' + (winner.id || '') + ' logo="' + (winner.logo_filename || '') + '"');
+            }
+        }
 
         state.columns.forEach(function(reel) {
-            if (!state.offers.length || !reel.items.length) {
+            if (!winner || !reel.items.length) {
                 results.push(null);
                 return;
             }
 
-            var offer = state.offers[Math.floor(Math.random() * state.offers.length)];
-            results.push(offer);
+            results.push(winner);
 
-            applyOffer(reel.items[0], offer);
+            applyOffer(reel.items[0], winner);
             copyTopIconsToClones(reel);
 
             if (prepareForSpin) {
@@ -261,24 +270,11 @@
             return;
         }
 
-        var first = results[0];
-        var matchingOffer = null;
-
-        if (first && results.every(function(result) {
-            return result && result.id === first.id;
-        })) {
-            matchingOffer = first;
-        }
+        var matchingOffer = results[0] || null;
 
         if (matchingOffer) {
-            if (window.console && typeof window.console.debug === 'function') {
-                window.console.debug(
-                    '[TMW-BANNER-FRONTEND-LOGO]',
-                    'selected_offer_id=' + (matchingOffer.id || ''),
-                    'brand_key=' + (matchingOffer.brand_key || ''),
-                    'logo_filename=' + (matchingOffer.logo_filename || ''),
-                    'has_logo=' + (matchingOffer.logo_url ? 'yes' : 'no')
-                );
+            if (state.debugEnabled && window.console && typeof window.console.debug === 'function') {
+                window.console.debug('[TMW-BANNER-WINNER] reel_final offer_id=' + (matchingOffer.id || '') + ' repeated=3 cta_url_present=' + (matchingOffer.cta_url ? '1' : '0'));
             }
             state.banner.classList.add('tmw-cr-slot-banner--win');
 
@@ -377,6 +373,7 @@
         var defaultCtaText = banner.getAttribute('data-default-cta-text') || '';
         var defaultCtaUrl = banner.getAttribute('data-default-cta-url') || '';
         var defaultOfferName = offerNameTarget ? offerNameTarget.textContent : '';
+        var debugEnabled = banner.getAttribute('data-debug-enabled') === '1';
 
         var state = {
             banner: banner,
@@ -400,7 +397,8 @@
             defaultOfferName: defaultOfferName,
             param: param,
             value: value,
-            isSpinning: false
+            isSpinning: false,
+            debugEnabled: debugEnabled
         };
 
         if (state.spinButton) {

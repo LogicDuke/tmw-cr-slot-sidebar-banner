@@ -610,7 +610,21 @@ class TMW_CR_Slot_Admin_Page {
                         $is_active = empty( $offer['status'] ) || 'active' === strtolower( (string) $offer['status'] );
                         ?>
                         <tr>
-                            <td><strong><?php echo esc_html( (string) ( $offer['name'] ?? '' ) ); ?></strong></td>
+                            <td>
+                                <span class="tmw-cr-offer-title-wrap">
+                                    <?php if ( ! empty( $offer['logo_url'] ) ) : ?>
+                                        <span class="tmw-cr-offer-logo-wrap">
+                                            <img
+                                                class="tmw-cr-offer-logo"
+                                                src="<?php echo esc_url( (string) $offer['logo_url'] ); ?>"
+                                                alt="<?php echo esc_attr( sprintf( __( '%s logo', 'tmw-cr-slot-sidebar-banner' ), (string) ( $offer['name'] ?? '' ) ) ); ?>"
+                                                loading="lazy"
+                                            />
+                                        </span>
+                                    <?php endif; ?>
+                                    <strong><?php echo esc_html( (string) ( $offer['name'] ?? '' ) ); ?></strong>
+                                </span>
+                            </td>
                             <td><code><?php echo esc_html( (string) ( $offer['id'] ?? '' ) ); ?></code></td>
                             <td><?php $this->render_badge( (string) ( $offer['status'] ?? '-' ), 'status' ); ?></td>
                             <td><small><?php echo esc_html( $this->format_payout( $offer ) ); ?></small></td>

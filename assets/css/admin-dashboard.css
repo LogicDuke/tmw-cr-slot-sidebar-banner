@@ -130,3 +130,24 @@
     border-color: #dcdcde;
     color: #50575e;
 }
+
+.tmw-cr-offer-title-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.tmw-cr-offer-logo-wrap {
+    display: inline-flex;
+    width: 40px;
+    height: 40px;
+    flex: 0 0 40px;
+}
+
+.tmw-cr-offer-logo {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    object-fit: cover;
+    display: block;
+}

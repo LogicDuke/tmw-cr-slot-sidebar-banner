@@ -1658,6 +1658,12 @@ class TMW_CR_Slot_Offer_Repository {
             return 'empty_url';
         }
         $lower = strtolower( rawurldecode( $url ) );
+        $host  = strtolower( (string) parse_url( $url, PHP_URL_HOST ) );
+
+        if ( $this->is_known_cr_tracking_host( $host ) ) {
+            return 'tracking_url';
+        }
+
         if ( false !== strpos( $lower, 'affiliate_id' ) || false !== strpos( $lower, 'transaction_id' ) || false !== strpos( $lower, 'subid=' ) ) {
             if ( false !== strpos( $lower, 'affiliate_id=' ) && false === strpos( $lower, 'affiliate_id=affiliate_id' ) ) {
                 return 'tracking_url';
@@ -1676,6 +1682,31 @@ class TMW_CR_Slot_Offer_Repository {
             return 'preview_template_only';
         }
         return 'raw_advertiser_only';
+    }
+
+    /**
+     * @param string $host URL hostname.
+     *
+     * @return bool
+     */
+    protected function is_known_cr_tracking_host( $host ) {
+        $host = strtolower( trim( (string) $host ) );
+        if ( '' === $host ) {
+            return false;
+        }
+
+        $known_fragments = array(
+            'crakrevenue.com',
+            'crakmedia.com',
+        );
+
+        foreach ( $known_fragments as $fragment ) {
+            if ( false !== strpos( $host, $fragment ) ) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     protected function log_tracking_url_synced( $offer_id, $url ) {

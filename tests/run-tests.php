@@ -2108,11 +2108,12 @@ $tests['cr_url_field_audit_summary_classifies_pps_urls'] = function() {
             't3' => array( 'id' => 't3', 'name' => 'Offer C - PPS', 'status' => 'active', 'preview_url' => 'https://brand.example.com/landing' ),
             't4' => array( 'id' => 't4', 'name' => 'Offer D - PPS', 'status' => 'active', 'preview_url' => 'https://trk.example.com/?affiliate_id=affiliate_id&transaction_id=preview' ),
             't5' => array( 'id' => 't5', 'name' => 'Offer E - PPS', 'status' => 'active', 'preview_url' => '' ),
+            't6' => array( 'id' => 't6', 'name' => 'Offer F - PPS', 'status' => 'active', 'tracking_url' => 'https://gateway.crakrevenue.com/click/abcdef' ),
         )
     );
     $summary = $repository->get_cr_url_field_audit_summary( array( 'cta_url' => '' ) );
-    tmw_assert_same( 5, (int) $summary['synced_pps_offers_checked'], 'All PPS rows should be included in URL audit summary.' );
-    tmw_assert_same( 1, (int) $summary['offers_with_tracking_url'], 'Tracking URLs should be counted.' );
+    tmw_assert_same( 6, (int) $summary['synced_pps_offers_checked'], 'All PPS rows should be included in URL audit summary.' );
+    tmw_assert_same( 2, (int) $summary['offers_with_tracking_url'], 'Tracking URLs should be counted, including known CR tracking hosts.' );
     tmw_assert_same( 0, (int) $summary['offers_with_preview_template_url_only'], 'Preview/template URLs should not be used as effective CTA URLs.' );
     tmw_assert_same( 0, (int) $summary['offers_with_raw_advertiser_url_only'], 'Raw advertiser URLs should not be used as effective CTA URLs.' );
     tmw_assert_same( 0, (int) $summary['offers_with_unresolved_placeholders'], 'Placeholder URLs should not be used as effective CTA URLs.' );

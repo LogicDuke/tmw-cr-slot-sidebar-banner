@@ -1921,12 +1921,18 @@ $tests['offer_blocklist_expected_cases'] = function() {
     tmw_reset_test_state();
     $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
     tmw_assert_true( $repository->is_offer_blocked_for_banner( array( 'name' => 'XLoveGay - PPS' ) ), 'XLoveGay should be blocked.' );
+    tmw_assert_true( $repository->is_offer_blocked_for_banner( array( 'name' => 'XLove Gay - PPS' ) ), 'XLove Gay should be blocked.' );
     tmw_assert_true( $repository->is_offer_blocked_for_banner( array( 'name' => 'Mennation - PPS' ) ), 'Mennation should be blocked.' );
     tmw_assert_true( $repository->is_offer_blocked_for_banner( array( 'name' => 'GayBloom - PPS - US' ) ), 'GayBloom should be blocked.' );
     tmw_assert_true( $repository->is_offer_blocked_for_banner( array( 'name' => 'PridePair - PPS - US' ) ), 'PridePair should be blocked.' );
+    tmw_assert_true( $repository->is_offer_blocked_for_banner( array( 'name' => 'TransDate - SOI' ) ), 'TransDate should be blocked.' );
+    tmw_assert_true( $repository->is_offer_blocked_for_banner( array( 'name' => 'Group Fallback - Gay Cam' ) ), 'Gay Cam phrase should be blocked.' );
     tmw_assert_true( ! $repository->is_offer_blocked_for_banner( array( 'name' => 'Jerkmate - PPS' ) ), 'Jerkmate should not be blocked.' );
     tmw_assert_true( ! $repository->is_offer_blocked_for_banner( array( 'name' => 'Adult FriendFinder - PPS' ) ), 'Adult FriendFinder should not be blocked.' );
     tmw_assert_true( ! $repository->is_offer_blocked_for_banner( array( 'name' => 'Live Jasmin - PPS' ) ), 'Live Jasmin should not be blocked.' );
+    tmw_assert_true( ! $repository->is_offer_blocked_for_banner( array( 'name' => 'transparent logo test offer' ) ), 'transparent should not be blocked by trans token-safe matching.' );
+    tmw_assert_true( ! $repository->is_offer_blocked_for_banner( array( 'name' => 'transaction test offer' ) ), 'transaction should not be blocked by trans token-safe matching.' );
+    tmw_assert_true( ! $repository->is_offer_blocked_for_banner( array( 'name' => 'transfer test offer' ) ), 'transfer should not be blocked by trans token-safe matching.' );
 };
 
 $tests['frontend_pps_pool_excludes_blocked_and_hot_pick_is_not_blocked'] = function() {

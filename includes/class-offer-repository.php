@@ -2116,8 +2116,9 @@ class TMW_CR_Slot_Offer_Repository {
 
     public function is_offer_blocked_for_banner( $offer, $settings = array() ) {
         unset( $settings );
-        $keywords = array( 'gay', 'xlovegay', 'mennation', 'gaybloom', 'pridepair', 'tsdates', 'trans', 'shemale', 'male gay', 'gay cam', 'gay dating' );
-        $parts    = array( strtolower( sanitize_text_field( (string) ( $offer['name'] ?? '' ) ) ) );
+        $single_word_keywords = array( 'gay', 'trans', 'shemale', 'xlovegay', 'mennation', 'gaybloom', 'pridepair', 'tsdates', 'transdate' );
+        $phrase_keywords      = array( 'male gay', 'gay cam', 'gay dating', 'xlove gay' );
+        $parts                = array( strtolower( sanitize_text_field( (string) ( $offer['name'] ?? '' ) ) ) );
         foreach ( array( 'category', 'categories', 'tag', 'tags' ) as $field ) {
             if ( ! isset( $offer[ $field ] ) ) {
                 continue;
@@ -2128,12 +2129,29 @@ class TMW_CR_Slot_Offer_Repository {
                 $parts[] = strtolower( (string) $offer[ $field ] );
             }
         }
-        $haystack = implode( ' ', $parts );
-        foreach ( $keywords as $keyword ) {
-            if ( '' !== $keyword && false !== strpos( $haystack, $keyword ) ) {
+
+        $normalized_haystack = strtolower( implode( ' ', $parts ) );
+        $normalized_haystack = preg_replace( '/[^a-z0-9]+/i', ' ', $normalized_haystack );
+        $normalized_haystack = is_string( $normalized_haystack ) ? trim( preg_replace( '/\s+/', ' ', $normalized_haystack ) ) : '';
+        if ( '' === $normalized_haystack ) {
+            return false;
+        }
+
+        $tokens = explode( ' ', $normalized_haystack );
+
+        foreach ( $single_word_keywords as $keyword ) {
+            if ( in_array( $keyword, $tokens, true ) ) {
                 return true;
             }
         }
+
+        foreach ( $phrase_keywords as $phrase ) {
+            $pattern = '/\b' . str_replace( ' ', '\s+', preg_quote( $phrase, '/' ) ) . '\b/i';
+            if ( 1 === preg_match( $pattern, $normalized_haystack ) ) {
+                return true;
+            }
+        }
+
         return false;
     }
 

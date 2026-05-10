@@ -721,6 +721,13 @@ class TMW_CR_Slot_Admin_Page {
             <p class="description"><?php esc_html_e( 'Choose which offer types may appear in the frontend slot/sidebar banner. Logo display in admin is brand-level and remains unaffected.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
             <?php
             $allowed_offer_types = $this->offer_repository->get_allowed_offer_types( $settings );
+            $synced_offers = $this->offer_repository->get_synced_offers();
+            $type_allowed_count = 0;
+            foreach ( $synced_offers as $synced_offer ) {
+                if ( is_array( $synced_offer ) && $this->offer_repository->is_offer_type_allowed( $synced_offer, $settings ) ) {
+                    ++$type_allowed_count;
+                }
+            }
             $type_labels = array(
                 'pps' => 'PPS',
                 'revshare' => 'Revshare',
@@ -740,6 +747,18 @@ class TMW_CR_Slot_Admin_Page {
                         <?php echo esc_html( $type_label ); ?>
                     </label>
                 <?php endforeach; ?>
+            </p>
+            <p class="description">
+                <?php
+                echo esc_html(
+                    sprintf(
+                        'Type setting: %1$s. Type-allowed synced offers: %2$d of %3$d.',
+                        implode( ' + ', array_map( 'ucfirst', $allowed_offer_types ) ),
+                        (int) $type_allowed_count,
+                        count( $synced_offers )
+                    )
+                );
+                ?>
             </p>
 
             <table class="widefat striped">

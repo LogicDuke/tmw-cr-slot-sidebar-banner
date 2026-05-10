@@ -1574,6 +1574,107 @@ class TMW_CR_Slot_Offer_Repository {
     }
 
     /**
+     * Builds URL field diagnostics for synced PPS offers.
+     *
+     * @param array<string,mixed> $settings Settings payload.
+     *
+     * @return array<string,mixed>
+     */
+    public function get_cr_url_field_audit_summary( $settings ) {
+        $offers = $this->get_synced_offers();
+        $summary = array(
+            'synced_pps_offers_checked' => 0,
+            'offers_with_tracking_url' => 0,
+            'offers_with_preview_template_url_only' => 0,
+            'offers_with_raw_advertiser_url_only' => 0,
+            'offers_with_empty_url' => 0,
+            'offers_with_unresolved_placeholders' => 0,
+            'offers_excluded_by_invalid_cta_validation' => 0,
+            'field_counts' => array(),
+            'field_hosts' => array(),
+        );
+        $url_fields = array( 'preview_url', 'tracking_url', 'final_url', 'offer_url', 'campaign_url', 'landing_page', 'landing_page_url', 'destination_url', 'cta_url', 'url' );
+
+        foreach ( $offers as $offer_id => $offer ) {
+            if ( ! $this->is_offer_type_allowed( $offer, array( 'allowed_offer_types' => array( 'pps' ) ) ) ) {
+                continue;
+            }
+            ++$summary['synced_pps_offers_checked'];
+
+            foreach ( $url_fields as $field ) {
+                if ( ! isset( $offer[ $field ] ) || '' === trim( (string) $offer[ $field ] ) ) {
+                    continue;
+                }
+                if ( ! isset( $summary['field_counts'][ $field ] ) ) {
+                    $summary['field_counts'][ $field ] = 0;
+                    $summary['field_hosts'][ $field ] = array();
+                }
+                ++$summary['field_counts'][ $field ];
+                $host = parse_url( (string) $offer[ $field ], PHP_URL_HOST );
+                if ( is_string( $host ) && '' !== $host ) {
+                    $summary['field_hosts'][ $field ][ strtolower( $host ) ] = true;
+                }
+            }
+
+            $effective_url = $this->get_effective_cta_url( (string) $offer_id, $settings, array( 'cta_url' => (string) ( $settings['cta_url'] ?? '' ) ), $offer, $this->get_offer_override( (string) $offer_id ) );
+            $reason = $this->classify_url_audit_reason( $effective_url );
+            if ( 'tracking_url' === $reason ) {
+                ++$summary['offers_with_tracking_url'];
+            } elseif ( 'preview_template_only' === $reason ) {
+                ++$summary['offers_with_preview_template_url_only'];
+            } elseif ( 'raw_advertiser_only' === $reason ) {
+                ++$summary['offers_with_raw_advertiser_url_only'];
+            } elseif ( 'empty_url' === $reason ) {
+                ++$summary['offers_with_empty_url'];
+            } elseif ( 'unresolved_placeholders' === $reason ) {
+                ++$summary['offers_with_unresolved_placeholders'];
+            }
+            if ( ! $this->is_valid_frontend_winner_cta_url( (string) $effective_url ) ) {
+                ++$summary['offers_excluded_by_invalid_cta_validation'];
+            }
+        }
+
+        foreach ( $summary['field_hosts'] as $field => $hosts_map ) {
+            $hosts = array_keys( $hosts_map );
+            sort( $hosts );
+            $summary['field_hosts'][ $field ] = array_slice( $hosts, 0, 5 );
+        }
+
+        return $summary;
+    }
+
+    /**
+     * @param string $url URL candidate.
+     *
+     * @return string
+     */
+    protected function classify_url_audit_reason( $url ) {
+        $url = trim( (string) $url );
+        if ( '' === $url ) {
+            return 'empty_url';
+        }
+        $lower = strtolower( rawurldecode( $url ) );
+        if ( false !== strpos( $lower, 'affiliate_id' ) || false !== strpos( $lower, 'transaction_id' ) || false !== strpos( $lower, 'subid=' ) ) {
+            if ( false !== strpos( $lower, 'affiliate_id=' ) && false === strpos( $lower, 'affiliate_id=affiliate_id' ) ) {
+                return 'tracking_url';
+            }
+            if ( false !== strpos( $lower, 'transaction_id=' ) && false === strpos( $lower, 'transaction_id=preview' ) ) {
+                return 'tracking_url';
+            }
+            if ( false !== strpos( $lower, 'subid=' ) && false === strpos( $lower, 'subid={') ) {
+                return 'tracking_url';
+            }
+        }
+        if ( false !== strpos( $lower, 'affiliate_id=affiliate_id' ) || false !== strpos( $lower, 'transaction_id=preview' ) || false !== strpos( $lower, '{' ) ) {
+            return 'unresolved_placeholders';
+        }
+        if ( false !== strpos( $lower, 'preview' ) || false !== strpos( $lower, 'template' ) ) {
+            return 'preview_template_only';
+        }
+        return 'raw_advertiser_only';
+    }
+
+    /**
      * @param string $offer_id Offer ID.
      * @param array<string,mixed> $settings Settings.
      * @param array<string,string> $banner_data Banner data.

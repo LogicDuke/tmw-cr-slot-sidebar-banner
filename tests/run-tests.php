@@ -2098,6 +2098,27 @@ $tests['sanitize_settings_preserves_selected_disallowed_offer_ids'] = function()
     tmw_assert_same( array( 'fallback-1', 'pps-1' ), $sanitized['slot_offer_ids'], 'Selected offers should not be removed from saved settings even when currently disallowed by type filters.' );
 };
 
+$tests['cr_url_field_audit_summary_classifies_pps_urls'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repository->save_synced_offers(
+        array(
+            't1' => array( 'id' => 't1', 'name' => 'Offer A - PPS', 'status' => 'active', 'preview_url' => 'https://trk.example.com/?affiliate_id=123&transaction_id=abc' ),
+            't2' => array( 'id' => 't2', 'name' => 'Offer B - PPS', 'status' => 'active', 'preview_url' => 'https://preview.example.com/template' ),
+            't3' => array( 'id' => 't3', 'name' => 'Offer C - PPS', 'status' => 'active', 'preview_url' => 'https://brand.example.com/landing' ),
+            't4' => array( 'id' => 't4', 'name' => 'Offer D - PPS', 'status' => 'active', 'preview_url' => 'https://trk.example.com/?affiliate_id=affiliate_id&transaction_id=preview' ),
+            't5' => array( 'id' => 't5', 'name' => 'Offer E - PPS', 'status' => 'active', 'preview_url' => '' ),
+        )
+    );
+    $summary = $repository->get_cr_url_field_audit_summary( array( 'cta_url' => '' ) );
+    tmw_assert_same( 5, (int) $summary['synced_pps_offers_checked'], 'All PPS rows should be included in URL audit summary.' );
+    tmw_assert_same( 1, (int) $summary['offers_with_tracking_url'], 'Tracking URLs should be counted.' );
+    tmw_assert_same( 1, (int) $summary['offers_with_preview_template_url_only'], 'Preview/template URLs should be counted.' );
+    tmw_assert_same( 1, (int) $summary['offers_with_raw_advertiser_url_only'], 'Raw advertiser URLs should be counted.' );
+    tmw_assert_same( 1, (int) $summary['offers_with_unresolved_placeholders'], 'Placeholder URLs should be counted.' );
+    tmw_assert_same( 1, (int) $summary['offers_with_empty_url'], 'Empty URLs should be counted.' );
+};
+
 
 $failures = array();
 $passes   = 0;

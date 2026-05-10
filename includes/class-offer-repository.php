@@ -1164,6 +1164,9 @@ class TMW_CR_Slot_Offer_Repository {
             'image'    => $image,
             'cta_url'  => $this->build_cta_url( $banner_data, $offer ),
             'cta_text' => ! empty( $offer['cta_text'] ) ? (string) $offer['cta_text'] : (string) ( $banner_data['cta_text'] ?? '' ),
+            'brand_key' => '',
+            'logo_filename' => '',
+            'logo_url' => '',
         );
     }
 
@@ -1230,6 +1233,9 @@ class TMW_CR_Slot_Offer_Repository {
             'image'    => $this->get_effective_image( $offer_id, $settings, $banner_data, $synced_offer, $override, $legacy_catalog ),
             'cta_url'  => $this->get_effective_cta_url( $offer_id, $settings, $banner_data, $synced_offer, $override ),
             'cta_text' => $this->get_effective_cta_text( $offer_id, $settings, $banner_data, $synced_offer, $override, $legacy_catalog ),
+            'brand_key' => $this->get_offer_brand_key( (string) ( $synced_offer['name'] ?? '' ) ),
+            'logo_filename' => $this->get_offer_logo_filename( $synced_offer ),
+            'logo_url' => $this->get_offer_logo_url( $synced_offer ),
         );
     }
 

@@ -100,6 +100,21 @@
     transition: transform 0.4s ease, filter 0.4s ease;
 }
 
+#container .outer-col .icon .tmw-cr-slot-banner__reel-logo {
+    width: 80%;
+    height: 80%;
+    object-fit: contain;
+    border-radius: 12px;
+    display: block;
+}
+
+#container .outer-col .icon .tmw-cr-slot-banner__reel-text {
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: rgba(255, 255, 255, 0.92);
+}
+
 .tmw-cr-slot-banner__spin {
     align-self: center;
     padding: 0.55rem 1.6rem;

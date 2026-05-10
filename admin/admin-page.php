@@ -32,6 +32,7 @@ class TMW_CR_Slot_Admin_Page {
         add_action( 'admin_post_tmw_cr_slot_banner_test_connection', array( $this, 'handle_test_connection' ) );
         add_action( 'admin_post_tmw_cr_slot_banner_sync_offers', array( $this, 'handle_sync_offers' ) );
         add_action( 'admin_post_tmw_cr_slot_banner_sync_stats', array( $this, 'handle_sync_stats' ) );
+        add_action( 'admin_post_tmw_cr_slot_banner_import_final_url_overrides', array( $this, 'handle_import_final_url_overrides' ) );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_dashboard_assets' ) );
     }
 
@@ -374,6 +375,51 @@ class TMW_CR_Slot_Admin_Page {
         }
 
         $this->redirect_with_notice( 'success', $message );
+    }
+
+    /**
+     * @return void
+     */
+    public function handle_import_final_url_overrides() {
+        $this->assert_admin_action( 'tmw_cr_slot_banner_import_final_url_overrides' );
+        $raw_csv = isset( $_POST['final_url_override_csv'] ) ? (string) wp_unslash( $_POST['final_url_override_csv'] ) : '';
+        $lines = preg_split( '/\r?\n/', trim( $raw_csv ) );
+        $overrides = $this->offer_repository->get_offer_overrides();
+        $imported = 0;
+        $rejected = 0;
+
+        foreach ( (array) $lines as $idx => $line ) {
+            $line = trim( (string) $line );
+            if ( '' === $line ) {
+                continue;
+            }
+            if ( 0 === $idx && false !== strpos( strtolower( $line ), 'offer_id,final_url_override' ) ) {
+                continue;
+            }
+            $parts = str_getcsv( $line );
+            $offer_id = sanitize_text_field( (string) ( $parts[0] ?? '' ) );
+            $final_url = esc_url_raw( trim( (string) ( $parts[1] ?? '' ) ) );
+
+            if ( '' === $offer_id || '' === $final_url || ! $this->offer_repository->is_valid_manual_final_url_override( $final_url ) ) {
+                ++$rejected;
+                error_log( sprintf( '[TMW-BANNER-LINK] manual_final_url_rejected offer_id=%1$s reason=%2$s', $offer_id, '' === $final_url ? 'empty_url' : 'invalid_url' ) );
+                continue;
+            }
+
+            if ( ! isset( $overrides[ $offer_id ] ) || ! is_array( $overrides[ $offer_id ] ) ) {
+                $overrides[ $offer_id ] = array();
+            }
+            $overrides[ $offer_id ]['final_url_override'] = $final_url;
+            ++$imported;
+            error_log( sprintf( '[TMW-BANNER-LINK] manual_final_url_imported offer_id=%s', $offer_id ) );
+            if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+                error_log( sprintf( '[TMW-BANNER-LINK] manual_final_url_debug offer_id=%1$s url=%2$s', $offer_id, $final_url ) );
+            }
+        }
+
+        $this->offer_repository->save_offer_overrides( $overrides );
+        error_log( sprintf( '[TMW-BANNER-LINK] manual_final_url_import_summary imported=%1$d rejected=%2$d', $imported, $rejected ) );
+        $this->redirect_with_notice( 'success', sprintf( 'Final URL override import complete. Imported: %1$d, Rejected: %2$d.', $imported, $rejected ) );
     }
 
     /**
@@ -871,6 +917,12 @@ class TMW_CR_Slot_Admin_Page {
             );
             ?>
             <p class="description"><?php echo esc_html( sprintf( 'Eligible winner offers: %d', count( $eligible_winner_offers ) ) ); ?></p>
+            <?php $manual_diag = $this->offer_repository->get_manual_override_diagnostics(); ?>
+            <p class="description"><?php echo esc_html( sprintf( 'Manual final URL overrides: %d', (int) $manual_diag['manual_final_url_overrides'] ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Invalid manual URL overrides rejected: %d', (int) $manual_diag['invalid_manual_url_overrides_rejected'] ) ); ?></p>
+            <?php if ( 0 === count( $eligible_winner_offers ) ) : ?>
+                <p class="description" style="color:#b32d2e;"><strong><?php esc_html_e( 'No eligible winner offers. Add valid final URL overrides or sync real tracking URLs.', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
+            <?php endif; ?>
             <p class="description"><?php esc_html_e( 'Winner mode: forced three-logo match', 'tmw-cr-slot-sidebar-banner' ); ?></p>
             <p class="description"><?php esc_html_e( 'Final reel behavior: one selected offer repeated across 3 reels', 'tmw-cr-slot-sidebar-banner' ); ?></p>
             <?php if ( current_user_can( 'manage_options' ) ) : ?>
@@ -1032,6 +1084,19 @@ class TMW_CR_Slot_Admin_Page {
             }
             ?>
         </ol>
+        <?php
+        if ( current_user_can( 'manage_options' ) ) :
+        ?>
+        <h3><?php esc_html_e( 'Import Final URL Overrides', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
+        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+            <?php wp_nonce_field( 'tmw_cr_slot_banner_import_final_url_overrides' ); ?>
+            <input type="hidden" name="action" value="tmw_cr_slot_banner_import_final_url_overrides" />
+            <textarea name="final_url_override_csv" class="large-text code" rows="6" placeholder="offer_id,final_url_override&#10;8873,https://real-cr-tracking-link.example/..."></textarea>
+            <?php submit_button( __( 'Import Final URL Overrides', 'tmw-cr-slot-sidebar-banner' ), 'secondary', 'submit', false ); ?>
+        </form>
+        <?php
+        endif;
+        ?>
         <?php
     }
 

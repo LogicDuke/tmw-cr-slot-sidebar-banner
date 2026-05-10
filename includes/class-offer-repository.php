@@ -1459,6 +1459,15 @@ class TMW_CR_Slot_Offer_Repository {
     }
 
     /**
+     * @param string $cta_url URL candidate.
+     *
+     * @return bool
+     */
+    public function is_valid_manual_final_url_override( $cta_url ) {
+        return $this->is_valid_frontend_winner_cta_url( $cta_url );
+    }
+
+    /**
      * @param string                      $offer_id Offer ID.
      * @param array<string,mixed>         $settings Settings.
      * @param array<string,string>        $banner_data Banner data.
@@ -1645,6 +1654,29 @@ class TMW_CR_Slot_Offer_Repository {
         }
 
         return $summary;
+    }
+
+    /**
+     * @return array<string,int>
+     */
+    public function get_manual_override_diagnostics() {
+        $overrides = $this->get_offer_overrides();
+        $counts = array(
+            'manual_final_url_overrides' => 0,
+            'invalid_manual_url_overrides_rejected' => 0,
+        );
+
+        foreach ( $overrides as $override ) {
+            if ( empty( $override['final_url_override'] ) ) {
+                continue;
+            }
+            ++$counts['manual_final_url_overrides'];
+            if ( ! $this->is_valid_manual_final_url_override( (string) $override['final_url_override'] ) ) {
+                ++$counts['invalid_manual_url_overrides_rejected'];
+            }
+        }
+
+        return $counts;
     }
 
     /**

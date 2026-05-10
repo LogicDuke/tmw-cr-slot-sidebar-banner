@@ -2161,6 +2161,48 @@ $tests['invalid_template_tracking_url_falls_back_to_global_cta_or_empty'] = func
     }
 };
 
+$tests['manual_final_url_override_importer_accepts_and_preserves'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_offer_overrides( array( '999' => array( 'custom_cta_text' => 'keep me' ) ) );
+    $_POST['final_url_override_csv'] = "offer_id,final_url_override\n1234,https://trk.example.com/?tid=abc\n";
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $page->handle_import_final_url_overrides();
+    $overrides = $repo->get_offer_overrides();
+    tmw_assert_same( 'https://trk.example.com/?tid=abc', (string) $overrides['1234']['final_url_override'], 'Importer should save valid final_url_override.' );
+    tmw_assert_same( 'keep me', (string) $overrides['999']['custom_cta_text'], 'Importer should preserve existing override rows.' );
+};
+
+$tests['manual_final_url_override_importer_rejects_invalid_patterns'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $_POST['final_url_override_csv'] = "offer_id,final_url_override\n1,https://preview.example.com/path\n2,https://ads.advertisingpolicies.com/path\n3,https://trk.example.com/?transaction_id=preview\n4,https://trk.example.com/?affiliate_id=affiliate_id\n";
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $page->handle_import_final_url_overrides();
+    $overrides = $repo->get_offer_overrides();
+    tmw_assert_true( empty( $overrides['1']['final_url_override'] ), 'Preview URL should be rejected.' );
+    tmw_assert_true( empty( $overrides['2']['final_url_override'] ), 'advertisingpolicies URL should be rejected.' );
+    tmw_assert_true( empty( $overrides['3']['final_url_override'] ), 'transaction_id=preview should be rejected.' );
+    tmw_assert_true( empty( $overrides['4']['final_url_override'] ), 'affiliate_id=affiliate_id should be rejected.' );
+};
+
+$tests['manual_final_url_override_enables_frontend_pool_without_tracking'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '7001' => array( 'id' => '7001', 'name' => 'Offer 7001 - PPS', 'status' => 'active' ) ) );
+    $repo->save_offer_overrides( array( '7001' => array( 'final_url_override' => 'https://trk.example.com/?tid=winner' ) ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    tmw_assert_same( 1, count( $offers ), 'Valid final_url_override should allow offer into frontend winner pool.' );
+};
+
+$tests['offer_without_tracking_or_manual_override_remains_excluded'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '7002' => array( 'id' => '7002', 'name' => 'Offer 7002 - PPS', 'status' => 'active' ) ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    tmw_assert_same( 0, count( $offers ), 'Offer without tracking_url and without final_url_override should remain excluded.' );
+};
+
 
 $failures = array();
 $passes   = 0;

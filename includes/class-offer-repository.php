@@ -1011,6 +1011,9 @@ class TMW_CR_Slot_Offer_Repository {
                 );
 
                 if ( ! empty( $effective ) ) {
+                    if ( ! $this->is_valid_frontend_winner_cta_url( (string) ( $effective['cta_url'] ?? '' ) ) ) {
+                        continue;
+                    }
                     $offers[] = $effective;
                 }
             }
@@ -1065,6 +1068,9 @@ class TMW_CR_Slot_Offer_Repository {
                 );
 
                 if ( ! empty( $effective ) ) {
+                    if ( ! $this->is_valid_frontend_winner_cta_url( (string) ( $effective['cta_url'] ?? '' ) ) ) {
+                        continue;
+                    }
                     $offers[] = $effective;
                 }
             }
@@ -1110,7 +1116,12 @@ class TMW_CR_Slot_Offer_Repository {
                 }
                 ++$type_allowed_count;
 
-                $offers[]  = $this->normalize_legacy_offer( $legacy_offer, $banner_data );
+                $normalized_legacy_offer = $this->normalize_legacy_offer( $legacy_offer, $banner_data );
+                if ( ! $this->is_valid_frontend_winner_cta_url( (string) ( $normalized_legacy_offer['cta_url'] ?? '' ) ) ) {
+                    continue;
+                }
+
+                $offers[]  = $normalized_legacy_offer;
                 $used_ids[] = $legacy_id;
 
                 if ( count( $offers ) >= 3 ) {
@@ -1412,6 +1423,43 @@ class TMW_CR_Slot_Offer_Repository {
         }
 
         return '';
+    }
+
+    /**
+     * @param string $cta_url CTA destination URL.
+     *
+     * @return bool
+     */
+    protected function is_valid_frontend_winner_cta_url( $cta_url ) {
+        $cta_url = trim( (string) $cta_url );
+        if ( '' === $cta_url ) {
+            return false;
+        }
+
+        $lower = strtolower( rawurldecode( $cta_url ) );
+        if ( false !== strpos( $lower, 'preview' ) ) {
+            return false;
+        }
+        if ( false !== strpos( $lower, 'template' ) ) {
+            return false;
+        }
+        if ( false !== strpos( $lower, 'advertisingpolicies.com' ) ) {
+            return false;
+        }
+        if ( false !== strpos( $lower, 'transaction_id=preview' ) ) {
+            return false;
+        }
+        if ( false !== strpos( $lower, 'aid=affiliate_id' ) ) {
+            return false;
+        }
+        if ( false !== strpos( $lower, 'affiliate_id' ) ) {
+            return false;
+        }
+        if ( false !== strpos( $lower, 'src=source' ) ) {
+            return false;
+        }
+
+        return true;
     }
 
     /**

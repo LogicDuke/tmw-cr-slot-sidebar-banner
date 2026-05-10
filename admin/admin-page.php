@@ -803,6 +803,34 @@ class TMW_CR_Slot_Admin_Page {
                 );
                 ?>
             </p>
+            <?php $pps_coverage = $this->offer_repository->get_pps_logo_coverage_report( $settings ); ?>
+            <p class="description">
+                <?php
+                echo esc_html(
+                    sprintf(
+                        'PPS logo coverage: %1$d / %2$d mapped',
+                        (int) $pps_coverage['pps_with_logo'],
+                        (int) $pps_coverage['pps_candidates_total']
+                    )
+                );
+                ?>
+            </p>
+            <?php if ( ! empty( $pps_coverage['pps_missing_logo'] ) ) : ?>
+                <p class="description">
+                    <?php esc_html_e( 'Missing PPS logos:', 'tmw-cr-slot-sidebar-banner' ); ?>
+                    <?php
+                    $missing_rows = array();
+                    foreach ( (array) $pps_coverage['missing_logo_offer_names'] as $idx => $missing_name ) {
+                        $missing_rows[] = sprintf(
+                            '%1$s / %2$s',
+                            (string) $missing_name,
+                            (string) ( $pps_coverage['missing_logo_offer_ids'][ $idx ] ?? '' )
+                        );
+                    }
+                    echo esc_html( implode( '; ', $missing_rows ) );
+                    ?>
+                </p>
+            <?php endif; ?>
 
             <table class="widefat striped">
                 <thead>

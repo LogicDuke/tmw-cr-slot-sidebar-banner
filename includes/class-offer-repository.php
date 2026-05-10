@@ -928,10 +928,18 @@ class TMW_CR_Slot_Offer_Repository {
 
         $offers = array();
 
+        $type_allowed_count = 0;
+        $skipped_type_disallowed_count = 0;
+
         foreach ( $selected_ids as $selected_id ) {
             $selected_id = (string) $selected_id;
 
             if ( isset( $synced_offers[ $selected_id ] ) ) {
+                if ( ! $this->is_offer_type_allowed( $synced_offers[ $selected_id ], $settings ) ) {
+                    ++$skipped_type_disallowed_count;
+                    continue;
+                }
+                ++$type_allowed_count;
                 $effective = $this->get_effective_offer_record(
                     $selected_id,
                     $settings,
@@ -973,6 +981,11 @@ class TMW_CR_Slot_Offer_Repository {
                 if ( ! $this->is_offer_allowed_for_country( $offer_id, $country, $override, $synced_offer, $legacy_catalog ) ) {
                     continue;
                 }
+                if ( ! $this->is_offer_type_allowed( $synced_offer, $settings ) ) {
+                    ++$skipped_type_disallowed_count;
+                    continue;
+                }
+                ++$type_allowed_count;
 
                 $effective = $this->get_effective_offer_record(
                     $offer_id,
@@ -1009,6 +1022,17 @@ class TMW_CR_Slot_Offer_Repository {
                 if ( ! $this->is_offer_allowed_for_country( $legacy_id, $country, array(), array(), $legacy_catalog ) ) {
                     continue;
                 }
+                $legacy_offer_for_type = $legacy_offer;
+                if ( empty( $legacy_offer_for_type['name'] ) ) {
+                    $legacy_offer_for_type['name'] = 'Group Fallback - Legacy Offer';
+                } elseif ( empty( $this->get_offer_type_keys( $legacy_offer_for_type ) ) ) {
+                    $legacy_offer_for_type['name'] = 'Group Fallback - ' . (string) $legacy_offer_for_type['name'];
+                }
+                if ( ! $this->is_offer_type_allowed( $legacy_offer_for_type, $settings ) ) {
+                    ++$skipped_type_disallowed_count;
+                    continue;
+                }
+                ++$type_allowed_count;
 
                 $offers[]  = $this->normalize_legacy_offer( $legacy_offer, $banner_data );
                 $used_ids[] = $legacy_id;
@@ -1021,7 +1045,76 @@ class TMW_CR_Slot_Offer_Repository {
 
         $offers = array_values( array_filter( $offers ) );
 
+        if ( function_exists( 'error_log' ) ) {
+            error_log(
+                sprintf(
+                    '[TMW-BANNER-TYPE] frontend_pool allowed_types=%s total_candidates=%d type_allowed_count=%d skipped_type_disallowed_count=%d',
+                    implode( ',', $this->get_allowed_offer_types( $settings ) ),
+                    count( $selected_ids ) + count( $synced_offers ) + count( $legacy_catalog ),
+                    (int) $type_allowed_count,
+                    (int) $skipped_type_disallowed_count
+                )
+            );
+        }
+        if ( empty( $offers ) && function_exists( 'error_log' ) ) {
+            error_log( '[TMW-BANNER-TYPE] frontend_pool_empty safe_empty_state=1' );
+        }
+
         return apply_filters( 'tmw_cr_slot_banner_offers', $offers, '', $banner_data );
+    }
+
+    /**
+     * @param array<string,mixed> $settings Settings payload.
+     *
+     * @return array<string,mixed>
+     */
+    public function get_pps_logo_coverage_report( $settings ) {
+        $synced = $this->get_synced_offers();
+        $report = array(
+            'pps_candidates_total' => 0,
+            'pps_with_logo' => 0,
+            'pps_missing_logo' => 0,
+            'missing_logo_offer_ids' => array(),
+            'missing_logo_offer_names' => array(),
+            'missing_logo_expected_brand_keys' => array(),
+        );
+
+        foreach ( $synced as $offer ) {
+            if ( ! is_array( $offer ) || ! $this->is_offer_type_allowed( $offer, $settings ) ) {
+                continue;
+            }
+            $types = $this->get_offer_type_keys( $offer );
+            if ( ! in_array( 'pps', $types, true ) ) {
+                continue;
+            }
+
+            ++$report['pps_candidates_total'];
+            $logo_url = $this->get_offer_logo_url( $offer );
+            if ( '' !== $logo_url ) {
+                ++$report['pps_with_logo'];
+                continue;
+            }
+            ++$report['pps_missing_logo'];
+            $offer_id = sanitize_text_field( (string) ( $offer['id'] ?? '' ) );
+            $offer_name = sanitize_text_field( (string) ( $offer['name'] ?? '' ) );
+            $brand_key = $this->get_offer_brand_key( $offer_name );
+            $report['missing_logo_offer_ids'][] = $offer_id;
+            $report['missing_logo_offer_names'][] = $offer_name;
+            $report['missing_logo_expected_brand_keys'][] = $brand_key;
+        }
+
+        if ( function_exists( 'error_log' ) ) {
+            error_log(
+                sprintf(
+                    '[TMW-BANNER-LOGO-COVERAGE] pps_candidates_total=%d pps_with_logo=%d pps_missing_logo=%d',
+                    (int) $report['pps_candidates_total'],
+                    (int) $report['pps_with_logo'],
+                    (int) $report['pps_missing_logo']
+                )
+            );
+        }
+
+        return $report;
     }
 
     /**

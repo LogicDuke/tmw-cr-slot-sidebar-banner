@@ -387,8 +387,8 @@ $tests['frontend_pool_filters_and_legacy_fallback_to_three'] = function() {
     $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
     $repository->save_synced_offers(
         array(
-            '200' => array( 'id' => '200', 'name' => 'Offer 200', 'status' => 'active', 'preview_url' => 'https://preview.test/200' ),
-            '201' => array( 'id' => '201', 'name' => 'Offer 201', 'status' => 'active', 'preview_url' => 'https://preview.test/201' ),
+            '200' => array( 'id' => '200', 'name' => 'Offer 200 - PPS', 'status' => 'active', 'preview_url' => 'https://preview.test/200' ),
+            '201' => array( 'id' => '201', 'name' => 'Offer 201 - PPS', 'status' => 'active', 'preview_url' => 'https://preview.test/201' ),
         )
     );
     $repository->save_offer_overrides(
@@ -401,6 +401,7 @@ $tests['frontend_pool_filters_and_legacy_fallback_to_three'] = function() {
     );
 
     $settings = array(
+        'allowed_offer_types' => array( 'pps', 'fallback' ),
         'slot_offer_ids' => array( '201', '200' ),
         'slot_offer_priority' => array( '201' => 1, '200' => 2 ),
         'offer_image_overrides' => array( '200' => 'https://img.test/legacy-200.png' ),
@@ -471,19 +472,20 @@ $tests['synced_offer_normalization_keeps_frontend_pool_behavior'] = function() {
     $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
     $repository->save_synced_offers(
         array(
-            '601' => array( 'id' => '601', 'name' => 'SexMessenger', 'status' => 'active', 'preview_url' => 'https://preview.test/601' ),
+            '601' => array( 'id' => '601', 'name' => 'SexMessenger - PPS', 'status' => 'active', 'preview_url' => 'https://preview.test/601' ),
             '602' => array( 'id' => '602', 'name' => 'Paused Offer', 'status' => 'paused', 'preview_url' => 'https://preview.test/602' ),
         )
     );
 
     $settings = array(
         'slot_offer_ids' => array( '601', '602' ),
+        'allowed_offer_types' => array( 'pps' ),
         'slot_offer_priority' => array( '601' => 1, '602' => 2 ),
     );
 
     $offers = $repository->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => 'https://base.test', 'cta_text' => 'CTA' ), 'US', TMW_CR_Slot_Sidebar_Banner::get_offer_catalog_defaults() );
     tmw_assert_same( '601', $offers[0]['id'], 'Active synced offers should still normalize for frontend slot pool.' );
-    tmw_assert_contains( 'assets/img/offers/Sex Messenger.png', $offers[0]['image'], 'Resolver should pick local catalog image via alias match.' );
+    tmw_assert_same( '', (string) ( $offers[0]['logo_url'] ?? '' ), 'Missing manifest/logo files should keep empty logo_url safely.' );
 };
 
 $tests['admin_sanitize_and_render_supports_offer_overrides'] = function() {
@@ -1807,6 +1809,63 @@ $tests['offer_type_allowlist_fallback_only_accepts_fallback_only'] = function() 
     tmw_reset_test_state();
     $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
     tmw_assert_true( $repository->is_offer_type_allowed( array( 'name' => 'Group Fallback - Cam - Not Restricted 01' ), array( 'allowed_offer_types' => array( 'fallback' ) ) ), 'Fallback-only should accept fallback-only offers.' );
+};
+
+$tests['frontend_pps_only_filters_disallowed_types_and_keeps_pps'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repository->save_synced_offers(
+        array(
+            'fallback' => array( 'id' => 'fallback', 'name' => 'Group Fallback - Cam - Not Restricted 01', 'status' => 'active' ),
+            'rev-only' => array( 'id' => 'rev-only', 'name' => 'Revenue Driver - Revshare', 'status' => 'active' ),
+            'soi-only' => array( 'id' => 'soi-only', 'name' => 'Lead Maker - SOI', 'status' => 'active' ),
+            'doi-only' => array( 'id' => 'doi-only', 'name' => 'Lead Maker - DOI', 'status' => 'active' ),
+            'pps-1' => array( 'id' => 'pps-1', 'name' => 'Jerkmate - PPS', 'status' => 'active' ),
+            'pps-mix' => array( 'id' => 'pps-mix', 'name' => 'Bongacams - PPS + Revshare lifetime', 'status' => 'active' ),
+            'joi' => array( 'id' => 'joi', 'name' => 'Joi - PPS - Tier 1', 'status' => 'active' ),
+            'jasmin' => array( 'id' => 'jasmin', 'name' => 'Live Jasmin - PPS', 'status' => 'active' ),
+        )
+    );
+
+    $offers = $repository->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => 'https://base.test', 'cta_text' => 'CTA' ), 'US', array() );
+    $names = array_map( static function( $row ) { return (string) ( $row['name'] ?? '' ); }, $offers );
+    tmw_assert_true( in_array( 'Jerkmate - PPS', $names, true ), 'PPS-only should include Jerkmate - PPS.' );
+    tmw_assert_true( in_array( 'Joi - PPS - Tier 1', $names, true ), 'PPS-only should include Joi - PPS - Tier 1.' );
+    tmw_assert_true( in_array( 'Live Jasmin - PPS', $names, true ), 'PPS-only should include Live Jasmin - PPS.' );
+    tmw_assert_true( in_array( 'Bongacams - PPS + Revshare lifetime', $names, true ), 'PPS-only should include mixed PPS+Revshare if PPS detected.' );
+    tmw_assert_true( ! in_array( 'Group Fallback - Cam - Not Restricted 01', $names, true ), 'PPS-only should reject fallback-only offers.' );
+    tmw_assert_true( ! in_array( 'Revenue Driver - Revshare', $names, true ), 'PPS-only should reject Revshare-only offers.' );
+    tmw_assert_true( ! in_array( 'Lead Maker - SOI', $names, true ), 'PPS-only should reject SOI-only offers.' );
+    tmw_assert_true( ! in_array( 'Lead Maker - DOI', $names, true ), 'PPS-only should reject DOI-only offers.' );
+};
+
+$tests['frontend_zero_allowed_offers_returns_safe_empty_pool'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repository->save_synced_offers(
+        array(
+            'fallback' => array( 'id' => 'fallback', 'name' => 'Group Fallback - Cam - Not Restricted 01', 'status' => 'active' ),
+            'rev-only' => array( 'id' => 'rev-only', 'name' => 'Revenue Driver - Revshare', 'status' => 'active' ),
+        )
+    );
+    $offers = $repository->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => 'https://base.test', 'cta_text' => 'CTA' ), 'US', array() );
+    tmw_assert_same( 0, count( $offers ), 'When no allowed offers exist, frontend pool should be empty without fatal behavior.' );
+};
+
+$tests['pps_logo_coverage_report_lists_missing_logo_offers'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repository->save_synced_offers(
+        array(
+            'has-logo' => array( 'id' => 'has-logo', 'name' => 'Jerkmate - PPS', 'status' => 'active' ),
+            'missing-logo' => array( 'id' => 'missing-logo', 'name' => 'Unknown Brand - PPS', 'status' => 'active' ),
+        )
+    );
+    $report = $repository->get_pps_logo_coverage_report( array( 'allowed_offer_types' => array( 'pps' ) ) );
+    tmw_assert_same( 2, (int) $report['pps_candidates_total'], 'Coverage report should include all PPS candidates in allowed pool.' );
+    tmw_assert_same( 1, (int) $report['pps_with_logo'], 'Coverage report should count PPS candidates with mapped logos.' );
+    tmw_assert_same( 1, (int) $report['pps_missing_logo'], 'Coverage report should count PPS candidates with missing logos.' );
+    tmw_assert_true( in_array( 'missing-logo', (array) $report['missing_logo_offer_ids'], true ), 'Coverage report should list missing-logo offer id.' );
 };
 
 $tests['sanitize_settings_preserves_selected_disallowed_offer_ids'] = function() {

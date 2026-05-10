@@ -477,7 +477,7 @@ $tests['admin_sanitize_and_render_supports_offer_overrides'] = function() {
     $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
     $repository->save_synced_offers(
         array(
-            '301' => array( 'id' => '301', 'name' => 'Offer 301', 'status' => 'active', 'preview_url' => 'https://preview.test/301' ),
+            '301' => array( 'id' => '301', 'name' => 'Offer 301 - PPS', 'status' => 'active', 'preview_url' => 'https://preview.test/301' ),
         )
     );
     $page = new TMW_CR_Slot_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repository, 'sidebar' );
@@ -1736,6 +1736,31 @@ $tests['offer_logo_mapping_manifest_consistency'] = function() {
     }
 };
 
+$tests['offer_type_allowlist_pps_only_rejects_fallback_only'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    tmw_assert_true( ! $repository->is_offer_type_allowed( array( 'name' => 'Group Fallback - Cam - Not Restricted 01' ), array( 'allowed_offer_types' => array( 'pps' ) ) ), 'PPS-only should reject fallback-only offers.' );
+};
+
+$tests['offer_type_allowlist_fallback_only_accepts_fallback_only'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    tmw_assert_true( $repository->is_offer_type_allowed( array( 'name' => 'Group Fallback - Cam - Not Restricted 01' ), array( 'allowed_offer_types' => array( 'fallback' ) ) ), 'Fallback-only should accept fallback-only offers.' );
+};
+
+$tests['sanitize_settings_preserves_selected_disallowed_offer_ids'] = function() {
+    tmw_reset_test_state();
+    $page = new TMW_CR_Slot_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    $sanitized = $page->sanitize_settings(
+        array(
+            'allowed_offer_types' => array( 'pps' ),
+            'slot_offer_ids' => array( 'fallback-1', 'pps-1' ),
+        )
+    );
+    tmw_assert_same( array( 'fallback-1', 'pps-1' ), $sanitized['slot_offer_ids'], 'Selected offers should not be removed from saved settings even when currently disallowed by type filters.' );
+};
+
+
 $failures = array();
 $passes   = 0;
 
@@ -1755,3 +1780,4 @@ echo "\nTotal: {$passes} passed, " . count( $failures ) . " failed\n";
 if ( ! empty( $failures ) ) {
     exit( 1 );
 }
+

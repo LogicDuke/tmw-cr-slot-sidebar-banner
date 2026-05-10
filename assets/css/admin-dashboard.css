@@ -151,3 +151,10 @@
     object-fit: cover;
     display: block;
 }
+
+
+.tmw-cr-badge--warning {
+    background: #fff8e5;
+    border-color: #e6c576;
+    color: #8a5600;
+}

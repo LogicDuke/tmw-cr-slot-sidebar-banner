@@ -686,6 +686,39 @@ class TMW_CR_Slot_Admin_Page {
         $result         = $this->offer_repository->get_filtered_synced_offers_for_admin( $args, $settings );
         $offers         = $result['items'];
         $country        = strtoupper( TMW_CR_Slot_Geo_Helper::get_country_code() );
+        $allowed_offer_types = $this->offer_repository->get_allowed_offer_types( $settings );
+        $selected_count = 0;
+        $selected_disallowed_count = 0;
+        $displayed_pool_count = 0;
+        $filtered_offers = array();
+
+        foreach ( $offers as $offer ) {
+            $offer_id = (string) ( $offer['id'] ?? '' );
+            if ( '' === $offer_id ) {
+                continue;
+            }
+
+            $is_selected = ! empty( $offer['is_selected_for_slot'] );
+            if ( $is_selected ) {
+                ++$selected_count;
+            }
+
+            $is_allowed_type = $this->offer_repository->is_offer_type_allowed( $offer, $settings );
+            if ( $include_all && ! $is_selected && ! $is_allowed_type ) {
+                continue;
+            }
+
+            if ( $is_selected && ! $is_allowed_type ) {
+                ++$selected_disallowed_count;
+            }
+
+            ++$displayed_pool_count;
+            $offer['is_type_allowed_for_slot'] = $is_allowed_type;
+            $filtered_offers[] = $offer;
+        }
+
+        $offers = isset( $filtered_offers ) ? $filtered_offers : array();
+        error_log( sprintf( '[TMW-BANNER-TYPE] slot_setup_pool allowed_types=%s total_synced_pool=%d displayed_pool_count=%d selected_count=%d selected_disallowed_count=%d', implode( ',', $allowed_offer_types ), count( $this->offer_repository->get_synced_offers() ), $displayed_pool_count, $selected_count, $selected_disallowed_count ) );
         $legacy_catalog = TMW_CR_Slot_Sidebar_Banner::get_offer_catalog_defaults();
 
         usort(
@@ -720,7 +753,6 @@ class TMW_CR_Slot_Admin_Page {
             <h3><?php esc_html_e( 'Allowed offer types for live banner', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
             <p class="description"><?php esc_html_e( 'Choose which offer types may appear in the frontend slot/sidebar banner. Logo display in admin is brand-level and remains unaffected.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
             <?php
-            $allowed_offer_types = $this->offer_repository->get_allowed_offer_types( $settings );
             $synced_offers = $this->offer_repository->get_synced_offers();
             $type_allowed_count = 0;
             foreach ( $synced_offers as $synced_offer ) {
@@ -752,8 +784,18 @@ class TMW_CR_Slot_Admin_Page {
                 <?php
                 echo esc_html(
                     sprintf(
-                        'Type setting: %1$s. Type-allowed synced offers: %2$d of %3$d.',
+                        'Allowed type filter: %1$s — %2$d offers available.',
                         implode( ' + ', array_map( 'ucfirst', $allowed_offer_types ) ),
+                        (int) $displayed_pool_count
+                    )
+                );
+                ?>
+            </p>
+            <p class="description">
+                <?php
+                echo esc_html(
+                    sprintf(
+                        'Type-allowed synced offers: %1$d of %2$d.',
                         (int) $type_allowed_count,
                         count( $synced_offers )
                     )
@@ -832,6 +874,9 @@ class TMW_CR_Slot_Admin_Page {
                                 <td>
                                     <?php $this->render_badge( $selected ? 'Selected' : 'Not selected', $selected ? 'selected' : 'muted' ); ?>
                                     <?php $this->render_badge( $eligible ? 'Country eligible' : 'Country blocked', $eligible ? 'featured' : 'muted' ); ?>
+                                    <?php if ( $selected && empty( $offer['is_type_allowed_for_slot'] ) ) : ?>
+                                        <?php $this->render_badge( 'Type not currently allowed', 'warning' ); ?>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php endforeach; ?>

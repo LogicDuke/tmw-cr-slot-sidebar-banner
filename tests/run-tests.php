@@ -538,6 +538,26 @@ $tests['admin_sanitize_and_render_supports_offer_overrides'] = function() {
     tmw_assert_true( false === strpos( $html, 'secure-key' ), 'Admin render path must not leak raw API key.' );
 };
 
+$tests['slot_setup_shows_winner_mode_diagnostics'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repository->save_synced_offers(
+        array(
+            'safe1' => array( 'id' => 'safe1', 'name' => 'Jerkmate - PPS', 'status' => 'active' ),
+        )
+    );
+    $page = new TMW_CR_Slot_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repository, 'sidebar' );
+    $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1 );
+
+    ob_start();
+    $page->render_page();
+    $html = ob_get_clean();
+
+    tmw_assert_contains( 'Eligible winner offers:', $html, 'Slot setup should show eligible winner pool count.' );
+    tmw_assert_contains( 'Winner mode: forced three-logo match', $html, 'Slot setup should show forced winner mode.' );
+    tmw_assert_contains( 'Final reel behavior: one selected offer repeated across 3 reels', $html, 'Slot setup should describe final reel behavior.' );
+};
+
 $tests['extract_offer_rows_supports_response_data_and_keyed_collections'] = function() {
     tmw_reset_test_state();
 

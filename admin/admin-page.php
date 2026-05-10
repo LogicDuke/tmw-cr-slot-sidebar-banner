@@ -858,6 +858,22 @@ class TMW_CR_Slot_Admin_Page {
                 </p>
             <?php endif; ?>
 
+            <?php
+            $eligible_winner_offers = $this->offer_repository->get_frontend_slot_offers(
+                $this->slot_key,
+                $settings,
+                array(
+                    'cta_url'  => (string) ( $settings['cta_url'] ?? '' ),
+                    'cta_text' => (string) ( $settings['cta_text'] ?? '' ),
+                ),
+                $country,
+                $legacy_catalog
+            );
+            ?>
+            <p class="description"><?php echo esc_html( sprintf( 'Eligible winner offers: %d', count( $eligible_winner_offers ) ) ); ?></p>
+            <p class="description"><?php esc_html_e( 'Winner mode: forced three-logo match', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+            <p class="description"><?php esc_html_e( 'Final reel behavior: one selected offer repeated across 3 reels', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+
             <table class="widefat striped">
                 <thead>
                     <tr>

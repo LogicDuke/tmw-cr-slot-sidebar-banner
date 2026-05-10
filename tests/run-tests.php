@@ -2,8 +2,8 @@
 require_once __DIR__ . '/bootstrap.php';
 
 class TMW_CR_Slot_Sidebar_Banner {
-    const DEFAULT_HEADLINE = 'Find More Sexy Girls';
-    const DEFAULT_SUBHEADLINE = 'Trusted Cam Models';
+    const DEFAULT_HEADLINE = 'Discover Adult Offers';
+    const DEFAULT_SUBHEADLINE = 'Cam, Dating, AI & More';
     const DEFAULT_SPIN_BUTTON_TEXT = 'SPIN THE REELS';
     const DEFAULT_CTA_TEXT = 'TRY YOUR FREE SPINS';
     const OPTION_KEY = 'tmw_cr_slot_banner_settings';

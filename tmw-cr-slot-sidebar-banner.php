@@ -30,8 +30,8 @@ require_once TMW_CR_SLOT_BANNER_PATH . 'admin/admin-page.php';
  * Primary plugin bootstrap class.
  */
 class TMW_CR_Slot_Sidebar_Banner {
-    const DEFAULT_HEADLINE = 'Find More Sexy Girls';
-    const DEFAULT_SUBHEADLINE = 'Trusted Cam Models';
+    const DEFAULT_HEADLINE = 'Discover Adult Offers';
+    const DEFAULT_SUBHEADLINE = 'Cam, Dating, AI & More';
     const DEFAULT_SPIN_BUTTON_TEXT = 'SPIN THE REELS';
     const DEFAULT_CTA_TEXT = 'TRY YOUR FREE SPINS';
     /**

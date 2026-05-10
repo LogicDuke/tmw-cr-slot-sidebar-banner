@@ -885,6 +885,15 @@ class TMW_CR_Slot_Admin_Page {
                     <li><?php echo esc_html( sprintf( 'offers with unresolved placeholders: %d', (int) $url_audit['offers_with_unresolved_placeholders'] ) ); ?></li>
                     <li><?php echo esc_html( sprintf( 'offers excluded by invalid CTA validation: %d', (int) $url_audit['offers_excluded_by_invalid_cta_validation'] ) ); ?></li>
                 </ul>
+                <?php
+                $tracking_coverage_ratio = 0;
+                if ( (int) $url_audit['synced_pps_offers_checked'] > 0 ) {
+                    $tracking_coverage_ratio = (int) $url_audit['offers_with_tracking_url'] / (int) $url_audit['synced_pps_offers_checked'];
+                }
+                ?>
+                <?php if ( $tracking_coverage_ratio < 0.5 ) : ?>
+                    <p class="description" style="color:#b32d2e;"><strong><?php esc_html_e( 'WARNING: Real tracking URL coverage is low. Winner pool may be limited.', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
+                <?php endif; ?>
                 <p class="description"><?php esc_html_e( 'URL field hostnames are shown for audit only.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
                 <ul>
                     <?php foreach ( (array) $url_audit['field_counts'] as $field_name => $field_count ) : ?>

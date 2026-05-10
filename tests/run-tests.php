@@ -360,10 +360,10 @@ $tests['offer_override_resolution_and_country_filters'] = function() {
     tmw_assert_same( 'Claim 100', $effective['cta_text'], 'custom_cta_text override should win.' );
 
     $fallback_url = $repository->get_effective_cta_url( '101', $settings, $banner_data, array( 'id' => '101', 'name' => 'Offer 101' ), array() );
-    tmw_assert_contains( 'offer_id=101', $fallback_url, 'Base CTA fallback should append offer query args.' );
+    tmw_assert_contains( 'https://base.test/click', $fallback_url, 'Base CTA fallback should remain usable.' );
 
     $preview_only_url = $repository->get_effective_cta_url( '101', $settings, array( 'cta_url' => '' ), array( 'id' => '101', 'name' => 'Offer 101', 'preview_url' => 'https://preview.test/101' ), array() );
-    tmw_assert_same( 'https://preview.test/101', $preview_only_url, 'preview_url should remain the last fallback.' );
+    tmw_assert_same( '', $preview_only_url, 'preview_url should not be used as CTA fallback.' );
 
     tmw_assert_true( ! $repository->is_offer_allowed_for_country( '101', 'US', $repository->get_offer_override( '101' ), array(), array() ), 'Disabled offer should be excluded.' );
     tmw_assert_true( $repository->is_offer_allowed_for_country( '100', 'US', $repository->get_offer_override( '100' ), array(), array() ), 'Allowed countries should permit matching country.' );
@@ -426,7 +426,7 @@ $tests['frontend_pool_excludes_invalid_winner_affiliate_urls'] = function() {
     $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
     $repository->save_synced_offers(
         array(
-            '701' => array( 'id' => '701', 'name' => 'Offer 701 - PPS', 'status' => 'active', 'preview_url' => 'https://valid.test/path?transaction_id=abc123' ),
+            '701' => array( 'id' => '701', 'name' => 'Offer 701 - PPS', 'status' => 'active', 'tracking_url' => 'https://valid.test/path?transaction_id=abc123' ),
             '702' => array( 'id' => '702', 'name' => 'Offer 702 - PPS', 'status' => 'active', 'preview_url' => 'https://valid.test/path?transaction_id=preview' ),
             '703' => array( 'id' => '703', 'name' => 'Offer 703 - PPS', 'status' => 'active', 'preview_url' => 'https://track.test/click?aid=affiliate_id' ),
             '704' => array( 'id' => '704', 'name' => 'Offer 704 - PPS', 'status' => 'active', 'preview_url' => 'https://ads.advertisingpolicies.com/path' ),
@@ -747,6 +747,21 @@ $tests['normalize_offer_supports_nested_offer_wrappers_and_id_aliases'] = functi
     tmw_assert_same( '77', $offer_lower['id'], 'offer_id alias should normalize to id.' );
     tmw_assert_true( true === $offer_upper['is_featured'], 'Non-empty featured timestamp should be featured.' );
     tmw_assert_true( false === $offer_lower['is_featured'], 'Zero-date featured timestamp should not be featured.' );
+};
+
+$tests['sync_default_fields_include_url_and_normalize_uses_it_for_tracking'] = function() {
+    tmw_reset_test_state();
+    $fields = TMW_CR_Slot_Offer_Sync_Service::get_default_offer_fields();
+    tmw_assert_true( in_array( 'url', $fields, true ), 'Default sync fields should request url.' );
+
+    $normalized = TMW_CR_Slot_Offer_Sync_Service::normalize_offer(
+        array(
+            'id' => '9001',
+            'name' => 'URL Only Offer',
+            'url' => 'https://gateway.crakrevenue.com/click/url-only',
+        )
+    );
+    tmw_assert_same( 'https://gateway.crakrevenue.com/click/url-only', (string) $normalized['tracking_url'], 'url field should populate tracking_url when present.' );
 };
 
 $tests['sync_imports_nested_offer_rows'] = function() {
@@ -2103,20 +2118,47 @@ $tests['cr_url_field_audit_summary_classifies_pps_urls'] = function() {
     $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
     $repository->save_synced_offers(
         array(
-            't1' => array( 'id' => 't1', 'name' => 'Offer A - PPS', 'status' => 'active', 'preview_url' => 'https://trk.example.com/?affiliate_id=123&transaction_id=abc' ),
+            't1' => array( 'id' => 't1', 'name' => 'Offer A - PPS', 'status' => 'active', 'tracking_url' => 'https://trk.example.com/?affiliate_id=123&transaction_id=abc' ),
             't2' => array( 'id' => 't2', 'name' => 'Offer B - PPS', 'status' => 'active', 'preview_url' => 'https://preview.example.com/template' ),
             't3' => array( 'id' => 't3', 'name' => 'Offer C - PPS', 'status' => 'active', 'preview_url' => 'https://brand.example.com/landing' ),
             't4' => array( 'id' => 't4', 'name' => 'Offer D - PPS', 'status' => 'active', 'preview_url' => 'https://trk.example.com/?affiliate_id=affiliate_id&transaction_id=preview' ),
             't5' => array( 'id' => 't5', 'name' => 'Offer E - PPS', 'status' => 'active', 'preview_url' => '' ),
+            't6' => array( 'id' => 't6', 'name' => 'Offer F - PPS', 'status' => 'active', 'tracking_url' => 'https://gateway.crakrevenue.com/click/abcdef' ),
         )
     );
     $summary = $repository->get_cr_url_field_audit_summary( array( 'cta_url' => '' ) );
-    tmw_assert_same( 5, (int) $summary['synced_pps_offers_checked'], 'All PPS rows should be included in URL audit summary.' );
-    tmw_assert_same( 1, (int) $summary['offers_with_tracking_url'], 'Tracking URLs should be counted.' );
-    tmw_assert_same( 1, (int) $summary['offers_with_preview_template_url_only'], 'Preview/template URLs should be counted.' );
-    tmw_assert_same( 1, (int) $summary['offers_with_raw_advertiser_url_only'], 'Raw advertiser URLs should be counted.' );
-    tmw_assert_same( 1, (int) $summary['offers_with_unresolved_placeholders'], 'Placeholder URLs should be counted.' );
-    tmw_assert_same( 1, (int) $summary['offers_with_empty_url'], 'Empty URLs should be counted.' );
+    tmw_assert_same( 6, (int) $summary['synced_pps_offers_checked'], 'All PPS rows should be included in URL audit summary.' );
+    tmw_assert_same( 2, (int) $summary['offers_with_tracking_url'], 'Tracking URLs should be counted, including known CR tracking hosts.' );
+    tmw_assert_same( 0, (int) $summary['offers_with_preview_template_url_only'], 'Preview/template URLs should not be used as effective CTA URLs.' );
+    tmw_assert_same( 0, (int) $summary['offers_with_raw_advertiser_url_only'], 'Raw advertiser URLs should not be used as effective CTA URLs.' );
+    tmw_assert_same( 0, (int) $summary['offers_with_unresolved_placeholders'], 'Placeholder URLs should not be used as effective CTA URLs.' );
+    tmw_assert_same( 4, (int) $summary['offers_with_empty_url'], 'Rows without usable tracking/global URL should be counted as empty effective URLs.' );
+};
+
+$tests['invalid_template_tracking_url_falls_back_to_global_cta_or_empty'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+
+    $global = array( 'cta_url' => 'https://base.test/click', 'cta_text' => 'CTA' );
+    $invalid_urls = array(
+        'https://trk.example.com/path?affiliate_id=123&transaction_id=preview',
+        'https://trk.example.com/path?affiliate_id=affiliate_id&transaction_id=abc',
+        'https://trk.example.com/path?aid=affiliate_id&transaction_id=abc',
+        'https://trk.example.com/path?src=source&transaction_id=abc',
+        'https://gateway.crakrevenue.com/click?transaction_id=preview',
+        'https://gateway.crakrevenue.com/click?affiliate_id=affiliate_id',
+        'https://gateway.crakrevenue.com/click?aid=affiliate_id',
+        'https://gateway.crakrevenue.com/click?src=source',
+    );
+
+    foreach ( $invalid_urls as $idx => $invalid_url ) {
+        $offer_id = (string) ( 9500 + $idx );
+        $with_global = $repository->get_effective_cta_url( $offer_id, array(), $global, array( 'id' => $offer_id, 'tracking_url' => $invalid_url ), array() );
+        tmw_assert_contains( 'https://base.test/click', $with_global, 'Invalid template tracking URL should fallback to global CTA when available.' );
+
+        $without_global = $repository->get_effective_cta_url( $offer_id, array(), array( 'cta_url' => '', 'cta_text' => 'CTA' ), array( 'id' => $offer_id, 'tracking_url' => $invalid_url, 'preview_url' => 'https://preview.test/should-not-use' ), array() );
+        tmw_assert_same( '', $without_global, 'Invalid template tracking URL should return empty without valid global CTA and never fallback to preview_url.' );
+    }
 };
 
 

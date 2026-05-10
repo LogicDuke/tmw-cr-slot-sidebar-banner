@@ -831,6 +831,16 @@ class TMW_CR_Slot_Admin_Page {
                     ?>
                 </p>
             <?php endif; ?>
+            <?php if ( ! empty( $pps_coverage['blocked_pps_offers_excluded'] ) ) : ?>
+                <p style="margin-top:6px;">
+                    <?php
+                    printf(
+                        esc_html__( 'Blocked PPS offers excluded: %d', 'tmw-cr-slot-sidebar-banner' ),
+                        (int) $pps_coverage['blocked_pps_offers_excluded']
+                    );
+                    ?>
+                </p>
+            <?php endif; ?>
 
             <table class="widefat striped">
                 <thead>

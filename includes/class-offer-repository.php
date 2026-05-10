@@ -1664,19 +1664,20 @@ class TMW_CR_Slot_Offer_Repository {
             return 'tracking_url';
         }
 
+        if ( false !== strpos( $lower, 'affiliate_id=affiliate_id' ) || false !== strpos( $lower, 'transaction_id=preview' ) || false !== strpos( $lower, 'aid=affiliate_id' ) || false !== strpos( $lower, 'src=source' ) || false !== strpos( $lower, '{' ) ) {
+            return 'unresolved_placeholders';
+        }
+
         if ( false !== strpos( $lower, 'affiliate_id' ) || false !== strpos( $lower, 'transaction_id' ) || false !== strpos( $lower, 'subid=' ) ) {
-            if ( false !== strpos( $lower, 'affiliate_id=' ) && false === strpos( $lower, 'affiliate_id=affiliate_id' ) ) {
+            if ( false !== strpos( $lower, 'affiliate_id=' ) ) {
                 return 'tracking_url';
             }
-            if ( false !== strpos( $lower, 'transaction_id=' ) && false === strpos( $lower, 'transaction_id=preview' ) ) {
+            if ( false !== strpos( $lower, 'transaction_id=' ) ) {
                 return 'tracking_url';
             }
             if ( false !== strpos( $lower, 'subid=' ) && false === strpos( $lower, 'subid={') ) {
                 return 'tracking_url';
             }
-        }
-        if ( false !== strpos( $lower, 'affiliate_id=affiliate_id' ) || false !== strpos( $lower, 'transaction_id=preview' ) || false !== strpos( $lower, '{' ) ) {
-            return 'unresolved_placeholders';
         }
         if ( false !== strpos( $lower, 'preview' ) || false !== strpos( $lower, 'template' ) ) {
             return 'preview_template_only';

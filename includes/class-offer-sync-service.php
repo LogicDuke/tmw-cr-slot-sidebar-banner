@@ -28,6 +28,7 @@ class TMW_CR_Slot_Offer_Sync_Service {
             'clickUrl',
             'offer_url',
             'final_url',
+            'url',
             'status',
             'default_payout',
             'percent_payout',

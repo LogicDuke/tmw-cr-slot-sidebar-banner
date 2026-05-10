@@ -8,6 +8,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 class TMW_CR_Slot_Offer_Repository {
+    const ALLOWED_OFFER_TYPES = array( 'pps', 'revshare', 'soi', 'doi', 'cpa', 'cpl', 'cpc', 'smartlink', 'fallback' );
     /** @var string */
     protected $offers_option_key;
 
@@ -217,6 +218,66 @@ class TMW_CR_Slot_Offer_Repository {
         }
 
         return $clean;
+    }
+
+    /**
+     * @param array<string,mixed> $settings Settings payload.
+     *
+     * @return array<int,string>
+     */
+    public function get_allowed_offer_types( $settings ) {
+        return self::sanitize_allowed_offer_types( isset( $settings['allowed_offer_types'] ) ? $settings['allowed_offer_types'] : array() );
+    }
+
+    /**
+     * @param array<string,mixed> $offer Offer payload.
+     *
+     * @return array<int,string>
+     */
+    public function get_offer_type_keys( $offer ) {
+        $haystack = strtolower( (string) ( $offer['name'] ?? '' ) ) . ' ' . strtolower( (string) ( $offer['payout_type'] ?? '' ) );
+        $patterns = array(
+            'fallback'  => '/\b(group\s+fallback|custom\s+fallback)\b/i',
+            'smartlink' => '/\bsmartlink\b/i',
+            'revshare'  => '/\brevshare(\s+lifetime)?\b/i',
+            'soi'       => '/\bsoi\b/i',
+            'doi'       => '/\bdoi\b/i',
+            'cpa'       => '/\b(multi[\s-]*cpa|cpa)\b/i',
+            'cpl'       => '/\b(ppl|cpl)\b/i',
+            'cpc'       => '/\b(ppc|cpc)\b/i',
+            'pps'       => '/\bpps\b/i',
+        );
+
+        $types = array();
+        foreach ( $patterns as $key => $pattern ) {
+            if ( preg_match( $pattern, $haystack ) ) {
+                $types[] = $key;
+            }
+        }
+
+        return array_values( array_unique( $types ) );
+    }
+
+    public function is_offer_type_allowed( $offer, $settings ) {
+        $allowed = $this->get_allowed_offer_types( $settings );
+        $types   = $this->get_offer_type_keys( $offer );
+        if ( empty( $types ) || empty( $allowed ) ) {
+            return false;
+        }
+        return ! empty( array_intersect( $types, $allowed ) );
+    }
+
+    public static function sanitize_allowed_offer_types( $raw_types ) {
+        $values = is_array( $raw_types ) ? $raw_types : array( $raw_types );
+        $clean  = array();
+        foreach ( $values as $value ) {
+            $key = sanitize_key( (string) $value );
+            if ( in_array( $key, self::ALLOWED_OFFER_TYPES, true ) ) {
+                $clean[] = $key;
+            }
+        }
+        $clean = array_values( array_unique( $clean ) );
+        return empty( $clean ) ? array( 'pps' ) : $clean;
     }
 
     /**

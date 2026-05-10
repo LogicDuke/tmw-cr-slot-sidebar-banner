@@ -36,6 +36,7 @@ class TMW_CR_Slot_Sidebar_Banner {
             'auto_sync_frequency' => 'daily',
             'stats_sync_range'       => '30d',
             'optimization_notes' => '',
+            'allowed_offer_types' => array( 'pps' ),
         );
 
         return wp_parse_args( get_option( self::OPTION_KEY, array() ), $defaults );
@@ -163,6 +164,31 @@ $tests['optimization_thresholds_and_decay_guard_low_sample_outliers'] = function
     );
 
     tmw_assert_same( 'B', $ranked[0]['id'], 'Low-sample US outlier should not outrank established offer when thresholds apply.' );
+};
+
+$tests['sanitize_settings_defaults_allowed_offer_types_to_pps'] = function() {
+    tmw_reset_test_state();
+    $page = new TMW_CR_Slot_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    $sanitized = $page->sanitize_settings( array() );
+    tmw_assert_same( array( 'pps' ), $sanitized['allowed_offer_types'], 'Missing allowed_offer_types should default to PPS.' );
+};
+
+$tests['sanitize_settings_filters_invalid_allowed_offer_types'] = function() {
+    tmw_reset_test_state();
+    $page = new TMW_CR_Slot_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    $sanitized = $page->sanitize_settings( array( 'allowed_offer_types' => array( 'pps', 'bad', 'soi', 'evil' ) ) );
+    tmw_assert_same( array( 'pps', 'soi' ), $sanitized['allowed_offer_types'], 'Invalid allowed_offer_types values should be removed.' );
+};
+
+$tests['offer_type_detection_and_allowlist_behavior'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    tmw_assert_same( array( 'pps' ), $repository->get_offer_type_keys( array( 'name' => 'Jerkmate - PPS' ) ), 'PPS should be detected from name.' );
+    tmw_assert_same( array( 'smartlink', 'cpa' ), $repository->get_offer_type_keys( array( 'name' => 'CR Smartlink - Multi-CPA - Global Adult Traffic' ) ), 'Smartlink + CPA should both be detected.' );
+    tmw_assert_same( array( 'fallback', 'pps' ), $repository->get_offer_type_keys( array( 'name' => 'Group Fallback - Jerkmate - PPS - DE-AT-CH' ) ), 'Fallback and PPS should both be detected.' );
+    tmw_assert_true( $repository->is_offer_type_allowed( array( 'name' => 'Bongacams - PPS + Revshare lifetime' ), array( 'allowed_offer_types' => array( 'pps' ) ) ), 'Mixed PPS+Revshare should be allowed when PPS is enabled.' );
+    tmw_assert_true( ! $repository->is_offer_type_allowed( array( 'name' => 'Jerkmate - Revshare Lifetime' ), array( 'allowed_offer_types' => array( 'pps' ) ) ), 'Revshare-only should be rejected when PPS-only is enabled.' );
+    tmw_assert_true( $repository->is_offer_type_allowed( array( 'name' => 'CR Smartlink - Multi-CPA' ), array( 'allowed_offer_types' => array( 'smartlink', 'cpa' ) ) ), 'Smartlink + CPA allowlist should allow Smartlink Multi-CPA.' );
 };
 
 $tests['optimization_excludes_zero_clicks_and_zero_conversions'] = function() {

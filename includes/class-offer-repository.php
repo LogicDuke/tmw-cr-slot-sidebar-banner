@@ -1142,6 +1142,38 @@ class TMW_CR_Slot_Offer_Repository {
     }
 
     /**
+     * @return array<string,bool>
+     */
+    protected function get_logo_manifest_output_file_map() {
+        $manifest_path = dirname( __DIR__ ) . '/assets/logos/80x80/manifest.csv';
+        if ( ! file_exists( $manifest_path ) ) {
+            return array();
+        }
+
+        $rows = file( $manifest_path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES );
+        if ( false === $rows || empty( $rows ) ) {
+            return array();
+        }
+
+        $header     = str_getcsv( (string) array_shift( $rows ) );
+        $output_idx = array_search( 'output_file', $header, true );
+        if ( false === $output_idx ) {
+            return array();
+        }
+
+        $map = array();
+        foreach ( $rows as $row ) {
+            $columns = str_getcsv( (string) $row );
+            $output  = isset( $columns[ $output_idx ] ) ? trim( (string) $columns[ $output_idx ] ) : '';
+            if ( '' !== $output ) {
+                $map[ $output ] = true;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
      * @param array<string,mixed> $settings Settings payload.
      *
      * @return array<string,mixed>
@@ -1188,15 +1220,14 @@ class TMW_CR_Slot_Offer_Repository {
             $report['missing_logo_expected_brand_keys'][] = $brand_key;
         }
 
-        $targets       = $this->get_pending_pps_logo_verification_targets();
-        $manifest_path = dirname( __DIR__ ) . '/assets/logos/80x80/manifest.csv';
-        $manifest_csv  = file_exists( $manifest_path ) ? (string) file_get_contents( $manifest_path ) : '';
+        $targets            = $this->get_pending_pps_logo_verification_targets();
+        $manifest_file_map  = $this->get_logo_manifest_output_file_map();
         foreach ( $targets as $offer_id => $target ) {
             $offer_name      = (string) $target['offer_name'];
             $expected_brand  = (string) $target['expected_brand'];
             $offer           = isset( $synced[ $offer_id ] ) && is_array( $synced[ $offer_id ] ) ? $synced[ $offer_id ] : array( 'id' => $offer_id, 'name' => $offer_name );
             $logo_filename   = $this->get_offer_logo_filename( $offer );
-            $manifest_hit    = '' !== $logo_filename && false !== stripos( $manifest_csv, ',' . $logo_filename . ',' );
+            $manifest_hit    = '' !== $logo_filename && isset( $manifest_file_map[ $logo_filename ] );
             $disk_path       = '' !== $logo_filename ? dirname( __DIR__ ) . '/assets/logos/80x80/' . $logo_filename : '';
             $disk_hit        = '' !== $disk_path && file_exists( $disk_path );
 

@@ -815,23 +815,6 @@ class TMW_CR_Slot_Admin_Page {
                 );
                 ?>
             </p>
-            <?php if ( ! empty( $pps_coverage['pps_missing_logo'] ) ) : ?>
-                <p class="description">
-                    <?php esc_html_e( 'Missing verified PPS logo assets:', 'tmw-cr-slot-sidebar-banner' ); ?>
-                    <?php
-                    $missing_rows = array();
-                    foreach ( (array) $pps_coverage['missing_logo_offer_names'] as $idx => $missing_name ) {
-                        $missing_rows[] = sprintf(
-                            '%1$s / %2$s',
-                            (string) $missing_name,
-                            (string) ( $pps_coverage['missing_logo_offer_ids'][ $idx ] ?? '' )
-                        );
-                    }
-                    echo esc_html( implode( '; ', $missing_rows ) );
-                    ?>
-                </p>
-            <?php endif; ?>
-
             <?php if ( ! empty( $pps_coverage['tmw_slot_logo_still_unmapped'] ) ) : ?>
                 <p class="description"><?php esc_html_e( 'Missing verified PPS logo assets:', 'tmw-cr-slot-sidebar-banner' ); ?></p>
                 <ul>

@@ -1831,6 +1831,12 @@ $tests['frontend_slot_offer_includes_empty_logo_url_when_unmapped'] = function()
 
 $tests['offer_logo_mapping_manifest_consistency'] = function() {
     tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
+    $reflection = new ReflectionClass( $repository );
+    $method = $reflection->getMethod( 'get_offer_logo_filename_map' );
+    $method->setAccessible( true );
+    $map = (array) $method->invoke( $repository );
+
     $manifest_rows = array_map( 'str_getcsv', file( __DIR__ . '/../assets/logos/80x80/manifest.csv' ) );
     $manifest_files = array();
     foreach ( $manifest_rows as $index => $row ) {
@@ -1838,6 +1844,11 @@ $tests['offer_logo_mapping_manifest_consistency'] = function() {
             continue;
         }
         $manifest_files[ trim( (string) $row[1] ) ] = true;
+    }
+
+    foreach ( $map as $filename ) {
+        tmw_assert_true( isset( $manifest_files[ $filename ] ), 'Mapped filename must exist in manifest.csv: ' . $filename );
+        tmw_assert_true( file_exists( __DIR__ . '/../assets/logos/80x80/' . $filename ), 'Mapped filename must exist on disk: ' . $filename );
     }
 
     $required = array(

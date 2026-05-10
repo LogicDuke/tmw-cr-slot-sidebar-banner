@@ -1991,6 +1991,56 @@ $tests['pps_logo_coverage_excludes_blocked_offers_from_missing'] = function() {
     tmw_assert_same( 1, (int) $report['blocked_pps_offers_excluded'], 'Blocked PPS excluded count should be reported.' );
 };
 
+$tests['pps_logo_coverage_excludes_unavailable_account_offers'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $offers = array();
+    for ( $i = 1; $i <= 87; $i++ ) {
+        $offers[ 'mapped-' . $i ] = array(
+            'id' => 'mapped-' . $i,
+            'name' => 'Jerkmate - PPS',
+            'status' => 'active',
+        );
+    }
+    $offers['9647'] = array( 'id' => '9647', 'name' => 'Group Fallback - Tapyn - PPS - Mobile - Android', 'status' => 'active' );
+    $offers['9781'] = array( 'id' => '9781', 'name' => 'Group Fallback - Dating.com PPS', 'status' => 'active' );
+    $offers['2492'] = array( 'id' => '2492', 'name' => 'XLoveGay - PPS', 'status' => 'active' );
+    $offers['5875'] = array( 'id' => '5875', 'name' => 'Mennation - PPS', 'status' => 'active' );
+    $offers['10372'] = array( 'id' => '10372', 'name' => 'GayBloom - PPS - US', 'status' => 'active' );
+    $offers['10373'] = array( 'id' => '10373', 'name' => 'PridePair - PPS - US', 'status' => 'active' );
+    $offers['transdate'] = array( 'id' => 'transdate', 'name' => 'TransDate - PPS', 'status' => 'active' );
+    $repository->save_synced_offers( $offers );
+
+    $report = $repository->get_pps_logo_coverage_report( array( 'allowed_offer_types' => array( 'pps' ) ) );
+    tmw_assert_same( 87, (int) $report['pps_candidates_total'], 'Unavailable account offers must be excluded from PPS denominator.' );
+    tmw_assert_same( 87, (int) $report['pps_with_logo'], 'Mapped PPS offers should remain 87.' );
+    tmw_assert_same( 0, (int) $report['pps_missing_logo'], 'Unavailable account offers must not appear as missing logos.' );
+    tmw_assert_same( 5, (int) $report['blocked_pps_offers_excluded'], 'Blocked PPS offers excluded count should remain 5.' );
+    tmw_assert_same( 2, (int) $report['unavailable_account_pps_offers_excluded'], 'Unavailable account PPS excluded count should be reported.' );
+    tmw_assert_true( in_array( '9647', (array) $report['unavailable_account_offer_ids'], true ), 'Tapyn offer id should be listed as unavailable.' );
+    tmw_assert_true( in_array( '9781', (array) $report['unavailable_account_offer_ids'], true ), 'Dating.com offer id should be listed as unavailable.' );
+    tmw_assert_true( ! in_array( '9647', (array) $report['missing_logo_offer_ids'], true ), 'Tapyn must not be treated as missing logo.' );
+    tmw_assert_true( ! in_array( '9781', (array) $report['missing_logo_offer_ids'], true ), 'Dating.com must not be treated as missing logo.' );
+};
+
+$tests['frontend_pps_pool_excludes_unavailable_account_offers'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repository->save_synced_offers(
+        array(
+            '9647' => array( 'id' => '9647', 'name' => 'Group Fallback - Tapyn - PPS - Mobile - Android', 'status' => 'active' ),
+            '9781' => array( 'id' => '9781', 'name' => 'Group Fallback - Dating.com PPS', 'status' => 'active' ),
+            'safe1' => array( 'id' => 'safe1', 'name' => 'Jerkmate - PPS', 'status' => 'active' ),
+        )
+    );
+
+    $offers = $repository->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => 'https://base.test', 'cta_text' => 'CTA' ), 'US', array() );
+    $ids = array_map( static function( $row ) { return (string) ( $row['id'] ?? '' ); }, $offers );
+    tmw_assert_true( in_array( 'safe1', $ids, true ), 'Safe PPS offers should remain eligible.' );
+    tmw_assert_true( ! in_array( '9647', $ids, true ), 'Tapyn should be excluded from frontend pool.' );
+    tmw_assert_true( ! in_array( '9781', $ids, true ), 'Dating.com should be excluded from frontend pool.' );
+};
+
 $tests['sanitize_settings_preserves_selected_disallowed_offer_ids'] = function() {
     tmw_reset_test_state();
     $page = new TMW_CR_Slot_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );

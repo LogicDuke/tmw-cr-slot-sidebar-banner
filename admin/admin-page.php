@@ -92,6 +92,7 @@ class TMW_CR_Slot_Admin_Page {
 
         $output['headline']              = isset( $input['headline'] ) ? sanitize_text_field( $input['headline'] ) : '';
         $output['subheadline']           = isset( $input['subheadline'] ) ? sanitize_text_field( $input['subheadline'] ) : '';
+        $output['spin_button_text']      = isset( $input['spin_button_text'] ) ? sanitize_text_field( $input['spin_button_text'] ) : '';
         $output['cta_text']              = isset( $input['cta_text'] ) ? sanitize_text_field( $input['cta_text'] ) : '';
         $output['cta_url']               = isset( $input['cta_url'] ) ? esc_url_raw( $input['cta_url'] ) : '';
         $output['default_image_url']     = isset( $input['default_image_url'] ) ? esc_url_raw( $input['default_image_url'] ) : '';
@@ -1098,7 +1099,25 @@ class TMW_CR_Slot_Admin_Page {
                     </tr>
                     <tr>
                         <th scope="row"><label for="tmw-cr-cta-text"><?php esc_html_e( 'CTA Text', 'tmw-cr-slot-sidebar-banner' ); ?></label></th>
-                        <td><input type="text" class="regular-text" id="tmw-cr-cta-text" name="<?php echo esc_attr( $this->option_key ); ?>[cta_text]" value="<?php echo esc_attr( $settings['cta_text'] ); ?>" /></td>
+                        <td>
+                            <input type="text" class="regular-text" id="tmw-cr-cta-text" name="<?php echo esc_attr( $this->option_key ); ?>[cta_text]" value="<?php echo esc_attr( $settings['cta_text'] ); ?>" />
+                            <p class="description"><?php esc_html_e( 'Default used when empty: TRY YOUR FREE SPINS', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="tmw-cr-spin-button-text"><?php esc_html_e( 'Spin Button Text', 'tmw-cr-slot-sidebar-banner' ); ?></label></th>
+                        <td>
+                            <input type="text" class="regular-text" id="tmw-cr-spin-button-text" name="<?php echo esc_attr( $this->option_key ); ?>[spin_button_text]" value="<?php echo esc_attr( $settings['spin_button_text'] ?? '' ); ?>" />
+                            <p class="description"><?php esc_html_e( 'Default used when empty: SPIN THE REELS', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><?php esc_html_e( 'Frontend Text Debug', 'tmw-cr-slot-sidebar-banner' ); ?></th>
+                        <td>
+                            <p><strong><?php esc_html_e( 'Headline', 'tmw-cr-slot-sidebar-banner' ); ?>:</strong> <code><?php echo esc_html( (string) $settings['headline'] ); ?></code></p>
+                            <p><strong><?php esc_html_e( 'Subheadline', 'tmw-cr-slot-sidebar-banner' ); ?>:</strong> <code><?php echo esc_html( (string) $settings['subheadline'] ); ?></code></p>
+                            <p><strong><?php esc_html_e( 'CTA Text', 'tmw-cr-slot-sidebar-banner' ); ?>:</strong> <code><?php echo esc_html( (string) $settings['cta_text'] ); ?></code></p>
+                        </td>
                     </tr>
                     <tr>
                         <th scope="row"><label for="tmw-cr-cta-url"><?php esc_html_e( 'CTA URL', 'tmw-cr-slot-sidebar-banner' ); ?></label></th>

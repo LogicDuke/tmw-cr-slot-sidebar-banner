@@ -486,7 +486,7 @@ class TMW_CR_Slot_Offer_Repository {
             'faphouse' => array( 'faphouse.com', 'faphouse' ),
             'ole-cams' => array( 'olécams', 'olecams', 'ole cams', 'ol cams' ),
             'camirada' => array( 'camirada' ),
-            'nananue-cam' => array( 'nananue cam' ),
+            'nananue-cam' => array( 'nananue cam', 'nananue live' ),
             'fanfinity' => array( 'fanfinity' ),
             'get-harder' => array( 'get harder', 'get-harder' ),
             'testosterone-support-innerbody' => array( 'testosterone support innerbody labs', 'testosterone support innerbody' ),
@@ -1122,6 +1122,25 @@ class TMW_CR_Slot_Offer_Repository {
         return apply_filters( 'tmw_cr_slot_banner_offers', $offers, '', $banner_data );
     }
 
+
+    /**
+     * @return array<string,array<string,string>>
+     */
+    protected function get_pending_pps_logo_verification_targets() {
+        return array(
+            '9647'  => array( 'offer_name' => 'Group Fallback - Tapyn - PPS - Mobile - Android', 'expected_brand' => 'Tapyn' ),
+            '9781'  => array( 'offer_name' => 'Group Fallback - Dating.com PPS', 'expected_brand' => 'Dating.com' ),
+            '10138' => array( 'offer_name' => 'ourdream.ai - PPS', 'expected_brand' => 'ourdream.ai' ),
+            '10218' => array( 'offer_name' => 'Sex Messenger - PPS - US', 'expected_brand' => 'Sex Messenger' ),
+            '10244' => array( 'offer_name' => 'Nananue Live - PPS', 'expected_brand' => 'Nananue Live' ),
+            '10292' => array( 'offer_name' => 'Xtease - PPS', 'expected_brand' => 'Xtease' ),
+            '10301' => array( 'offer_name' => 'SinParty - PPS', 'expected_brand' => 'SinParty' ),
+            '10349' => array( 'offer_name' => 'Xotic AI - PPS', 'expected_brand' => 'Xotic AI' ),
+            '10381' => array( 'offer_name' => 'Secrets.ai - PPS', 'expected_brand' => 'Secrets.ai' ),
+            '10402' => array( 'offer_name' => 'ourdream.ai - PPS (Premium)', 'expected_brand' => 'ourdream.ai' ),
+        );
+    }
+
     /**
      * @param array<string,mixed> $settings Settings payload.
      *
@@ -1137,6 +1156,8 @@ class TMW_CR_Slot_Offer_Repository {
             'missing_logo_offer_ids' => array(),
             'missing_logo_offer_names' => array(),
             'missing_logo_expected_brand_keys' => array(),
+            'tmw_slot_logo_newly_mapped_offer_ids' => array(),
+            'tmw_slot_logo_still_unmapped' => array(),
         );
 
         foreach ( $synced as $offer ) {
@@ -1166,6 +1187,42 @@ class TMW_CR_Slot_Offer_Repository {
             $report['missing_logo_offer_names'][] = $offer_name;
             $report['missing_logo_expected_brand_keys'][] = $brand_key;
         }
+
+        $targets       = $this->get_pending_pps_logo_verification_targets();
+        $manifest_path = dirname( __DIR__ ) . '/assets/logos/80x80/manifest.csv';
+        $manifest_csv  = file_exists( $manifest_path ) ? (string) file_get_contents( $manifest_path ) : '';
+        foreach ( $targets as $offer_id => $target ) {
+            $offer_name      = (string) $target['offer_name'];
+            $expected_brand  = (string) $target['expected_brand'];
+            $offer           = isset( $synced[ $offer_id ] ) && is_array( $synced[ $offer_id ] ) ? $synced[ $offer_id ] : array( 'id' => $offer_id, 'name' => $offer_name );
+            $logo_filename   = $this->get_offer_logo_filename( $offer );
+            $manifest_hit    = '' !== $logo_filename && false !== stripos( $manifest_csv, ',' . $logo_filename . ',' );
+            $disk_path       = '' !== $logo_filename ? dirname( __DIR__ ) . '/assets/logos/80x80/' . $logo_filename : '';
+            $disk_hit        = '' !== $disk_path && file_exists( $disk_path );
+
+            if ( $manifest_hit && $disk_hit ) {
+                $report['tmw_slot_logo_newly_mapped_offer_ids'][] = (string) $offer_id;
+                continue;
+            }
+
+            $reason = '' === $logo_filename ? 'no brand-to-logo mapping found' : ( ! $manifest_hit ? 'expected logo missing from manifest.csv' : 'expected logo file missing on disk' );
+            $report['tmw_slot_logo_still_unmapped'][] = array(
+                'offer_id' => (string) $offer_id,
+                'offer_name' => $offer_name,
+                'expected_brand' => $expected_brand,
+                'reason' => $reason,
+            );
+            if ( function_exists( 'error_log' ) ) {
+                error_log( sprintf( '[TMW-SLOT-LOGO] Missing verified PPS logo asset: offer_id=%s offer_name="%s" expected_brand="%s" checked_manifest="assets/logos/80x80/manifest.csv" checked_disk="assets/logos/80x80/" result="not mapped; %s"', (string) $offer_id, $offer_name, $expected_brand, $reason ) );
+            }
+        }
+
+        if ( function_exists( 'error_log' ) ) {
+            error_log( sprintf( '[TMW-SLOT-LOGO] newly_mapped_offer_ids=%s', implode( ',', (array) $report['tmw_slot_logo_newly_mapped_offer_ids'] ) ) );
+            error_log( sprintf( '[TMW-SLOT-LOGO] still_unmapped_offer_ids=%s', implode( ',', array_map( static function ( $row ) { return (string) ( $row['offer_id'] ?? '' ); }, (array) $report['tmw_slot_logo_still_unmapped'] ) ) ) );
+            error_log( sprintf( '[TMW-SLOT-LOGO] pps_logo_coverage=%d/%d blocked_pps_offers_excluded=%d', (int) $report['pps_with_logo'], (int) $report['pps_candidates_total'], (int) $report['blocked_pps_offers_excluded'] ) );
+        }
+
 
         if ( function_exists( 'error_log' ) ) {
             error_log(

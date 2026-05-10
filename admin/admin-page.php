@@ -817,7 +817,7 @@ class TMW_CR_Slot_Admin_Page {
             </p>
             <?php if ( ! empty( $pps_coverage['pps_missing_logo'] ) ) : ?>
                 <p class="description">
-                    <?php esc_html_e( 'Missing PPS logos:', 'tmw-cr-slot-sidebar-banner' ); ?>
+                    <?php esc_html_e( 'Missing verified PPS logo assets:', 'tmw-cr-slot-sidebar-banner' ); ?>
                     <?php
                     $missing_rows = array();
                     foreach ( (array) $pps_coverage['missing_logo_offer_names'] as $idx => $missing_name ) {
@@ -830,6 +830,15 @@ class TMW_CR_Slot_Admin_Page {
                     echo esc_html( implode( '; ', $missing_rows ) );
                     ?>
                 </p>
+            <?php endif; ?>
+
+            <?php if ( ! empty( $pps_coverage['tmw_slot_logo_still_unmapped'] ) ) : ?>
+                <p class="description"><?php esc_html_e( 'Missing verified PPS logo assets:', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+                <ul>
+                    <?php foreach ( (array) $pps_coverage['tmw_slot_logo_still_unmapped'] as $missing_row ) : ?>
+                        <li><?php echo esc_html( sprintf( '%1$s / %2$s / %3$s / %4$s', (string) ( $missing_row['offer_id'] ?? '' ), (string) ( $missing_row['offer_name'] ?? '' ), (string) ( $missing_row['expected_brand'] ?? '' ), (string) ( $missing_row['reason'] ?? '' ) ) ); ?></li>
+                    <?php endforeach; ?>
+                </ul>
             <?php endif; ?>
             <?php if ( ! empty( $pps_coverage['blocked_pps_offers_excluded'] ) ) : ?>
                 <p style="margin-top:6px;">

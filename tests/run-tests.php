@@ -485,7 +485,7 @@ $tests['synced_offer_normalization_keeps_frontend_pool_behavior'] = function() {
 
     $offers = $repository->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => 'https://base.test', 'cta_text' => 'CTA' ), 'US', TMW_CR_Slot_Sidebar_Banner::get_offer_catalog_defaults() );
     tmw_assert_same( '601', $offers[0]['id'], 'Active synced offers should still normalize for frontend slot pool.' );
-    tmw_assert_same( '', (string) ( $offers[0]['logo_url'] ?? '' ), 'Missing manifest/logo files should keep empty logo_url safely.' );
+    tmw_assert_contains( 'assets/logos/80x80/sex-messenger-80x80-transparent.png', (string) ( $offers[0]['logo_url'] ?? '' ), 'Known mapped logos should resolve safely when assets are present.' );
 };
 
 $tests['admin_sanitize_and_render_supports_offer_overrides'] = function() {
@@ -1721,6 +1721,14 @@ $tests['offer_logo_mapping_known_pps_offers'] = function() {
         'OléCams - PPS' => 'ole-cams-80x80-transparent.png',
         'Camirada - PPS' => 'camirada-80x80-transparent.png',
         'Nananue Cam - PPS' => 'nananue-cam-80x80-transparent.png',
+        'Nananue Live - PPS' => 'nananue-cam-80x80-transparent.png',
+        'ourdream.ai - PPS' => 'ourdream-ai-80x80-transparent.png',
+        'ourdream.ai - PPS (Premium)' => 'ourdream-ai-80x80-transparent.png',
+        'Sex Messenger - PPS - US' => 'sex-messenger-80x80-transparent.png',
+        'Secrets.ai - PPS' => 'secrets-ai-80x80-transparent.png',
+        'SinParty - PPS' => 'sinparty-80x80-transparent.png',
+        'Xtease - PPS' => 'xtease-80x80-transparent.png',
+        'Xotic AI - PPS' => 'xotic-ai-80x80-transparent.png',
         'Fanfinity - PPS' => 'fanfinity-80x80-transparent.png',
         'Get-Harder - PPS' => 'get-harder-80x80-transparent.png',
         'Testosterone Support Innerbody Labs - PPS - US' => 'testosterone-support-innerbody-80x80-transparent.png',
@@ -1746,9 +1754,9 @@ $tests['offer_logo_mapping_unknown_and_missing_files_safe'] = function() {
     tmw_assert_same( '', $repository->get_offer_logo_filename( $unknown ), 'Unknown brands should return empty filename.' );
     tmw_assert_same( '', $repository->get_offer_logo_url( $unknown ), 'Unknown brands should return empty logo URL.' );
 
-    $missing = array( 'id' => 'm1', 'name' => 'Sex Messenger - PPS - US' );
-    tmw_assert_same( '', $repository->get_offer_logo_filename( $missing ), 'Missing expected logo files should return empty safely.' );
-    tmw_assert_same( '', $repository->get_offer_logo_url( $missing ), 'Missing expected logo url should return empty safely.' );
+    $known = array( 'id' => 'm1', 'name' => 'Sex Messenger - PPS - US' );
+    tmw_assert_same( 'sex-messenger-80x80-transparent.png', $repository->get_offer_logo_filename( $known ), 'Known mapped files should resolve safely.' );
+    tmw_assert_contains( 'assets/logos/80x80/sex-messenger-80x80-transparent.png', $repository->get_offer_logo_url( $known ), 'Known mapped logo url should resolve safely.' );
 };
 
 $tests['frontend_slot_offer_includes_logo_fields_for_mapped_brand'] = function() {
@@ -1838,13 +1846,24 @@ $tests['offer_logo_mapping_manifest_consistency'] = function() {
         $manifest_files[ trim( (string) $row[1] ) ] = true;
     }
 
-    foreach ( $map as $brand_key => $filename ) {
-        $resolved = $repository->get_offer_logo_filename( array( 'id' => 'manifest-' . $brand_key, 'name' => str_replace( '-', ' ', (string) $brand_key ) ) );
-        if ( '' === $resolved ) {
-            continue;
-        }
-        tmw_assert_true( isset( $manifest_files[ $resolved ] ), 'Resolved filename must exist in manifest.csv: ' . $resolved );
-        tmw_assert_true( file_exists( __DIR__ . '/../assets/logos/80x80/' . $resolved ), 'Resolved filename must exist on disk: ' . $resolved );
+    foreach ( $map as $filename ) {
+        tmw_assert_true( isset( $manifest_files[ $filename ] ), 'Mapped filename must exist in manifest.csv: ' . $filename );
+        tmw_assert_true( file_exists( __DIR__ . '/../assets/logos/80x80/' . $filename ), 'Mapped filename must exist on disk: ' . $filename );
+    }
+
+    $required = array(
+        'nananue-cam-80x80-transparent.png',
+        'ourdream-ai-80x80-transparent.png',
+        'sex-messenger-80x80-transparent.png',
+        'secrets-ai-80x80-transparent.png',
+        'sinparty-80x80-transparent.png',
+        'xtease-80x80-transparent.png',
+        'xotic-ai-80x80-transparent.png',
+    );
+
+    foreach ( $required as $filename ) {
+        tmw_assert_true( isset( $manifest_files[ $filename ] ), 'Required filename must exist in manifest.csv: ' . $filename );
+        tmw_assert_true( file_exists( __DIR__ . '/../assets/logos/80x80/' . $filename ), 'Required filename must exist on disk: ' . $filename );
     }
 };
 

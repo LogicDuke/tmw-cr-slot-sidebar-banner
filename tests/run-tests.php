@@ -420,6 +420,31 @@ $tests['frontend_pool_filters_and_legacy_fallback_to_three'] = function() {
     tmw_assert_true( '201' !== $offers[0]['id'], 'Country-ineligible synced offers should be removed from pool.' );
 };
 
+$tests['frontend_pool_excludes_invalid_winner_affiliate_urls'] = function() {
+    tmw_reset_test_state();
+
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repository->save_synced_offers(
+        array(
+            '701' => array( 'id' => '701', 'name' => 'Offer 701 - PPS', 'status' => 'active', 'preview_url' => 'https://valid.test/path?transaction_id=abc123' ),
+            '702' => array( 'id' => '702', 'name' => 'Offer 702 - PPS', 'status' => 'active', 'preview_url' => 'https://valid.test/path?transaction_id=preview' ),
+            '703' => array( 'id' => '703', 'name' => 'Offer 703 - PPS', 'status' => 'active', 'preview_url' => 'https://track.test/click?aid=affiliate_id' ),
+            '704' => array( 'id' => '704', 'name' => 'Offer 704 - PPS', 'status' => 'active', 'preview_url' => 'https://ads.advertisingpolicies.com/path' ),
+            '705' => array( 'id' => '705', 'name' => 'Offer 705 - PPS', 'status' => 'active', 'preview_url' => 'https://track.test/click?src=source' ),
+            '706' => array( 'id' => '706', 'name' => 'Offer 706 - PPS', 'status' => 'active', 'preview_url' => 'https://track.test/template/click' ),
+        )
+    );
+
+    $settings = array(
+        'allowed_offer_types' => array( 'pps' ),
+        'slot_offer_ids' => array( '701', '702', '703', '704', '705', '706' ),
+    );
+
+    $offers = $repository->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    tmw_assert_same( 1, count( $offers ), 'Only valid winner CTA URLs should remain in frontend pool.' );
+    tmw_assert_same( '701', (string) $offers[0]['id'], 'Valid CTA URL offer should remain eligible.' );
+};
+
 $tests['image_resolver_chain_prefers_manual_then_local_then_remote_then_placeholder'] = function() {
     tmw_reset_test_state();
 

@@ -1602,6 +1602,84 @@ $tests['dashboard_performance_summary_fields'] = function() {
     tmw_assert_same( 'Two', (string) $summary['top_offer_name'], 'Summary should include top offer by payout.' );
 };
 
+
+$tests['offer_logo_mapping_known_pps_offers'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
+
+    $cases = array(
+        'Jerkmate - PPS' => 'jerkmate-80x80-transparent.png',
+        'Joi - PPS - Tier 1' => 'joi-80x80-transparent.png',
+        'Joi - PPS - T1 (Premium)' => 'joi-80x80-transparent.png',
+        'Instabang - PPS - Premium' => 'instabang-80x80-transparent.png',
+        'Candy.ai - PPS - T1 (Premium)' => 'candyai-80x80-transparent.png',
+        'Live Jasmin - PPS' => 'livejasmin-80x80-transparent.png',
+        'NaughtyCharm - PPS' => 'naughtycharm-80x80-transparent.png',
+        'NaughtyTalk - PPS' => 'naughtytalk-80x80-transparent.png',
+        'CheekyCrush - PPS' => 'cheekycrush-80x80-transparent.png',
+        'FlirtTendre - PPS' => 'flirttendre-80x80-transparent.png',
+        'RencontreDouce - PPS' => 'rencontredouce-80x80-transparent.png',
+        'WannaHookup - PPS' => 'wannahookup-80x80-transparent.png',
+        'Dorcel Club - PPS' => 'dorcel-club-80x80-transparent.png',
+        'Cams.com - PPS' => 'cams-com-80x80-transparent.png',
+        'BeiAnrufSex - PPS' => 'beianrufsex-80x80-transparent.png',
+        'BlackedRaw - PPS' => 'blacked-raw-80x80-transparent.png',
+        'TushyRaw - PPS' => 'tushy-raw-80x80-transparent.png',
+        'VixenPlus - PPS' => 'vixen-plus-80x80-transparent.png',
+        'Gabrielle Moore Masterclasses - PPS' => 'gabrielle-moore-masterclasses-80x80-transparent.png',
+        'Total Webcam - PPS' => 'total-webcams-80x80-transparent.png',
+        'Total Webcams - PPS' => 'total-webcams-80x80-transparent.png',
+        'Hentai Heroes - PPS' => 'hentaiheroes-80x80-transparent.png',
+    );
+
+    foreach ( $cases as $offer_name => $expected ) {
+        $offer = array( 'id' => 'case-' . md5( $offer_name ), 'name' => $offer_name );
+        tmw_assert_same( $expected, $repository->get_offer_logo_filename( $offer ), 'Expected known logo filename to resolve: ' . $offer_name );
+        tmw_assert_contains( 'assets/logos/80x80/' . $expected, $repository->get_offer_logo_url( $offer ), 'Expected known logo url to resolve: ' . $offer_name );
+    }
+};
+
+$tests['offer_logo_mapping_unknown_and_missing_files_safe'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
+
+    $unknown = array( 'id' => 'u1', 'name' => 'Unknown Brand - PPS' );
+    tmw_assert_same( '', $repository->get_offer_logo_filename( $unknown ), 'Unknown brands should return empty filename.' );
+    tmw_assert_same( '', $repository->get_offer_logo_url( $unknown ), 'Unknown brands should return empty logo URL.' );
+
+    $missing = array( 'id' => 'm1', 'name' => 'Sex Messenger - PPS - US' );
+    tmw_assert_same( '', $repository->get_offer_logo_filename( $missing ), 'Missing expected logo files should return empty safely.' );
+    tmw_assert_same( '', $repository->get_offer_logo_url( $missing ), 'Missing expected logo url should return empty safely.' );
+};
+
+
+$tests['offer_logo_mapping_manifest_consistency'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
+    $reflection = new ReflectionClass( $repository );
+    $method = $reflection->getMethod( 'get_offer_logo_filename_map' );
+    $method->setAccessible( true );
+    $map = (array) $method->invoke( $repository );
+
+    $manifest_rows = array_map( 'str_getcsv', file( __DIR__ . '/../assets/logos/80x80/manifest.csv' ) );
+    $manifest_files = array();
+    foreach ( $manifest_rows as $index => $row ) {
+        if ( 0 === $index || ! isset( $row[1] ) ) {
+            continue;
+        }
+        $manifest_files[ trim( (string) $row[1] ) ] = true;
+    }
+
+    foreach ( $map as $brand_key => $filename ) {
+        $resolved = $repository->get_offer_logo_filename( array( 'id' => 'manifest-' . $brand_key, 'name' => str_replace( '-', ' ', (string) $brand_key ) ) );
+        if ( '' === $resolved ) {
+            continue;
+        }
+        tmw_assert_true( isset( $manifest_files[ $resolved ] ), 'Resolved filename must exist in manifest.csv: ' . $resolved );
+        tmw_assert_true( file_exists( __DIR__ . '/../assets/logos/80x80/' . $resolved ), 'Resolved filename must exist on disk: ' . $resolved );
+    }
+};
+
 $failures = array();
 $passes   = 0;
 

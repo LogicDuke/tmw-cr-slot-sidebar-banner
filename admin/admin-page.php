@@ -167,7 +167,11 @@ class TMW_CR_Slot_Admin_Page {
             }
         }
 
-        $offer_overrides = array();
+        $offer_overrides = $this->offer_repository->get_offer_overrides();
+        if ( ! is_array( $offer_overrides ) ) {
+            $offer_overrides = array();
+        }
+
         if ( isset( $input['offer_overrides'] ) && is_array( $input['offer_overrides'] ) ) {
             foreach ( $input['offer_overrides'] as $offer_id => $override ) {
                 $offer_id = sanitize_text_field( (string) $offer_id );
@@ -175,22 +179,26 @@ class TMW_CR_Slot_Admin_Page {
                     continue;
                 }
 
-                $offer_overrides[ $offer_id ] = array(
-                    'enabled'            => ! empty( $override['enabled'] ) ? 1 : 0,
-                    'final_url_override' => isset( $override['final_url_override'] ) ? esc_url_raw( (string) $override['final_url_override'] ) : '',
-                    'image_url_override' => isset( $override['image_url_override'] ) ? esc_url_raw( (string) $override['image_url_override'] ) : '',
-                    'custom_cta_text'    => isset( $override['custom_cta_text'] ) ? sanitize_text_field( (string) $override['custom_cta_text'] ) : '',
-                    'label_override'     => isset( $override['label_override'] ) ? sanitize_text_field( (string) $override['label_override'] ) : '',
-                    'allowed_countries'  => isset( $override['allowed_countries'] ) ? sanitize_text_field( (string) $override['allowed_countries'] ) : '',
-                    'blocked_countries'  => isset( $override['blocked_countries'] ) ? sanitize_text_field( (string) $override['blocked_countries'] ) : '',
-                    'notes'              => isset( $override['notes'] ) ? sanitize_textarea_field( (string) $override['notes'] ) : '',
-                    'dashboard_tags'     => isset( $override['dashboard_tags'] ) ? sanitize_text_field( (string) $override['dashboard_tags'] ) : '',
-                    'dashboard_vertical' => isset( $override['dashboard_vertical'] ) ? sanitize_text_field( (string) $override['dashboard_vertical'] ) : '',
-                    'dashboard_performs_in' => isset( $override['dashboard_performs_in'] ) ? sanitize_text_field( (string) $override['dashboard_performs_in'] ) : '',
-                    'dashboard_optimized_for' => isset( $override['dashboard_optimized_for'] ) ? sanitize_text_field( (string) $override['dashboard_optimized_for'] ) : '',
-                    'dashboard_accepted_countries' => isset( $override['dashboard_accepted_countries'] ) ? sanitize_text_field( (string) $override['dashboard_accepted_countries'] ) : '',
-                    'dashboard_niche'    => isset( $override['dashboard_niche'] ) ? sanitize_text_field( (string) $override['dashboard_niche'] ) : '',
-                    'dashboard_promotion_method' => isset( $override['dashboard_promotion_method'] ) ? sanitize_text_field( (string) $override['dashboard_promotion_method'] ) : '',
+                $existing_override = isset( $offer_overrides[ $offer_id ] ) && is_array( $offer_overrides[ $offer_id ] ) ? $offer_overrides[ $offer_id ] : array();
+                $offer_overrides[ $offer_id ] = array_merge(
+                    $existing_override,
+                    array(
+                        'enabled'            => ! empty( $override['enabled'] ) ? 1 : 0,
+                        'final_url_override' => isset( $override['final_url_override'] ) ? esc_url_raw( (string) $override['final_url_override'] ) : (string) ( $existing_override['final_url_override'] ?? '' ),
+                        'image_url_override' => isset( $override['image_url_override'] ) ? esc_url_raw( (string) $override['image_url_override'] ) : '',
+                        'custom_cta_text'    => isset( $override['custom_cta_text'] ) ? sanitize_text_field( (string) $override['custom_cta_text'] ) : '',
+                        'label_override'     => isset( $override['label_override'] ) ? sanitize_text_field( (string) $override['label_override'] ) : '',
+                        'allowed_countries'  => isset( $override['allowed_countries'] ) ? sanitize_text_field( (string) $override['allowed_countries'] ) : '',
+                        'blocked_countries'  => isset( $override['blocked_countries'] ) ? sanitize_text_field( (string) $override['blocked_countries'] ) : '',
+                        'notes'              => isset( $override['notes'] ) ? sanitize_textarea_field( (string) $override['notes'] ) : '',
+                        'dashboard_tags'     => isset( $override['dashboard_tags'] ) ? sanitize_text_field( (string) $override['dashboard_tags'] ) : '',
+                        'dashboard_vertical' => isset( $override['dashboard_vertical'] ) ? sanitize_text_field( (string) $override['dashboard_vertical'] ) : '',
+                        'dashboard_performs_in' => isset( $override['dashboard_performs_in'] ) ? sanitize_text_field( (string) $override['dashboard_performs_in'] ) : '',
+                        'dashboard_optimized_for' => isset( $override['dashboard_optimized_for'] ) ? sanitize_text_field( (string) $override['dashboard_optimized_for'] ) : '',
+                        'dashboard_accepted_countries' => isset( $override['dashboard_accepted_countries'] ) ? sanitize_text_field( (string) $override['dashboard_accepted_countries'] ) : '',
+                        'dashboard_niche'    => isset( $override['dashboard_niche'] ) ? sanitize_text_field( (string) $override['dashboard_niche'] ) : '',
+                        'dashboard_promotion_method' => isset( $override['dashboard_promotion_method'] ) ? sanitize_text_field( (string) $override['dashboard_promotion_method'] ) : '',
+                    )
                 );
             }
         }
@@ -419,7 +427,8 @@ class TMW_CR_Slot_Admin_Page {
 
         $this->offer_repository->save_offer_overrides( $overrides );
         error_log( sprintf( '[TMW-BANNER-LINK] manual_final_url_import_summary imported=%1$d rejected=%2$d', $imported, $rejected ) );
-        $this->redirect_with_notice( 'success', sprintf( 'Final URL override import complete. Imported: %1$d, Rejected: %2$d.', $imported, $rejected ) );
+        $total_saved_overrides = (int) $this->offer_repository->get_manual_override_diagnostics()['manual_final_url_overrides'];
+        $this->redirect_with_notice( 'success', sprintf( 'Final URL override import complete. Imported: %1$d, Rejected: %2$d, Total saved overrides: %3$d.', $imported, $rejected, $total_saved_overrides ) );
     }
 
     /**
@@ -920,6 +929,20 @@ class TMW_CR_Slot_Admin_Page {
             <?php $manual_diag = $this->offer_repository->get_manual_override_diagnostics(); ?>
             <p class="description"><?php echo esc_html( sprintf( 'Manual final URL overrides: %d', (int) $manual_diag['manual_final_url_overrides'] ) ); ?></p>
             <p class="description"><?php echo esc_html( sprintf( 'Invalid manual URL overrides rejected: %d', (int) $manual_diag['invalid_manual_url_overrides_rejected'] ) ); ?></p>
+            <?php
+            $manual_override_rows = array();
+            foreach ( $this->offer_repository->get_offer_overrides() as $diag_offer_id => $diag_override ) {
+                if ( ! is_array( $diag_override ) || empty( $diag_override['final_url_override'] ) ) {
+                    continue;
+                }
+                $host = (string) parse_url( (string) $diag_override['final_url_override'], PHP_URL_HOST );
+                $manual_override_rows[] = sprintf( '%1$s / %2$s', sanitize_text_field( (string) $diag_offer_id ), sanitize_text_field( $host ) );
+            }
+            ?>
+            <?php if ( ! empty( $manual_override_rows ) ) : ?>
+                <p class="description"><?php esc_html_e( 'Saved manual final URL overrides:', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+                <p class="description"><code><?php echo esc_html( implode( '; ', $manual_override_rows ) ); ?></code></p>
+            <?php endif; ?>
             <?php if ( 0 === count( $eligible_winner_offers ) ) : ?>
                 <p class="description" style="color:#b32d2e;"><strong><?php esc_html_e( 'No eligible winner offers. Add valid final URL overrides or sync real tracking URLs.', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
             <?php endif; ?>

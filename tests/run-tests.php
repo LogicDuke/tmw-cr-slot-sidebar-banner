@@ -2161,6 +2161,71 @@ $tests['invalid_template_tracking_url_falls_back_to_global_cta_or_empty'] = func
     }
 };
 
+
+$tests['sanitize_settings_without_offer_overrides_preserves_imported_final_url_override'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_offer_overrides( array( '1234' => array( 'final_url_override' => 'https://trk.example.com/?tid=abc' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $page->sanitize_settings( array( 'headline' => 'Keep overrides' ) );
+    $saved = $repo->get_offer_overrides();
+    tmw_assert_same( 'https://trk.example.com/?tid=abc', (string) $saved['1234']['final_url_override'], 'sanitize_settings should not erase imported override when offer_overrides is absent.' );
+};
+
+$tests['sanitize_settings_unrelated_settings_preserve_imported_final_url_override'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_offer_overrides( array( '2234' => array( 'final_url_override' => 'https://trk.example.com/?tid=def' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $page->sanitize_settings( array( 'cta_text' => 'Updated CTA', 'allowed_offer_types' => array( 'pps' ) ) );
+    $saved = $repo->get_offer_overrides();
+    tmw_assert_same( 'https://trk.example.com/?tid=def', (string) $saved['2234']['final_url_override'], 'Unrelated settings save should preserve imported final_url_override.' );
+};
+
+$tests['sanitize_settings_merges_submitted_overrides_into_existing_imported_overrides'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_offer_overrides( array( '3234' => array( 'final_url_override' => 'https://trk.example.com/?tid=ghi', 'custom_cta_text' => 'Original CTA' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $page->sanitize_settings(
+        array(
+            'offer_overrides' => array(
+                '3234' => array(
+                    'custom_cta_text' => 'Updated CTA',
+                    'final_url_override' => 'https://trk.example.com/?tid=ghi',
+                ),
+            ),
+        )
+    );
+    $saved = $repo->get_offer_overrides();
+    tmw_assert_same( 'https://trk.example.com/?tid=ghi', (string) $saved['3234']['final_url_override'], 'Submitted override should merge without clearing imported final_url_override.' );
+    tmw_assert_same( 'Updated CTA', (string) $saved['3234']['custom_cta_text'], 'Submitted fields should update existing override row.' );
+};
+
+$tests['sanitize_settings_explicit_final_url_override_clear_only_clears_target_offer'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_offer_overrides(
+        array(
+            '4234' => array( 'final_url_override' => 'https://trk.example.com/?tid=clearme' ),
+            '4235' => array( 'final_url_override' => 'https://trk.example.com/?tid=keepme' ),
+        )
+    );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $page->sanitize_settings(
+        array(
+            'offer_overrides' => array(
+                '4234' => array(
+                    'final_url_override' => '',
+                ),
+            ),
+        )
+    );
+    $saved = $repo->get_offer_overrides();
+    tmw_assert_same( '', (string) $saved['4234']['final_url_override'], 'Explicit clear should remove final_url_override for submitted offer.' );
+    tmw_assert_same( 'https://trk.example.com/?tid=keepme', (string) $saved['4235']['final_url_override'], 'Explicit clear should not affect other offers.' );
+};
+
 $tests['manual_final_url_override_importer_accepts_and_preserves'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );

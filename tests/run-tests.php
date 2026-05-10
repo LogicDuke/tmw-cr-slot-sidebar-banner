@@ -2,14 +2,19 @@
 require_once __DIR__ . '/bootstrap.php';
 
 class TMW_CR_Slot_Sidebar_Banner {
+    const DEFAULT_HEADLINE = 'Find More Sexy Girls';
+    const DEFAULT_SUBHEADLINE = 'Trusted Cam Models';
+    const DEFAULT_SPIN_BUTTON_TEXT = 'SPIN THE REELS';
+    const DEFAULT_CTA_TEXT = 'TRY YOUR FREE SPINS';
     const OPTION_KEY = 'tmw_cr_slot_banner_settings';
     const STATS_SYNC_CRON_HOOK = 'tmw_cr_slot_banner_scheduled_stats_sync';
 
     public static function get_settings() {
         $defaults = array(
-            'headline'               => 'Headline',
-            'subheadline'            => 'Subheadline',
-            'cta_text'               => 'CTA',
+            'headline'               => self::DEFAULT_HEADLINE,
+            'subheadline'            => self::DEFAULT_SUBHEADLINE,
+            'spin_button_text'       => self::DEFAULT_SPIN_BUTTON_TEXT,
+            'cta_text'               => self::DEFAULT_CTA_TEXT,
             'cta_url'                => 'https://example.test/click',
             'default_image_url'      => '',
             'open_in_new_tab'        => 1,
@@ -363,6 +368,17 @@ $tests['offer_override_resolution_and_country_filters'] = function() {
     tmw_assert_true( ! $repository->is_offer_allowed_for_country( '101', 'US', $repository->get_offer_override( '101' ), array(), array() ), 'Disabled offer should be excluded.' );
     tmw_assert_true( $repository->is_offer_allowed_for_country( '100', 'US', $repository->get_offer_override( '100' ), array(), array() ), 'Allowed countries should permit matching country.' );
     tmw_assert_true( ! $repository->is_offer_allowed_for_country( '102', 'US', $repository->get_offer_override( '102' ), array(), array() ), 'Blocked countries should exclude matching country.' );
+};
+
+$tests['empty_offer_cta_override_falls_back_to_global_then_default'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+
+    $from_global = $repository->get_effective_cta_text( '100', array(), array( 'cta_text' => 'GLOBAL CTA' ), array(), array( 'custom_cta_text' => '' ), array() );
+    tmw_assert_same( 'GLOBAL CTA', $from_global, 'Empty custom CTA should fallback to global CTA text.' );
+
+    $from_default = $repository->get_effective_cta_text( '100', array(), array( 'cta_text' => '' ), array(), array( 'custom_cta_text' => '' ), array() );
+    tmw_assert_same( TMW_CR_Slot_Sidebar_Banner::DEFAULT_CTA_TEXT, $from_default, 'Empty global CTA should fallback to plugin default CTA text.' );
 };
 
 $tests['frontend_pool_filters_and_legacy_fallback_to_three'] = function() {
@@ -1780,4 +1796,3 @@ echo "\nTotal: {$passes} passed, " . count( $failures ) . " failed\n";
 if ( ! empty( $failures ) ) {
     exit( 1 );
 }
-

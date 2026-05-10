@@ -30,6 +30,10 @@ require_once TMW_CR_SLOT_BANNER_PATH . 'admin/admin-page.php';
  * Primary plugin bootstrap class.
  */
 class TMW_CR_Slot_Sidebar_Banner {
+    const DEFAULT_HEADLINE = 'Find More Sexy Girls';
+    const DEFAULT_SUBHEADLINE = 'Trusted Cam Models';
+    const DEFAULT_SPIN_BUTTON_TEXT = 'SPIN THE REELS';
+    const DEFAULT_CTA_TEXT = 'TRY YOUR FREE SPINS';
     /**
      * Option key used to persist settings.
      *
@@ -157,9 +161,10 @@ class TMW_CR_Slot_Sidebar_Banner {
      */
     public static function get_settings() {
         $defaults = array(
-            'headline'               => __( 'Play Exclusive Slots', 'tmw-cr-slot-sidebar-banner' ),
-            'subheadline'            => __( 'Trusted casinos tailored to your location.', 'tmw-cr-slot-sidebar-banner' ),
-            'cta_text'               => __( 'Claim Your Free Spins', 'tmw-cr-slot-sidebar-banner' ),
+            'headline'               => self::DEFAULT_HEADLINE,
+            'subheadline'            => self::DEFAULT_SUBHEADLINE,
+            'spin_button_text'       => self::DEFAULT_SPIN_BUTTON_TEXT,
+            'cta_text'               => self::DEFAULT_CTA_TEXT,
             'cta_url'                => 'https://www.crackrevenue.com/',
             'default_image_url'      => 'https://via.placeholder.com/320x480.png?text=Upload+Slot+Banner',
             'open_in_new_tab'        => true,
@@ -302,6 +307,15 @@ class TMW_CR_Slot_Sidebar_Banner {
 
         $banner_data = $this->build_banner_data( $settings, $overrides, $country );
         $slot_data   = $this->build_slot_data( $settings, $banner_data, $country );
+        error_log(
+            sprintf(
+                '[TMW-BANNER-TEXT] headline_empty=%s subheadline_empty=%s cta_empty=%s offer_cta_empty=%s',
+                empty( trim( (string) ( $settings['headline'] ?? '' ) ) ) ? 'yes' : 'no',
+                empty( trim( (string) ( $settings['subheadline'] ?? '' ) ) ) ? 'yes' : 'no',
+                empty( trim( (string) ( $settings['cta_text'] ?? '' ) ) ) ? 'yes' : 'no',
+                ! empty( $slot_data['has_empty_offer_cta'] ) ? 'yes' : 'no'
+            )
+        );
 
         do_action( 'tmw_cr_slot_banner_rendered' );
 
@@ -327,12 +341,8 @@ class TMW_CR_Slot_Sidebar_Banner {
             data-slot-offers="<?php echo esc_attr( wp_json_encode( $slot_data['offers'] ) ); ?>"
         >
             <header class="tmw-cr-slot-banner__header">
-                <?php if ( ! empty( $banner_data['headline'] ) ) : ?>
-                    <h3 class="tmw-cr-slot-banner__headline"><?php echo esc_html( $banner_data['headline'] ); ?></h3>
-                <?php endif; ?>
-                <?php if ( ! empty( $settings['subheadline'] ) ) : ?>
-                    <p class="tmw-cr-slot-banner__subheadline"><?php echo esc_html( $settings['subheadline'] ); ?></p>
-                <?php endif; ?>
+                <h3 class="tmw-cr-slot-banner__headline"><?php echo esc_html( $banner_data['headline'] ); ?></h3>
+                <p class="tmw-cr-slot-banner__subheadline"><?php echo esc_html( $banner_data['subheadline'] ); ?></p>
             </header>
 
             <div class="tmw-cr-slot-banner__machine" role="group" aria-label="<?php esc_attr_e( 'CrackRevenue slot banner', 'tmw-cr-slot-sidebar-banner' ); ?>">
@@ -344,7 +354,7 @@ class TMW_CR_Slot_Sidebar_Banner {
                     <?php endfor; ?>
                 </div>
                 <button type="button" id="spin" class="tmw-cr-slot-banner__spin"<?php echo empty( $slot_data['offers'] ) ? ' disabled' : ''; ?>>
-                    <span class="tmw-cr-slot-banner__spin-label"><?php esc_html_e( 'Spin the reels', 'tmw-cr-slot-sidebar-banner' ); ?></span>
+                    <span class="tmw-cr-slot-banner__spin-label"><?php echo esc_html( $banner_data['spin_button_text'] ); ?></span>
                 </button>
             </div>
 
@@ -383,6 +393,8 @@ class TMW_CR_Slot_Sidebar_Banner {
             'cta_url'  => (string) $settings['cta_url'],
             'cta_text' => (string) $settings['cta_text'],
             'headline' => (string) $settings['headline'],
+            'subheadline' => (string) $settings['subheadline'],
+            'spin_button_text' => (string) $settings['spin_button_text'],
         );
 
         if ( isset( $overrides[ $country ] ) ) {
@@ -400,6 +412,11 @@ class TMW_CR_Slot_Sidebar_Banner {
                 $data['headline'] = $override['headline'];
             }
         }
+
+        $data['headline'] = self::fallback_text( $data['headline'], self::DEFAULT_HEADLINE );
+        $data['subheadline'] = self::fallback_text( $data['subheadline'], self::DEFAULT_SUBHEADLINE );
+        $data['spin_button_text'] = self::fallback_text( $data['spin_button_text'], self::DEFAULT_SPIN_BUTTON_TEXT );
+        $data['cta_text'] = self::fallback_text( $data['cta_text'], self::DEFAULT_CTA_TEXT );
 
         return $data;
     }
@@ -432,7 +449,22 @@ class TMW_CR_Slot_Sidebar_Banner {
             'initial_offer_name' => $initial_offername,
             'initial_cta_url'    => $initial_cta_url,
             'initial_cta_text'   => $initial_cta_text,
+            'has_empty_offer_cta' => $this->slot_has_empty_offer_cta( $slot_offers ),
         );
+    }
+
+    protected static function fallback_text( $value, $fallback ) {
+        $value = trim( (string) $value );
+        return '' === $value ? $fallback : $value;
+    }
+
+    protected function slot_has_empty_offer_cta( $offers ) {
+        foreach ( (array) $offers as $offer ) {
+            if ( empty( trim( (string) ( $offer['cta_text'] ?? '' ) ) ) ) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

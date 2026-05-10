@@ -1458,7 +1458,16 @@ class TMW_CR_Slot_Offer_Repository {
             return (string) $legacy_catalog[ $offer_id ]['cta_text'];
         }
 
-        return (string) ( $banner_data['cta_text'] ?? '' );
+        $global_cta = trim( (string) ( $banner_data['cta_text'] ?? '' ) );
+        if ( '' !== $global_cta ) {
+            return $global_cta;
+        }
+
+        if ( class_exists( 'TMW_CR_Slot_Sidebar_Banner' ) && defined( 'TMW_CR_Slot_Sidebar_Banner::DEFAULT_CTA_TEXT' ) ) {
+            return (string) TMW_CR_Slot_Sidebar_Banner::DEFAULT_CTA_TEXT;
+        }
+
+        return 'TRY YOUR FREE SPINS';
     }
 
     /**

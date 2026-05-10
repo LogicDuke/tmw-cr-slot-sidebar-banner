@@ -276,6 +276,147 @@ class TMW_CR_Slot_Offer_Repository {
         return $offers;
     }
 
+
+    /**
+     * @param array<string,mixed> $offer Offer row.
+     *
+     * @return string
+     */
+    public function get_offer_logo_filename( $offer ) {
+        $offer_name = isset( $offer['name'] ) ? (string) $offer['name'] : '';
+        $brand_key  = $this->get_offer_brand_key( $offer_name );
+        if ( '' === $brand_key ) {
+            return '';
+        }
+
+        $map      = $this->get_offer_logo_filename_map();
+        $expected = isset( $map[ $brand_key ] ) ? (string) $map[ $brand_key ] : '';
+        if ( '' === $expected ) {
+            return '';
+        }
+
+        $path = dirname( __DIR__ ) . '/assets/logos/80x80/' . $expected;
+        if ( ! file_exists( $path ) ) {
+            if ( function_exists( 'error_log' ) ) {
+                $offer_id = sanitize_text_field( (string) ( $offer['id'] ?? '' ) );
+                error_log( sprintf( '[TMW-BANNER-LOGO] missing_logo offer_id=%s brand_key=%s expected=%s', $offer_id, $brand_key, $expected ) );
+            }
+            return '';
+        }
+
+        return $expected;
+    }
+
+    /**
+     * @param array<string,mixed> $offer Offer row.
+     *
+     * @return string
+     */
+    public function get_offer_logo_url( $offer ) {
+        $filename = $this->get_offer_logo_filename( $offer );
+        if ( '' === $filename ) {
+            return '';
+        }
+
+        return TMW_CR_Slot_Sidebar_Banner::asset_url( 'assets/logos/80x80/' . $filename );
+    }
+
+    /**
+     * @param string $offer_name Offer name.
+     *
+     * @return string
+     */
+    public function get_offer_brand_key( $offer_name ) {
+        $needle = $this->normalize_offer_name_for_image_match( $offer_name );
+        if ( '' === $needle ) {
+            return '';
+        }
+
+        foreach ( $this->get_offer_brand_token_map() as $brand_key => $tokens ) {
+            foreach ( $tokens as $token ) {
+                if ( false !== strpos( $needle, (string) $token ) ) {
+                    return (string) $brand_key;
+                }
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @return array<string,array<int,string>>
+     */
+    protected function get_offer_brand_token_map() {
+        return array(
+            'jerkmate' => array( 'jerkmate' ),
+            'candy-ai' => array( 'candy ai', 'candyai', 'candy.ai' ),
+            'girlfriend-gpt' => array( 'girlfriend gpt' ),
+            'joi' => array( ' joi ', 'joi' ),
+            'instabang' => array( 'instabang' ),
+            'livejasmin' => array( 'live jasmin', 'livejasmin' ),
+            'imlive' => array( 'imlive' ),
+            'cam4' => array( 'cam4', 'cam 4' ),
+            'xcams' => array( 'xcams' ),
+            'xmatch' => array( 'xmatch' ),
+            'sex-messenger' => array( 'sex messenger', 'sexmessenger' ),
+            'adult-friendfinder' => array( 'adult friendfinder', 'friendfinder' ),
+            'ashley-madison' => array( 'ashley madison' ),
+            'stripchat' => array( 'stripchat' ),
+            'bongacams' => array( 'bongacams' ),
+            'sexpanther' => array( 'sextpanther', 'sexpanther' ),
+            'visit-x' => array( 'visit x', 'visitx' ),
+            'xlovecam' => array( 'xlovecam' ),
+            'bellesaplus' => array( 'bellesa plus', 'bellesaplus' ),
+            'victoria-milan' => array( 'victoria milan' ),
+            'alt' => array( ' alt ', 'alt' ),
+            'fling' => array( ' fling ', 'fling' ),
+            'lovescape' => array( 'lovescape' ),
+            'promptchan' => array( 'promptchan' ),
+            'swipey' => array( 'swipey' ),
+            'secrets-ai' => array( 'secrets ai', 'secrets.ai', 'secretsai' ),
+            'darlink-ai' => array( 'darlink ai', 'darlink.ai', 'darlinkai' ),
+            'xotic-ai' => array( 'xotic ai', 'xotic.ai', 'xoticai' ),
+            'ourdream-ai' => array( 'ourdream ai', 'ourdream.ai', 'ourdreamai' ),
+        );
+    }
+
+    /**
+     * @return array<string,string>
+     */
+    protected function get_offer_logo_filename_map() {
+        return array(
+            'jerkmate' => 'jerkmate-80x80-transparent.png',
+            'candy-ai' => 'candyai-80x80-transparent.png',
+            'girlfriend-gpt' => 'girlfriend-gpt-80x80-transparent.png',
+            'joi' => 'joi-80x80-transparent.png',
+            'instabang' => 'instabang-80x80-transparent.png',
+            'livejasmin' => 'livejasmin-80x80-transparent.png',
+            'imlive' => 'imlive-80x80-transparent.png',
+            'cam4' => 'cam4-80x80-transparent.png',
+            'xcams' => 'xcams-80x80-transparent.png',
+            'xmatch' => 'xmatch-80x80-transparent.png',
+            'sex-messenger' => 'sex-messenger-80x80-transparent.png',
+            'adult-friendfinder' => 'adult-friendfinder-80x80-transparent.png',
+            'ashley-madison' => 'ashley-madison-80x80-transparent.png',
+            'stripchat' => 'stripchat-80x80-transparent.png',
+            'bongacams' => 'bongacams-80x80-transparent.png',
+            'sexpanther' => 'sexpanther-80x80-transparent.png',
+            'visit-x' => 'visit-x-80x80-transparent.png',
+            'xlovecam' => 'xlovecam-80x80-transparent.png',
+            'bellesaplus' => 'bellesaplus-80x80-transparent.png',
+            'victoria-milan' => 'victoria-milan-80x80-transparent.png',
+            'alt' => 'alt-80x80-transparent.png',
+            'fling' => 'fling-80x80-transparent.png',
+            'lovescape' => 'lovescape-80x80-transparent.png',
+            'promptchan' => 'promptchan-80x80-transparent.png',
+            'swipey' => 'swipey-80x80-transparent.png',
+            'secrets-ai' => 'secrets-ai-80x80-transparent.png',
+            'darlink-ai' => 'darlink-ai-80x80-transparent.png',
+            'xotic-ai' => 'xotic-ai-80x80-transparent.png',
+            'ourdream-ai' => 'ourdream-ai-80x80-transparent.png',
+        );
+    }
+
     /**
      * @param array<string,mixed> $settings Settings payload.
      *
@@ -529,6 +670,9 @@ class TMW_CR_Slot_Offer_Repository {
             $offer['dashboard_metadata']   = $offer_meta;
             $offer['is_selected_for_slot'] = $is_selected;
             $offer['image_status']         = $image_status;
+            $offer['brand_key']            = $this->get_offer_brand_key( (string) ( $offer['name'] ?? '' ) );
+            $offer['logo_filename']        = $this->get_offer_logo_filename( $offer );
+            $offer['logo_url']             = $this->get_offer_logo_url( $offer );
             $filtered[]                    = $offer;
         }
 

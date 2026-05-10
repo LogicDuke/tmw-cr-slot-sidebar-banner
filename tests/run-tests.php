@@ -1602,6 +1602,40 @@ $tests['dashboard_performance_summary_fields'] = function() {
     tmw_assert_same( 'Two', (string) $summary['top_offer_name'], 'Summary should include top offer by payout.' );
 };
 
+
+$tests['offer_logo_mapping_known_pps_offers'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
+
+    $cases = array(
+        'Jerkmate - PPS' => 'jerkmate-80x80-transparent.png',
+        'Joi - PPS - Tier 1' => 'joi-80x80-transparent.png',
+        'Joi - PPS - T1 (Premium)' => 'joi-80x80-transparent.png',
+        'Instabang - PPS - Premium' => 'instabang-80x80-transparent.png',
+        'Candy.ai - PPS - T1 (Premium)' => 'candyai-80x80-transparent.png',
+        'Live Jasmin - PPS' => 'livejasmin-80x80-transparent.png',
+    );
+
+    foreach ( $cases as $offer_name => $expected ) {
+        $offer = array( 'id' => 'case-' . md5( $offer_name ), 'name' => $offer_name );
+        tmw_assert_same( $expected, $repository->get_offer_logo_filename( $offer ), 'Expected known logo filename to resolve: ' . $offer_name );
+        tmw_assert_contains( 'assets/logos/80x80/' . $expected, $repository->get_offer_logo_url( $offer ), 'Expected known logo url to resolve: ' . $offer_name );
+    }
+};
+
+$tests['offer_logo_mapping_unknown_and_missing_files_safe'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
+
+    $unknown = array( 'id' => 'u1', 'name' => 'Unknown Brand - PPS' );
+    tmw_assert_same( '', $repository->get_offer_logo_filename( $unknown ), 'Unknown brands should return empty filename.' );
+    tmw_assert_same( '', $repository->get_offer_logo_url( $unknown ), 'Unknown brands should return empty logo URL.' );
+
+    $missing = array( 'id' => 'm1', 'name' => 'Sex Messenger - PPS - US' );
+    tmw_assert_same( '', $repository->get_offer_logo_filename( $missing ), 'Missing expected logo files should return empty safely.' );
+    tmw_assert_same( '', $repository->get_offer_logo_url( $missing ), 'Missing expected logo url should return empty safely.' );
+};
+
 $failures = array();
 $passes   = 0;
 

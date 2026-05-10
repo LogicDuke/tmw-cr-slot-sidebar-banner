@@ -1704,6 +1704,12 @@ $tests['offer_logo_mapping_known_pps_offers'] = function() {
         'Total Webcam - PPS' => 'total-webcams-80x80-transparent.png',
         'Total Webcams - PPS' => 'total-webcams-80x80-transparent.png',
         'Hentai Heroes - PPS' => 'hentaiheroes-80x80-transparent.png',
+        'Cougar Life - PPS' => 'cougar-life-80x80-transparent.png',
+        'Flirtbate - PPS' => 'flirtbate-80x80-transparent.png',
+        'SeasonedFlirt - PPS' => 'seasonedflirt-80x80-transparent.png',
+        'Blacked - PPS' => 'blacked-80x80-transparent.png',
+        'Tushy - PPS' => 'tushy-80x80-transparent.png',
+        'Vixen - PPS' => 'vixen-80x80-transparent.png',
     );
 
     foreach ( $cases as $offer_name => $expected ) {
@@ -1747,6 +1753,30 @@ $tests['frontend_slot_offer_includes_logo_fields_for_mapped_brand'] = function()
     tmw_assert_same( 'jerkmate', (string) ( $offers[0]['brand_key'] ?? '' ), 'Mapped offer should include brand_key.' );
     tmw_assert_same( 'jerkmate-80x80-transparent.png', (string) ( $offers[0]['logo_filename'] ?? '' ), 'Mapped offer should include logo filename.' );
     tmw_assert_contains( 'assets/logos/80x80/jerkmate-80x80-transparent.png', (string) ( $offers[0]['logo_url'] ?? '' ), 'Mapped offer should include logo URL.' );
+};
+
+
+$tests['frontend_slot_offer_includes_logo_fields_for_newly_mapped_pps_brand'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
+    $repository->save_synced_offers(
+        array(
+            '1003' => array( 'id' => '1003', 'name' => 'Cougar Life - PPS', 'status' => 'active' ),
+        )
+    );
+
+    $offers = $repository->get_frontend_slot_offers(
+        'sidebar',
+        array( 'slot_offer_ids' => array( '1003' ), 'slot_offer_priority' => array( '1003' => 1 ) ),
+        array( 'cta_url' => 'https://example.test/click', 'cta_text' => 'TRY YOUR FREE SPINS' ),
+        'US',
+        array()
+    );
+
+    tmw_assert_true( ! empty( $offers ), 'Expected at least one frontend slot offer for newly mapped brand.' );
+    tmw_assert_same( 'cougar-life', (string) ( $offers[0]['brand_key'] ?? '' ), 'Newly mapped offer should include brand_key.' );
+    tmw_assert_same( 'cougar-life-80x80-transparent.png', (string) ( $offers[0]['logo_filename'] ?? '' ), 'Newly mapped offer should include logo filename.' );
+    tmw_assert_contains( 'assets/logos/80x80/cougar-life-80x80-transparent.png', (string) ( $offers[0]['logo_url'] ?? '' ), 'Newly mapped offer should include logo URL.' );
 };
 
 $tests['frontend_slot_offer_includes_empty_logo_url_when_unmapped'] = function() {

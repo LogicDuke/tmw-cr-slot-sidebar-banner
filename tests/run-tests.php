@@ -2145,6 +2145,10 @@ $tests['invalid_template_tracking_url_falls_back_to_global_cta_or_empty'] = func
         'https://trk.example.com/path?affiliate_id=affiliate_id&transaction_id=abc',
         'https://trk.example.com/path?aid=affiliate_id&transaction_id=abc',
         'https://trk.example.com/path?src=source&transaction_id=abc',
+        'https://gateway.crakrevenue.com/click?transaction_id=preview',
+        'https://gateway.crakrevenue.com/click?affiliate_id=affiliate_id',
+        'https://gateway.crakrevenue.com/click?aid=affiliate_id',
+        'https://gateway.crakrevenue.com/click?src=source',
     );
 
     foreach ( $invalid_urls as $idx => $invalid_url ) {

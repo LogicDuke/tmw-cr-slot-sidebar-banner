@@ -1660,12 +1660,12 @@ class TMW_CR_Slot_Offer_Repository {
         $lower = strtolower( rawurldecode( $url ) );
         $host  = strtolower( (string) parse_url( $url, PHP_URL_HOST ) );
 
-        if ( $this->is_known_cr_tracking_host( $host ) ) {
-            return 'tracking_url';
-        }
-
         if ( false !== strpos( $lower, 'affiliate_id=affiliate_id' ) || false !== strpos( $lower, 'transaction_id=preview' ) || false !== strpos( $lower, 'aid=affiliate_id' ) || false !== strpos( $lower, 'src=source' ) || false !== strpos( $lower, '{' ) ) {
             return 'unresolved_placeholders';
+        }
+
+        if ( $this->is_known_cr_tracking_host( $host ) ) {
+            return 'tracking_url';
         }
 
         if ( false !== strpos( $lower, 'affiliate_id' ) || false !== strpos( $lower, 'transaction_id' ) || false !== strpos( $lower, 'subid=' ) ) {

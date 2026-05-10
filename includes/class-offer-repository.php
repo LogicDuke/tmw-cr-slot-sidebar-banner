@@ -235,7 +235,8 @@ class TMW_CR_Slot_Offer_Repository {
      * @return array<int,string>
      */
     public function get_offer_type_keys( $offer ) {
-        $haystack = strtolower( (string) ( $offer['name'] ?? '' ) ) . ' ' . strtolower( (string) ( $offer['payout_type'] ?? '' ) );
+        $name_haystack = strtolower( (string) ( $offer['name'] ?? '' ) );
+        $payout_haystack = strtolower( (string) ( $offer['payout_type'] ?? '' ) );
         $patterns = array(
             'fallback'  => '/\b(group\s+fallback|custom\s+fallback)\b/i',
             'smartlink' => '/\bsmartlink\b/i',
@@ -249,13 +250,29 @@ class TMW_CR_Slot_Offer_Repository {
         );
 
         $types = array();
+        $positions = array();
         foreach ( $patterns as $key => $pattern ) {
-            if ( preg_match( $pattern, $haystack ) ) {
+            if ( preg_match( $pattern, $name_haystack, $matches, PREG_OFFSET_CAPTURE ) ) {
                 $types[] = $key;
+                $positions[ $key ] = (int) $matches[0][1];
+                continue;
+            }
+
+            if ( preg_match( $pattern, $payout_haystack, $matches, PREG_OFFSET_CAPTURE ) ) {
+                $types[] = $key;
+                $positions[ $key ] = 10000 + (int) $matches[0][1];
             }
         }
 
-        return array_values( array_unique( $types ) );
+        $types = array_values( array_unique( $types ) );
+        usort(
+            $types,
+            static function ( $left, $right ) use ( $positions ) {
+                return ( $positions[ $left ] ?? PHP_INT_MAX ) <=> ( $positions[ $right ] ?? PHP_INT_MAX );
+            }
+        );
+
+        return $types;
     }
 
     public function is_offer_type_allowed( $offer, $settings ) {

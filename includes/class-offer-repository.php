@@ -476,6 +476,25 @@ class TMW_CR_Slot_Offer_Repository {
             'darlink-ai' => array( 'darlink ai', 'darlink.ai', 'darlinkai' ),
             'xotic-ai' => array( 'xotic ai', 'xotic.ai', 'xoticai' ),
             'ourdream-ai' => array( 'ourdream ai', 'ourdream.ai', 'ourdreamai' ),
+            'phalogenics' => array( 'phalogenics' ),
+            'oranum' => array( 'oranum' ),
+            'delhi-sex-chat' => array( 'delhi sex chat' ),
+            'squirting-school' => array( 'squirting school' ),
+            'growth-matrix' => array( 'growth matrix' ),
+            'endura-naturals' => array( 'endura naturals' ),
+            'filf' => array( ' filf ', 'filf' ),
+            'faphouse' => array( 'faphouse.com', 'faphouse' ),
+            'ole-cams' => array( 'olécams', 'olecams', 'ole cams', 'ol cams' ),
+            'camirada' => array( 'camirada' ),
+            'nananue-cam' => array( 'nananue cam' ),
+            'fanfinity' => array( 'fanfinity' ),
+            'get-harder' => array( 'get harder', 'get-harder' ),
+            'testosterone-support-innerbody' => array( 'testosterone support innerbody labs', 'testosterone support innerbody' ),
+            'primal-blast' => array( 'primal blast' ),
+            'deeper' => array( ' deeper ', 'deeper' ),
+            'milfy' => array( ' milfy ', 'milfy' ),
+            'wifey' => array( ' wifey ', 'wifey' ),
+            'slayed' => array( ' slayed ', 'slayed' ),
         );
     }
 
@@ -534,6 +553,25 @@ class TMW_CR_Slot_Offer_Repository {
             'darlink-ai' => 'darlink-ai-80x80-transparent.png',
             'xotic-ai' => 'xotic-ai-80x80-transparent.png',
             'ourdream-ai' => 'ourdream-ai-80x80-transparent.png',
+            'phalogenics' => 'phalogenics-80x80-transparent.png',
+            'oranum' => 'oranum-80x80-transparent.png',
+            'delhi-sex-chat' => 'delhi-sex-chat-80x80-transparent.png',
+            'squirting-school' => 'squirting-school-80x80-transparent.png',
+            'growth-matrix' => 'growth-matrix-80x80-transparent.png',
+            'endura-naturals' => 'endura-naturals-80x80-transparent.png',
+            'filf' => 'filf-80x80-transparent.png',
+            'faphouse' => 'faphouse-80x80-transparent.png',
+            'ole-cams' => 'ole-cams-80x80-transparent.png',
+            'camirada' => 'camirada-80x80-transparent.png',
+            'nananue-cam' => 'nananue-cam-80x80-transparent.png',
+            'fanfinity' => 'fanfinity-80x80-transparent.png',
+            'get-harder' => 'get-harder-80x80-transparent.png',
+            'testosterone-support-innerbody' => 'testosterone-support-innerbody-80x80-transparent.png',
+            'primal-blast' => 'primal-blast-80x80-transparent.png',
+            'deeper' => 'deeper-80x80-transparent.png',
+            'milfy' => 'milfy-80x80-transparent.png',
+            'wifey' => 'wifey-80x80-transparent.png',
+            'slayed' => 'slayed-80x80-transparent.png',
         );
     }
 
@@ -951,6 +989,9 @@ class TMW_CR_Slot_Offer_Repository {
                     ++$skipped_type_disallowed_count;
                     continue;
                 }
+                if ( $this->is_offer_blocked_for_banner( $synced_offers[ $selected_id ], $settings ) ) {
+                    continue;
+                }
                 ++$type_allowed_count;
                 $effective = $this->get_effective_offer_record(
                     $selected_id,
@@ -995,6 +1036,9 @@ class TMW_CR_Slot_Offer_Repository {
                 }
                 if ( ! $this->is_offer_type_allowed( $synced_offer, $settings ) ) {
                     ++$skipped_type_disallowed_count;
+                    continue;
+                }
+                if ( $this->is_offer_blocked_for_banner( $synced_offer, $settings ) ) {
                     continue;
                 }
                 ++$type_allowed_count;
@@ -1044,6 +1088,9 @@ class TMW_CR_Slot_Offer_Repository {
                     ++$skipped_type_disallowed_count;
                     continue;
                 }
+                if ( $this->is_offer_blocked_for_banner( $legacy_offer_for_type, $settings ) ) {
+                    continue;
+                }
                 ++$type_allowed_count;
 
                 $offers[]  = $this->normalize_legacy_offer( $legacy_offer, $banner_data );
@@ -1086,6 +1133,7 @@ class TMW_CR_Slot_Offer_Repository {
             'pps_candidates_total' => 0,
             'pps_with_logo' => 0,
             'pps_missing_logo' => 0,
+            'blocked_pps_offers_excluded' => 0,
             'missing_logo_offer_ids' => array(),
             'missing_logo_offer_names' => array(),
             'missing_logo_expected_brand_keys' => array(),
@@ -1097,6 +1145,10 @@ class TMW_CR_Slot_Offer_Repository {
             }
             $types = $this->get_offer_type_keys( $offer );
             if ( ! in_array( 'pps', $types, true ) ) {
+                continue;
+            }
+            if ( $this->is_offer_blocked_for_banner( $offer, $settings ) ) {
+                ++$report['blocked_pps_offers_excluded'];
                 continue;
             }
 
@@ -2059,6 +2111,29 @@ class TMW_CR_Slot_Offer_Repository {
             }
         }
 
+        return false;
+    }
+
+    public function is_offer_blocked_for_banner( $offer, $settings = array() ) {
+        unset( $settings );
+        $keywords = array( 'gay', 'xlovegay', 'mennation', 'gaybloom', 'pridepair', 'tsdates', 'trans', 'shemale', 'male gay', 'gay cam', 'gay dating' );
+        $parts    = array( strtolower( sanitize_text_field( (string) ( $offer['name'] ?? '' ) ) ) );
+        foreach ( array( 'category', 'categories', 'tag', 'tags' ) as $field ) {
+            if ( ! isset( $offer[ $field ] ) ) {
+                continue;
+            }
+            if ( is_array( $offer[ $field ] ) ) {
+                $parts[] = strtolower( implode( ' ', array_map( 'strval', $offer[ $field ] ) ) );
+            } else {
+                $parts[] = strtolower( (string) $offer[ $field ] );
+            }
+        }
+        $haystack = implode( ' ', $parts );
+        foreach ( $keywords as $keyword ) {
+            if ( '' !== $keyword && false !== strpos( $haystack, $keyword ) ) {
+                return true;
+            }
+        }
         return false;
     }
 

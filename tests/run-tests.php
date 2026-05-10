@@ -1710,6 +1710,25 @@ $tests['offer_logo_mapping_known_pps_offers'] = function() {
         'Blacked - PPS' => 'blacked-80x80-transparent.png',
         'Tushy - PPS' => 'tushy-80x80-transparent.png',
         'Vixen - PPS' => 'vixen-80x80-transparent.png',
+        'Phalogenics - PPS' => 'phalogenics-80x80-transparent.png',
+        'Oranum - PPS' => 'oranum-80x80-transparent.png',
+        'Delhi Sex Chat - PPS' => 'delhi-sex-chat-80x80-transparent.png',
+        'Squirting School - PPS' => 'squirting-school-80x80-transparent.png',
+        'Growth Matrix - PPS' => 'growth-matrix-80x80-transparent.png',
+        'Endura Naturals - PPS' => 'endura-naturals-80x80-transparent.png',
+        'FILF - PPS' => 'filf-80x80-transparent.png',
+        'Faphouse.com - PPS' => 'faphouse-80x80-transparent.png',
+        'OléCams - PPS' => 'ole-cams-80x80-transparent.png',
+        'Camirada - PPS' => 'camirada-80x80-transparent.png',
+        'Nananue Cam - PPS' => 'nananue-cam-80x80-transparent.png',
+        'Fanfinity - PPS' => 'fanfinity-80x80-transparent.png',
+        'Get-Harder - PPS' => 'get-harder-80x80-transparent.png',
+        'Testosterone Support Innerbody Labs - PPS - US' => 'testosterone-support-innerbody-80x80-transparent.png',
+        'Primal Blast - PPS - US' => 'primal-blast-80x80-transparent.png',
+        'Deeper - PPS' => 'deeper-80x80-transparent.png',
+        'Milfy - PPS' => 'milfy-80x80-transparent.png',
+        'Wifey - PPS' => 'wifey-80x80-transparent.png',
+        'Slayed - PPS' => 'slayed-80x80-transparent.png',
     );
 
     foreach ( $cases as $offer_name => $expected ) {
@@ -1896,6 +1915,55 @@ $tests['pps_logo_coverage_report_lists_missing_logo_offers'] = function() {
     tmw_assert_same( 1, (int) $report['pps_with_logo'], 'Coverage report should count PPS candidates with mapped logos.' );
     tmw_assert_same( 1, (int) $report['pps_missing_logo'], 'Coverage report should count PPS candidates with missing logos.' );
     tmw_assert_true( in_array( 'missing-logo', (array) $report['missing_logo_offer_ids'], true ), 'Coverage report should list missing-logo offer id.' );
+};
+
+$tests['offer_blocklist_expected_cases'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    tmw_assert_true( $repository->is_offer_blocked_for_banner( array( 'name' => 'XLoveGay - PPS' ) ), 'XLoveGay should be blocked.' );
+    tmw_assert_true( $repository->is_offer_blocked_for_banner( array( 'name' => 'Mennation - PPS' ) ), 'Mennation should be blocked.' );
+    tmw_assert_true( $repository->is_offer_blocked_for_banner( array( 'name' => 'GayBloom - PPS - US' ) ), 'GayBloom should be blocked.' );
+    tmw_assert_true( $repository->is_offer_blocked_for_banner( array( 'name' => 'PridePair - PPS - US' ) ), 'PridePair should be blocked.' );
+    tmw_assert_true( ! $repository->is_offer_blocked_for_banner( array( 'name' => 'Jerkmate - PPS' ) ), 'Jerkmate should not be blocked.' );
+    tmw_assert_true( ! $repository->is_offer_blocked_for_banner( array( 'name' => 'Adult FriendFinder - PPS' ) ), 'Adult FriendFinder should not be blocked.' );
+    tmw_assert_true( ! $repository->is_offer_blocked_for_banner( array( 'name' => 'Live Jasmin - PPS' ) ), 'Live Jasmin should not be blocked.' );
+};
+
+$tests['frontend_pps_pool_excludes_blocked_and_hot_pick_is_not_blocked'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repository->save_synced_offers(
+        array(
+            '2492' => array( 'id' => '2492', 'name' => 'XLoveGay - PPS', 'status' => 'active' ),
+            '5875' => array( 'id' => '5875', 'name' => 'Mennation - PPS', 'status' => 'active' ),
+            '10372' => array( 'id' => '10372', 'name' => 'GayBloom - PPS - US', 'status' => 'active' ),
+            '10373' => array( 'id' => '10373', 'name' => 'PridePair - PPS - US', 'status' => 'active' ),
+            'safe1' => array( 'id' => 'safe1', 'name' => 'Jerkmate - PPS', 'status' => 'active' ),
+        )
+    );
+    $offers = $repository->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => 'https://base.test', 'cta_text' => 'CTA' ), 'US', array() );
+    $names = array_map( static function( $row ) { return (string) ( $row['name'] ?? '' ); }, $offers );
+    tmw_assert_true( in_array( 'Jerkmate - PPS', $names, true ), 'Safe PPS offers should remain.' );
+    tmw_assert_true( ! in_array( 'XLoveGay - PPS', $names, true ), 'Blocked XLoveGay should be excluded.' );
+    tmw_assert_true( ! in_array( 'Mennation - PPS', $names, true ), 'Blocked Mennation should be excluded.' );
+    tmw_assert_true( ! in_array( 'GayBloom - PPS - US', $names, true ), 'Blocked GayBloom should be excluded.' );
+    tmw_assert_true( ! in_array( 'PridePair - PPS - US', $names, true ), 'Blocked PridePair should be excluded.' );
+    tmw_assert_true( ! empty( $offers ) && ! $repository->is_offer_blocked_for_banner( $offers[0] ), 'Hot pick (top offer) should never be blocked.' );
+};
+
+$tests['pps_logo_coverage_excludes_blocked_offers_from_missing'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repository->save_synced_offers(
+        array(
+            'safe' => array( 'id' => 'safe', 'name' => 'Unknown Brand - PPS', 'status' => 'active' ),
+            '2492' => array( 'id' => '2492', 'name' => 'XLoveGay - PPS', 'status' => 'active' ),
+        )
+    );
+    $report = $repository->get_pps_logo_coverage_report( array( 'allowed_offer_types' => array( 'pps' ) ) );
+    tmw_assert_same( 1, (int) $report['pps_candidates_total'], 'Blocked PPS offers should be excluded from total coverage candidates.' );
+    tmw_assert_same( 1, (int) $report['pps_missing_logo'], 'Only non-blocked missing logos should count.' );
+    tmw_assert_same( 1, (int) $report['blocked_pps_offers_excluded'], 'Blocked PPS excluded count should be reported.' );
 };
 
 $tests['sanitize_settings_preserves_selected_disallowed_offer_ids'] = function() {

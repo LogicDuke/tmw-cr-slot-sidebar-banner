@@ -9,6 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class TMW_CR_Slot_Offer_Repository {
     const ALLOWED_OFFER_TYPES = array( 'pps', 'revshare', 'soi', 'doi', 'cpa', 'cpl', 'cpc', 'smartlink', 'fallback' );
+    const UNAVAILABLE_ACCOUNT_PPS_OFFER_IDS = array( '9647', '9781' );
     /** @var string */
     protected $offers_option_key;
 
@@ -996,6 +997,10 @@ class TMW_CR_Slot_Offer_Repository {
                 if ( $this->is_offer_blocked_for_banner( $synced_offers[ $selected_id ], $settings ) ) {
                     continue;
                 }
+                if ( $this->is_unavailable_account_pps_offer( $synced_offers[ $selected_id ] ) ) {
+                    $this->log_unavailable_account_offer_excluded( $synced_offers[ $selected_id ] );
+                    continue;
+                }
                 ++$type_allowed_count;
                 $effective = $this->get_effective_offer_record(
                     $selected_id,
@@ -1043,6 +1048,10 @@ class TMW_CR_Slot_Offer_Repository {
                     continue;
                 }
                 if ( $this->is_offer_blocked_for_banner( $synced_offer, $settings ) ) {
+                    continue;
+                }
+                if ( $this->is_unavailable_account_pps_offer( $synced_offer ) ) {
+                    $this->log_unavailable_account_offer_excluded( $synced_offer );
                     continue;
                 }
                 ++$type_allowed_count;
@@ -1095,6 +1104,10 @@ class TMW_CR_Slot_Offer_Repository {
                 if ( $this->is_offer_blocked_for_banner( $legacy_offer_for_type, $settings ) ) {
                     continue;
                 }
+                if ( $this->is_unavailable_account_pps_offer( $legacy_offer_for_type ) ) {
+                    $this->log_unavailable_account_offer_excluded( $legacy_offer_for_type );
+                    continue;
+                }
                 ++$type_allowed_count;
 
                 $offers[]  = $this->normalize_legacy_offer( $legacy_offer, $banner_data );
@@ -1138,6 +1151,9 @@ class TMW_CR_Slot_Offer_Repository {
             'pps_with_logo' => 0,
             'pps_missing_logo' => 0,
             'blocked_pps_offers_excluded' => 0,
+            'unavailable_account_pps_offers_excluded' => 0,
+            'unavailable_account_offer_ids' => array(),
+            'unavailable_account_offer_names' => array(),
             'missing_logo_offer_ids' => array(),
             'missing_logo_offer_names' => array(),
             'missing_logo_expected_brand_keys' => array(),
@@ -1153,6 +1169,15 @@ class TMW_CR_Slot_Offer_Repository {
             }
             if ( $this->is_offer_blocked_for_banner( $offer, $settings ) ) {
                 ++$report['blocked_pps_offers_excluded'];
+                continue;
+            }
+            if ( $this->is_unavailable_account_pps_offer( $offer ) ) {
+                ++$report['unavailable_account_pps_offers_excluded'];
+                $offer_id = sanitize_text_field( (string) ( $offer['id'] ?? '' ) );
+                $offer_name = sanitize_text_field( (string) ( $offer['name'] ?? '' ) );
+                $report['unavailable_account_offer_ids'][] = $offer_id;
+                $report['unavailable_account_offer_names'][] = $offer_name;
+                $this->log_unavailable_account_offer_excluded( $offer );
                 continue;
             }
 
@@ -1183,6 +1208,39 @@ class TMW_CR_Slot_Offer_Repository {
         }
 
         return $report;
+    }
+
+    /**
+     * @param array<string,mixed> $offer Offer payload.
+     *
+     * @return bool
+     */
+    protected function is_unavailable_account_pps_offer( $offer ) {
+        $offer_id = sanitize_text_field( (string) ( $offer['id'] ?? '' ) );
+        if ( '' === $offer_id || ! in_array( $offer_id, self::UNAVAILABLE_ACCOUNT_PPS_OFFER_IDS, true ) ) {
+            return false;
+        }
+        return in_array( 'pps', $this->get_offer_type_keys( $offer ), true );
+    }
+
+    /**
+     * @param array<string,mixed> $offer Offer payload.
+     *
+     * @return void
+     */
+    protected function log_unavailable_account_offer_excluded( $offer ) {
+        if ( ! function_exists( 'error_log' ) ) {
+            return;
+        }
+        $offer_id = sanitize_text_field( (string) ( $offer['id'] ?? '' ) );
+        $offer_name = sanitize_text_field( (string) ( $offer['name'] ?? '' ) );
+        error_log(
+            sprintf(
+                '[TMW-SLOT-LOGO] unavailable_account_offer_excluded offer_id=%s offer_name="%s"',
+                $offer_id,
+                $offer_name
+            )
+        );
     }
 
     /**

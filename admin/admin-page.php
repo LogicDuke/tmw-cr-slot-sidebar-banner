@@ -841,6 +841,22 @@ class TMW_CR_Slot_Admin_Page {
                     ?>
                 </p>
             <?php endif; ?>
+            <?php if ( ! empty( $pps_coverage['unavailable_account_pps_offers_excluded'] ) ) : ?>
+                <p class="description">
+                    <?php esc_html_e( 'Unavailable/account-inaccessible PPS offers excluded:', 'tmw-cr-slot-sidebar-banner' ); ?>
+                    <?php
+                    $unavailable_rows = array();
+                    foreach ( (array) $pps_coverage['unavailable_account_offer_names'] as $idx => $unavailable_name ) {
+                        $unavailable_rows[] = sprintf(
+                            '%1$s / %2$s',
+                            (string) ( $pps_coverage['unavailable_account_offer_ids'][ $idx ] ?? '' ),
+                            (string) $unavailable_name
+                        );
+                    }
+                    echo esc_html( implode( '; ', $unavailable_rows ) );
+                    ?>
+                </p>
+            <?php endif; ?>
 
             <table class="widefat striped">
                 <thead>

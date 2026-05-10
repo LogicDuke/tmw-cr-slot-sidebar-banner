@@ -186,6 +186,7 @@ class TMW_CR_Slot_Sidebar_Banner {
             'auto_sync_frequency'   => 'daily',
             'stats_sync_range'       => '30d',
             'optimization_notes'    => '',
+            'allowed_offer_types'   => array( 'pps' ),
         );
 
         $settings = get_option( self::OPTION_KEY, array() );
@@ -224,6 +225,9 @@ class TMW_CR_Slot_Sidebar_Banner {
             $settings['stats_sync_range'] = '30d';
         }
         $settings['optimization_notes'] = sanitize_textarea_field( (string) $settings['optimization_notes'] );
+        $settings['allowed_offer_types'] = TMW_CR_Slot_Offer_Repository::sanitize_allowed_offer_types(
+            isset( $settings['allowed_offer_types'] ) ? $settings['allowed_offer_types'] : array()
+        );
 
         return $settings;
     }

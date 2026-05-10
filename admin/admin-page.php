@@ -124,6 +124,9 @@ class TMW_CR_Slot_Admin_Page {
             $output['stats_sync_range'] = '30d';
         }
         $output['optimization_notes'] = isset( $input['optimization_notes'] ) ? sanitize_textarea_field( (string) $input['optimization_notes'] ) : '';
+        $output['allowed_offer_types'] = TMW_CR_Slot_Offer_Repository::sanitize_allowed_offer_types(
+            isset( $input['allowed_offer_types'] ) ? $input['allowed_offer_types'] : array()
+        );
 
         $api_key              = isset( $input['cr_api_key'] ) ? trim( (string) $input['cr_api_key'] ) : '';
         $output['cr_api_key'] = '' !== $api_key ? sanitize_text_field( $api_key ) : (string) $existing['cr_api_key'];
@@ -191,6 +194,21 @@ class TMW_CR_Slot_Admin_Page {
         }
 
         $this->offer_repository->save_offer_overrides( $offer_overrides );
+        $offers = $this->offer_repository->get_synced_offers();
+        $type_allowed_count = 0;
+        foreach ( $offers as $offer ) {
+            if ( is_array( $offer ) && $this->offer_repository->is_offer_type_allowed( $offer, $output ) ) {
+                ++$type_allowed_count;
+            }
+        }
+        error_log(
+            sprintf(
+                '[TMW-BANNER-TYPE] settings_saved allowed_types=%s total_offers=%d type_allowed_count=%d',
+                implode( ',', (array) $output['allowed_offer_types'] ),
+                count( $offers ),
+                $type_allowed_count
+            )
+        );
 
         return $output;
     }
@@ -623,6 +641,12 @@ class TMW_CR_Slot_Admin_Page {
                                         </span>
                                     <?php endif; ?>
                                     <strong><?php echo esc_html( (string) ( $offer['name'] ?? '' ) ); ?></strong>
+                                    <?php
+                                    $type_keys = $this->offer_repository->get_offer_type_keys( $offer );
+                                    if ( ! empty( $type_keys ) ) :
+                                        ?>
+                                        <small class="description"><?php echo esc_html( 'Offer Type Keys: ' . implode( ', ', array_map( 'ucfirst', $type_keys ) ) ); ?></small>
+                                    <?php endif; ?>
                                 </span>
                             </td>
                             <td><code><?php echo esc_html( (string) ( $offer['id'] ?? '' ) ); ?></code></td>
@@ -693,6 +717,30 @@ class TMW_CR_Slot_Admin_Page {
 
         <form method="post" action="options.php">
             <?php settings_fields( 'tmw_cr_slot_banner' ); ?>
+            <h3><?php esc_html_e( 'Allowed offer types for live banner', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
+            <p class="description"><?php esc_html_e( 'Choose which offer types may appear in the frontend slot/sidebar banner. Logo display in admin is brand-level and remains unaffected.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+            <?php
+            $allowed_offer_types = $this->offer_repository->get_allowed_offer_types( $settings );
+            $type_labels = array(
+                'pps' => 'PPS',
+                'revshare' => 'Revshare',
+                'soi' => 'SOI',
+                'doi' => 'DOI',
+                'cpa' => 'CPA / Multi-CPA',
+                'cpl' => 'CPL / PPL',
+                'cpc' => 'CPC / PPC',
+                'smartlink' => 'Smartlink',
+                'fallback' => 'Fallback offers',
+            );
+            ?>
+            <p>
+                <?php foreach ( $type_labels as $type_key => $type_label ) : ?>
+                    <label style="display:inline-block;min-width:180px;margin:0 12px 8px 0;">
+                        <input type="checkbox" name="<?php echo esc_attr( $this->option_key ); ?>[allowed_offer_types][]" value="<?php echo esc_attr( $type_key ); ?>" <?php checked( in_array( $type_key, $allowed_offer_types, true ) ); ?> />
+                        <?php echo esc_html( $type_label ); ?>
+                    </label>
+                <?php endforeach; ?>
+            </p>
 
             <table class="widefat striped">
                 <thead>

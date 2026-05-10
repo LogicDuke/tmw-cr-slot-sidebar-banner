@@ -1124,7 +1124,7 @@ class TMW_CR_Slot_Offer_Repository {
 
 
     /**
-     * @return array<string,array<string,string>>
+     * @return array<int,array<string,string>>
      */
     protected function get_pending_pps_logo_verification_targets() {
         return array(

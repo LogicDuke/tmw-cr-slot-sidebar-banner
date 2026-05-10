@@ -1724,6 +1724,51 @@ $tests['offer_logo_mapping_unknown_and_missing_files_safe'] = function() {
     tmw_assert_same( '', $repository->get_offer_logo_url( $missing ), 'Missing expected logo url should return empty safely.' );
 };
 
+$tests['frontend_slot_offer_includes_logo_fields_for_mapped_brand'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
+    $repository->save_synced_offers(
+        array(
+            '1001' => array( 'id' => '1001', 'name' => 'Jerkmate - PPS', 'status' => 'active' ),
+        )
+    );
+
+    $offers = $repository->get_frontend_slot_offers(
+        'sidebar',
+        array( 'slot_offer_ids' => array( '1001' ), 'slot_offer_priority' => array( '1001' => 1 ) ),
+        array( 'cta_url' => 'https://example.test/click', 'cta_text' => 'TRY YOUR FREE SPINS' ),
+        'US',
+        array()
+    );
+
+    tmw_assert_true( ! empty( $offers ), 'Expected at least one frontend slot offer.' );
+    tmw_assert_same( 'jerkmate', (string) ( $offers[0]['brand_key'] ?? '' ), 'Mapped offer should include brand_key.' );
+    tmw_assert_same( 'jerkmate-80x80-transparent.png', (string) ( $offers[0]['logo_filename'] ?? '' ), 'Mapped offer should include logo filename.' );
+    tmw_assert_contains( 'assets/logos/80x80/jerkmate-80x80-transparent.png', (string) ( $offers[0]['logo_url'] ?? '' ), 'Mapped offer should include logo URL.' );
+};
+
+$tests['frontend_slot_offer_includes_empty_logo_url_when_unmapped'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
+    $repository->save_synced_offers(
+        array(
+            '1002' => array( 'id' => '1002', 'name' => 'Unknown Brand - PPS', 'status' => 'active' ),
+        )
+    );
+
+    $offers = $repository->get_frontend_slot_offers(
+        'sidebar',
+        array( 'slot_offer_ids' => array( '1002' ), 'slot_offer_priority' => array( '1002' => 1 ) ),
+        array( 'cta_url' => 'https://example.test/click', 'cta_text' => 'TRY YOUR FREE SPINS' ),
+        'US',
+        array()
+    );
+
+    tmw_assert_true( ! empty( $offers ), 'Expected at least one frontend slot offer.' );
+    tmw_assert_same( '', (string) ( $offers[0]['logo_url'] ?? '' ), 'Unmapped offer should include empty logo_url for text fallback.' );
+    tmw_assert_same( '', (string) ( $offers[0]['logo_filename'] ?? '' ), 'Unmapped offer should include empty logo_filename for text fallback.' );
+};
+
 
 $tests['offer_logo_mapping_manifest_consistency'] = function() {
     tmw_reset_test_state();

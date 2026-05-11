@@ -2329,19 +2329,21 @@ $tests['override_only_offers_respect_manual_country_and_alias_rules'] = function
     $repo->save_offer_overrides(
         array(
             '8780' => array(
-                'label_override' => 'Jerkmate - PPS',
                 'final_url_override' => 'https://trk.example.com/jerkmate-winner',
                 'allowed_countries' => array( 'Belgium' ),
             ),
             '10366' => array(
-                'label_override' => 'NaughtyCharm - PPS',
                 'final_url_override' => 'https://trk.example.com/naughtycharm-winner',
                 'allowed_countries' => array( 'United States' ),
             ),
         )
     );
 
-    $offers_be = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'BE', array() );
+    $legacy_catalog = array(
+        '8780' => array( 'id' => '8780', 'name' => 'Jerkmate - PPS' ),
+        '10366' => array( 'id' => '10366', 'name' => 'NaughtyCharm - PPS' ),
+    );
+    $offers_be = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'BE', $legacy_catalog );
     $ids_be = array_map( static function( $row ) { return (string) $row['id']; }, $offers_be );
     tmw_assert_true( in_array( '8780', $ids_be, true ), 'Override-only 8780 should be eligible in Belgium/BE.' );
     tmw_assert_true( ! in_array( '10366', $ids_be, true ), 'Override-only 10366 should remain excluded in Belgium/BE.' );

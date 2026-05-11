@@ -1083,7 +1083,7 @@ class TMW_CR_Slot_Offer_Repository {
                     continue;
                 }
 
-                $effective = $this->get_override_only_effective_offer_record( $offer_id, $override, $settings, $banner_data, $country );
+                $effective = $this->get_override_only_effective_offer_record( $offer_id, $override, $settings, $banner_data, $country, $legacy_catalog );
                 if ( empty( $effective ) ) {
                     continue;
                 }
@@ -1532,10 +1532,11 @@ class TMW_CR_Slot_Offer_Repository {
      * @param array<string,mixed> $settings Settings payload.
      * @param array<string,string> $banner_data Banner data.
      * @param string              $country Visitor country.
+     * @param array<string,array<string,mixed>> $legacy_catalog Legacy fallback catalog.
      *
      * @return array<string,string>
      */
-    protected function get_override_only_effective_offer_record( $offer_id, $override, $settings, $banner_data, $country ) {
+    protected function get_override_only_effective_offer_record( $offer_id, $override, $settings, $banner_data, $country, $legacy_catalog ) {
         if ( '' === (string) $offer_id ) {
             return array();
         }
@@ -1557,6 +1558,12 @@ class TMW_CR_Slot_Offer_Repository {
         }
 
         $name = sanitize_text_field( (string) ( $override['label_override'] ?? '' ) );
+        if ( '' === $name ) {
+            $name = sanitize_text_field( (string) ( $override['offer_name'] ?? '' ) );
+        }
+        if ( '' === $name && isset( $legacy_catalog[ (string) $offer_id ] ) && is_array( $legacy_catalog[ (string) $offer_id ] ) ) {
+            $name = sanitize_text_field( (string) ( $legacy_catalog[ (string) $offer_id ]['name'] ?? '' ) );
+        }
         if ( '' === $name ) {
             return array();
         }

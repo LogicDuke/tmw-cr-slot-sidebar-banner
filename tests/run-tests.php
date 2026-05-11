@@ -2322,6 +2322,31 @@ $tests['country_alias_matching_name_code_cases'] = function() {
     tmw_assert_true( in_array( '10366', $ids_us, true ), 'Offer 10366 should be eligible in US.' );
 };
 
+$tests['override_only_offers_respect_manual_country_and_alias_rules'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array() );
+    $repo->save_offer_overrides(
+        array(
+            '8780' => array(
+                'label_override' => 'Jerkmate - PPS',
+                'final_url_override' => 'https://trk.example.com/jerkmate-winner',
+                'allowed_countries' => array( 'Belgium' ),
+            ),
+            '10366' => array(
+                'label_override' => 'NaughtyCharm - PPS',
+                'final_url_override' => 'https://trk.example.com/naughtycharm-winner',
+                'allowed_countries' => array( 'United States' ),
+            ),
+        )
+    );
+
+    $offers_be = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'BE', array() );
+    $ids_be = array_map( static function( $row ) { return (string) $row['id']; }, $offers_be );
+    tmw_assert_true( in_array( '8780', $ids_be, true ), 'Override-only 8780 should be eligible in Belgium/BE.' );
+    tmw_assert_true( ! in_array( '10366', $ids_be, true ), 'Override-only 10366 should remain excluded in Belgium/BE.' );
+};
+
 
 $failures = array();
 $passes   = 0;

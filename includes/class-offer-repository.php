@@ -1076,6 +1076,21 @@ class TMW_CR_Slot_Offer_Repository {
             }
         }
 
+        if ( count( $offers ) < 3 ) {
+            foreach ( $overrides_map as $offer_id => $override ) {
+                $offer_id = (string) $offer_id;
+                if ( '' === $offer_id || isset( $synced_offers[ $offer_id ] ) ) {
+                    continue;
+                }
+
+                $effective = $this->get_override_only_effective_offer_record( $offer_id, $override, $settings, $banner_data, $country );
+                if ( empty( $effective ) ) {
+                    continue;
+                }
+                $offers[] = $effective;
+            }
+        }
+
         $offers = array_values( array_filter( $offers ) );
 
         $offers = $this->rank_offers_for_slot( $offers, $settings, $country, $priorities );
@@ -1508,6 +1523,67 @@ class TMW_CR_Slot_Offer_Repository {
             'brand_key' => $this->get_offer_brand_key( (string) ( $synced_offer['name'] ?? '' ) ),
             'logo_filename' => $this->get_offer_logo_filename( $synced_offer ),
             'logo_url' => $this->get_offer_logo_url( $synced_offer ),
+        );
+    }
+
+    /**
+     * @param string              $offer_id Offer ID.
+     * @param array<string,mixed> $override Override row.
+     * @param array<string,mixed> $settings Settings payload.
+     * @param array<string,string> $banner_data Banner data.
+     * @param string              $country Visitor country.
+     *
+     * @return array<string,string>
+     */
+    protected function get_override_only_effective_offer_record( $offer_id, $override, $settings, $banner_data, $country ) {
+        if ( '' === (string) $offer_id ) {
+            return array();
+        }
+        if ( isset( $override['enabled'] ) && ( false === $override['enabled'] || '0' === (string) $override['enabled'] || 0 === (int) $override['enabled'] ) ) {
+            return array();
+        }
+        if ( empty( $override['final_url_override'] ) ) {
+            return array();
+        }
+
+        $final_url_override = (string) $override['final_url_override'];
+        if ( ! $this->is_valid_manual_final_url_override( $final_url_override ) || ! $this->is_valid_frontend_winner_cta_url( $final_url_override ) ) {
+            return array();
+        }
+
+        $allowed_countries = $this->sanitize_country_names( isset( $override['allowed_countries'] ) ? $override['allowed_countries'] : array() );
+        if ( empty( $allowed_countries ) || ! $this->is_country_allowed_by_name_or_alias( $country, $allowed_countries ) ) {
+            return array();
+        }
+
+        $name = sanitize_text_field( (string) ( $override['label_override'] ?? '' ) );
+        if ( '' === $name ) {
+            return array();
+        }
+
+        $offer_stub = array(
+            'id' => (string) $offer_id,
+            'name' => $name,
+            'status' => 'active',
+        );
+        if ( ! $this->is_offer_type_allowed( $offer_stub, $settings ) || $this->is_offer_blocked_for_banner( $offer_stub, $settings ) ) {
+            return array();
+        }
+
+        $logo_url = $this->get_offer_logo_url( $offer_stub );
+        if ( '' === $logo_url ) {
+            return array();
+        }
+
+        return array(
+            'id' => (string) $offer_id,
+            'name' => $name,
+            'image' => $this->build_placeholder_image( $name ),
+            'cta_url' => esc_url_raw( $final_url_override ),
+            'cta_text' => (string) ( $banner_data['cta_text'] ?? '' ),
+            'brand_key' => $this->get_offer_brand_key( $name ),
+            'logo_filename' => $this->get_offer_logo_filename( $offer_stub ),
+            'logo_url' => $logo_url,
         );
     }
 

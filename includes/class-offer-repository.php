@@ -1943,12 +1943,12 @@ class TMW_CR_Slot_Offer_Repository {
             $override        = isset( $overrides[ $id ] ) && is_array( $overrides[ $id ] ) ? $overrides[ $id ] : array();
             $offer_name      = (string) ( $offer['name'] ?? '' );
             $pps_detected    = $this->is_offer_type_allowed( $offer, array( 'allowed_offer_types' => array( 'pps' ) ) );
-            $blocked         = $this->is_offer_blocked_for_banner( $offer, $settings ) || $this->is_unavailable_account_pps_offer( $offer );
-            $block_reason    = '';
-            if ( $this->is_unavailable_account_pps_offer( $offer ) ) {
-                $block_reason = 'unavailable_account_offer';
-            } elseif ( $this->is_offer_blocked_for_banner( $offer, $settings ) ) {
-                $block_reason = 'blocked_offer_rule';
+            $is_unavailable  = $this->is_unavailable_account_pps_offer( $offer );
+            $is_rule_blocked = $this->is_offer_blocked_for_banner( $offer, $settings );
+            $blocked         = $is_rule_blocked || $is_unavailable;
+            $has_identity    = true;
+            if ( 'manual_override_only' === $source ) {
+                $has_identity = '' !== $offer_name && '' !== $this->get_offer_logo_filename( $offer );
             }
 
             $cta_source = 'none';
@@ -1966,11 +1966,30 @@ class TMW_CR_Slot_Offer_Repository {
             $has_allowed         = ! empty( $allowed_countries );
             $example_be_eligible = $this->evaluate_offer_eligibility( $id, $settings, $banner_data, 'BE', $legacy_catalog );
             $example_us_eligible = $this->evaluate_offer_eligibility( $id, $settings, $banner_data, 'US', $legacy_catalog );
+            $be_valid            = 'valid' === (string) ( $example_be_eligible['reason'] ?? '' );
+            $us_valid            = 'valid' === (string) ( $example_us_eligible['reason'] ?? '' );
+            $country_ready       = $be_valid || $us_valid;
             $logo_filename       = $this->get_offer_logo_filename( $offer );
             $logo_resolved       = '' !== $logo_filename;
-            $frontend_ready      = $pps_detected && ! $blocked && $has_allowed && $logo_resolved && in_array( $cta_source, array( 'final_url_override', 'tracking_url' ), true ) && 'valid' === (string) ( $example_be_eligible['reason'] ?? '' ) && 'valid' === (string) ( $example_us_eligible['reason'] ?? '' );
-            if ( ! $has_allowed && '' === $block_reason ) {
+            $has_valid_cta       = in_array( $cta_source, array( 'final_url_override', 'tracking_url' ), true );
+            $frontend_ready      = $pps_detected && ! $blocked && $has_allowed && $logo_resolved && $has_valid_cta && $country_ready && $has_identity;
+            $block_reason        = 'valid';
+            if ( ! $has_identity && 'manual_override_only' === $source ) {
+                $block_reason = 'unknown_override_only_identity';
+            } elseif ( ! $pps_detected ) {
+                $block_reason = 'not_pps';
+            } elseif ( $is_rule_blocked ) {
+                $block_reason = 'business_rule_blocked';
+            } elseif ( $is_unavailable ) {
+                $block_reason = 'unavailable_account_offer';
+            } elseif ( ! $has_valid_cta ) {
+                $block_reason = 'missing_valid_cta';
+            } elseif ( ! $has_allowed ) {
                 $block_reason = 'missing_allowed_country_override';
+            } elseif ( ! $country_ready ) {
+                $block_reason = 'country_not_allowed';
+            } elseif ( ! $logo_resolved ) {
+                $block_reason = 'missing_logo';
             }
 
             $rows[] = array(
@@ -2022,6 +2041,51 @@ class TMW_CR_Slot_Offer_Repository {
         }
 
         return $rows;
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $rows Audit rows.
+     *
+     * @return array<string,int>
+     */
+    public function get_pps_expansion_readiness_audit_summary( $rows ) {
+        $summary = array(
+            'total_pps_candidates' => 0,
+            'frontend_ready_pps_offers' => 0,
+            'blocked_by_business_rule' => 0,
+            'missing_valid_cta' => 0,
+            'missing_allowed_country_override' => 0,
+            'missing_logo' => 0,
+            'override_only_candidates' => 0,
+            'synced_candidates' => 0,
+        );
+        foreach ( $rows as $row ) {
+            if ( 'yes' === (string) ( $row['pps_detected'] ?? 'no' ) ) {
+                ++$summary['total_pps_candidates'];
+            }
+            if ( 'yes' === (string) ( $row['frontend_ready'] ?? 'no' ) ) {
+                ++$summary['frontend_ready_pps_offers'];
+            }
+            if ( 'business_rule_blocked' === (string) ( $row['block_reason'] ?? '' ) || 'unavailable_account_offer' === (string) ( $row['block_reason'] ?? '' ) ) {
+                ++$summary['blocked_by_business_rule'];
+            }
+            if ( 'missing_valid_cta' === (string) ( $row['block_reason'] ?? '' ) ) {
+                ++$summary['missing_valid_cta'];
+            }
+            if ( 'missing_allowed_country_override' === (string) ( $row['block_reason'] ?? '' ) ) {
+                ++$summary['missing_allowed_country_override'];
+            }
+            if ( 'missing_logo' === (string) ( $row['block_reason'] ?? '' ) ) {
+                ++$summary['missing_logo'];
+            }
+            if ( 'manual_override_only' === (string) ( $row['source'] ?? '' ) ) {
+                ++$summary['override_only_candidates'];
+            }
+            if ( 'synced' === (string) ( $row['source'] ?? '' ) ) {
+                ++$summary['synced_candidates'];
+            }
+        }
+        return $summary;
     }
 
     protected function sanitize_country_names( $countries ) {

@@ -1043,7 +1043,18 @@ class TMW_CR_Slot_Admin_Page {
                 </tbody>
             </table>
             <?php $pps_expansion_rows = $this->offer_repository->get_pps_expansion_readiness_audit_rows( $settings, array( 'cta_url' => (string) ( $settings['cta_url'] ?? '' ), 'cta_text' => (string) ( $settings['cta_text'] ?? '' ) ) ); ?>
+            <?php $pps_expansion_summary = $this->offer_repository->get_pps_expansion_readiness_audit_summary( $pps_expansion_rows ); ?>
             <h3><?php esc_html_e( 'PPS expansion readiness audit', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
+            <ul>
+                <li><?php echo esc_html( sprintf( 'Total PPS candidates: %d', (int) ( $pps_expansion_summary['total_pps_candidates'] ?? 0 ) ) ); ?></li>
+                <li><?php echo esc_html( sprintf( 'Frontend-ready PPS offers: %d', (int) ( $pps_expansion_summary['frontend_ready_pps_offers'] ?? 0 ) ) ); ?></li>
+                <li><?php echo esc_html( sprintf( 'Blocked by business rule: %d', (int) ( $pps_expansion_summary['blocked_by_business_rule'] ?? 0 ) ) ); ?></li>
+                <li><?php echo esc_html( sprintf( 'Missing valid CTA: %d', (int) ( $pps_expansion_summary['missing_valid_cta'] ?? 0 ) ) ); ?></li>
+                <li><?php echo esc_html( sprintf( 'Missing allowed-country override: %d', (int) ( $pps_expansion_summary['missing_allowed_country_override'] ?? 0 ) ) ); ?></li>
+                <li><?php echo esc_html( sprintf( 'Missing logo: %d', (int) ( $pps_expansion_summary['missing_logo'] ?? 0 ) ) ); ?></li>
+                <li><?php echo esc_html( sprintf( 'Override-only candidates: %d', (int) ( $pps_expansion_summary['override_only_candidates'] ?? 0 ) ) ); ?></li>
+                <li><?php echo esc_html( sprintf( 'Synced candidates: %d', (int) ( $pps_expansion_summary['synced_candidates'] ?? 0 ) ) ); ?></li>
+            </ul>
             <table class="widefat striped">
                 <thead><tr><th>Offer ID</th><th>Offer name</th><th>Source</th><th>PPS detected?</th><th>Blocked by business rule?</th><th>Block reason</th><th>Final CTA source</th><th>Final CTA host only</th><th>Has allowed-country override?</th><th>Allowed countries count</th><th>Example BE result</th><th>Example US result</th><th>Logo resolved?</th><th>Logo filename</th><th>Frontend-ready?</th></tr></thead>
                 <tbody>

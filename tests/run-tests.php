@@ -579,6 +579,8 @@ $tests['slot_setup_shows_winner_mode_diagnostics'] = function() {
     $html = ob_get_clean();
 
     tmw_assert_contains( 'Eligible winner offers:', $html, 'Slot setup should show eligible winner pool count.' );
+    tmw_assert_contains( 'Offers with API use_target_rules enabled:', $html, 'Slot setup should show use_target_rules audit count.' );
+    tmw_assert_contains( 'Offers with use_target_rules but no manual country override:', $html, 'Slot setup should show manual override recommendation count.' );
     tmw_assert_contains( 'Winner mode: forced three-logo match', $html, 'Slot setup should show forced winner mode.' );
     tmw_assert_contains( 'Final reel behavior: one selected offer repeated across 3 reels', $html, 'Slot setup should describe final reel behavior.' );
 };

@@ -973,6 +973,24 @@ class TMW_CR_Slot_Admin_Page {
             <?php $manual_diag = $this->offer_repository->get_manual_override_diagnostics(); ?>
             <p class="description"><?php echo esc_html( sprintf( 'Manual final URL overrides: %d', (int) $manual_diag['manual_final_url_overrides'] ) ); ?></p>
             <p class="description"><?php echo esc_html( sprintf( 'Manual allowed country overrides: %d', (int) $manual_diag['manual_allowed_country_overrides'] ) ); ?></p>
+            <?php
+            $use_target_rules_enabled_count   = 0;
+            $use_target_rules_no_override     = 0;
+            $all_synced_offers_for_audit      = $this->offer_repository->get_synced_offers();
+            $all_offer_overrides_for_audit    = $this->offer_repository->get_offer_overrides();
+            foreach ( $all_synced_offers_for_audit as $audit_offer_id => $audit_offer ) {
+                if ( ! is_array( $audit_offer ) || empty( $audit_offer['use_target_rules'] ) ) {
+                    continue;
+                }
+                ++$use_target_rules_enabled_count;
+                $audit_override = isset( $all_offer_overrides_for_audit[ $audit_offer_id ] ) && is_array( $all_offer_overrides_for_audit[ $audit_offer_id ] ) ? $all_offer_overrides_for_audit[ $audit_offer_id ] : array();
+                if ( empty( $audit_override['allowed_countries'] ) ) {
+                    ++$use_target_rules_no_override;
+                }
+            }
+            ?>
+            <p class="description"><?php echo esc_html( sprintf( 'Offers with API use_target_rules enabled: %d', (int) $use_target_rules_enabled_count ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Offers with use_target_rules but no manual country override: %d', (int) $use_target_rules_no_override ) ); ?></p>
             <p class="description"><?php echo esc_html( sprintf( 'Invalid manual URL overrides rejected: %d', (int) $manual_diag['invalid_manual_url_overrides_rejected'] ) ); ?></p>
             <?php
             $manual_override_rows = array();
@@ -1155,7 +1173,7 @@ class TMW_CR_Slot_Admin_Page {
         <?php
         if ( current_user_can( 'manage_options' ) ) :
         ?>
-        <h3><?php esc_html_e( 'Import Final URL Overrides', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
+        <h3><?php esc_html_e( 'Import Allowed Country Overrides', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
         <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
             <?php wp_nonce_field( 'tmw_cr_slot_banner_import_allowed_country_overrides' ); ?>
             <input type="hidden" name="action" value="tmw_cr_slot_banner_import_allowed_country_overrides" />

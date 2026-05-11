@@ -2439,6 +2439,33 @@ $tests['manual_winner_audit_matches_override_only_frontend_eligibility'] = funct
     tmw_assert_true( ! in_array( '10366', $ids, true ), 'Frontend should exclude 10366 in BE.' );
 };
 
+$tests['pps_expansion_readiness_audit_reports_sources_and_hosts'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers(
+        array(
+            '8780' => array( 'id' => '8780', 'name' => 'Jerkmate - PPS', 'status' => 'active', 'tracking_url' => 'https://trk.example.com/jm?transaction_id=1' ),
+            '2492' => array( 'id' => '2492', 'name' => 'XLoveGay - PPS', 'status' => 'active', 'tracking_url' => 'https://trk.example.com/gay?transaction_id=1' ),
+        )
+    );
+    $repo->save_offer_overrides(
+        array(
+            '8780' => array( 'final_url_override' => 'https://trk.override.example.com/jm', 'allowed_countries' => array( 'Belgium', 'United States' ) ),
+            '10366' => array( 'final_url_override' => 'https://trk.override.example.com/nc', 'allowed_countries' => array( 'United States' ) ),
+        )
+    );
+    $rows  = $repo->get_pps_expansion_readiness_audit_rows( array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ) );
+    $by_id = array();
+    foreach ( $rows as $row ) {
+        $by_id[ (string) $row['offer_id'] ] = $row;
+    }
+    tmw_assert_same( 'synced', (string) $by_id['8780']['source'], 'Synced offer should be marked synced.' );
+    tmw_assert_same( 'final_url_override', (string) $by_id['8780']['final_cta_source'], 'Override should have highest CTA source priority.' );
+    tmw_assert_same( 'trk.override.example.com', (string) $by_id['8780']['final_cta_host'], 'Audit must expose host only.' );
+    tmw_assert_same( 'manual_override_only', (string) $by_id['10366']['source'], 'Override-only known offer should be included.' );
+    tmw_assert_same( 'yes', (string) $by_id['2492']['blocked_by_business_rule'], 'Blocked offer should be flagged in audit.' );
+};
+
 
 $failures = array();
 $passes   = 0;

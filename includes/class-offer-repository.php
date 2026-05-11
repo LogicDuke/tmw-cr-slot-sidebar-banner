@@ -1921,6 +1921,109 @@ class TMW_CR_Slot_Offer_Repository {
         return $rows;
     }
 
+    /**
+     * @param array<string,mixed> $settings Settings payload.
+     * @param array<string,mixed> $banner_data Banner payload.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function get_pps_expansion_readiness_audit_rows( $settings, $banner_data = array() ) {
+        $rows           = array();
+        $synced_offers  = $this->get_synced_offers();
+        $overrides      = $this->get_offer_overrides();
+        $legacy_catalog = $this->get_default_legacy_catalog();
+        $seen_ids       = array();
+
+        $add_row = function( $offer_id, $offer, $source ) use ( &$rows, &$seen_ids, $settings, $banner_data, $overrides, $legacy_catalog ) {
+            $id = (string) $offer_id;
+            if ( '' === $id || isset( $seen_ids[ $id ] ) ) {
+                return;
+            }
+            $seen_ids[ $id ] = true;
+            $override        = isset( $overrides[ $id ] ) && is_array( $overrides[ $id ] ) ? $overrides[ $id ] : array();
+            $offer_name      = (string) ( $offer['name'] ?? '' );
+            $pps_detected    = $this->is_offer_type_allowed( $offer, array( 'allowed_offer_types' => array( 'pps' ) ) );
+            $blocked         = $this->is_offer_blocked_for_banner( $offer, $settings ) || $this->is_unavailable_account_pps_offer( $offer );
+            $block_reason    = '';
+            if ( $this->is_unavailable_account_pps_offer( $offer ) ) {
+                $block_reason = 'unavailable_account_offer';
+            } elseif ( $this->is_offer_blocked_for_banner( $offer, $settings ) ) {
+                $block_reason = 'blocked_offer_rule';
+            }
+
+            $cta_source = 'none';
+            $cta_url    = '';
+            if ( ! empty( $override['final_url_override'] ) ) {
+                $cta_source = $this->is_valid_manual_final_url_override( (string) $override['final_url_override'] ) ? 'final_url_override' : 'invalid';
+                $cta_url    = (string) $override['final_url_override'];
+            } elseif ( ! empty( $offer['tracking_url'] ) ) {
+                $tracking_reason = $this->classify_url_audit_reason( (string) $offer['tracking_url'] );
+                $cta_source      = 'tracking_url' === $tracking_reason ? 'tracking_url' : 'invalid';
+                $cta_url         = (string) $offer['tracking_url'];
+            }
+
+            $allowed_countries   = $this->sanitize_country_names( isset( $override['allowed_countries'] ) ? $override['allowed_countries'] : array() );
+            $has_allowed         = ! empty( $allowed_countries );
+            $example_be_eligible = $this->evaluate_offer_eligibility( $id, $settings, $banner_data, 'BE', $legacy_catalog );
+            $example_us_eligible = $this->evaluate_offer_eligibility( $id, $settings, $banner_data, 'US', $legacy_catalog );
+            $logo_filename       = $this->get_offer_logo_filename( $offer );
+            $logo_resolved       = '' !== $logo_filename;
+            $frontend_ready      = $pps_detected && ! $blocked && $has_allowed && $logo_resolved && in_array( $cta_source, array( 'final_url_override', 'tracking_url' ), true ) && 'valid' === (string) ( $example_be_eligible['reason'] ?? '' ) && 'valid' === (string) ( $example_us_eligible['reason'] ?? '' );
+            if ( ! $has_allowed && '' === $block_reason ) {
+                $block_reason = 'missing_allowed_country_override';
+            }
+
+            $rows[] = array(
+                'offer_id'                    => $id,
+                'offer_name'                  => $offer_name,
+                'source'                      => $source,
+                'pps_detected'                => $pps_detected ? 'yes' : 'no',
+                'blocked_by_business_rule'    => $blocked ? 'yes' : 'no',
+                'block_reason'                => $block_reason,
+                'final_cta_source'            => $cta_source,
+                'final_cta_host'              => (string) parse_url( $cta_url, PHP_URL_HOST ),
+                'has_allowed_country_override'=> $has_allowed ? 'yes' : 'no',
+                'allowed_countries_count'     => count( $allowed_countries ),
+                'example_be_result'           => ( 'valid' === (string) ( $example_be_eligible['reason'] ?? '' ) ) ? 'eligible' : 'excluded',
+                'example_us_result'           => ( 'valid' === (string) ( $example_us_eligible['reason'] ?? '' ) ) ? 'eligible' : 'excluded',
+                'logo_resolved'               => $logo_resolved ? 'yes' : 'no',
+                'logo_filename'               => $logo_filename,
+                'frontend_ready'              => $frontend_ready ? 'yes' : 'no',
+            );
+        };
+
+        foreach ( $synced_offers as $offer_id => $offer ) {
+            if ( ! is_array( $offer ) ) {
+                continue;
+            }
+            $add_row( $offer_id, $offer, 'synced' );
+        }
+        foreach ( $overrides as $offer_id => $override ) {
+            if ( isset( $synced_offers[ (string) $offer_id ] ) ) {
+                continue;
+            }
+            $identity_map = $this->get_manual_override_offer_identity_map();
+            $identity     = isset( $identity_map[ (string) $offer_id ] ) ? $identity_map[ (string) $offer_id ] : array();
+            $add_row(
+                $offer_id,
+                array( 'id' => (string) $offer_id, 'name' => (string) ( $identity['name'] ?? ( $override['label_override'] ?? '' ) ) ),
+                'manual_override_only'
+            );
+        }
+        foreach ( $legacy_catalog as $legacy_offer ) {
+            if ( ! is_array( $legacy_offer ) ) {
+                continue;
+            }
+            $legacy_id = (string) ( $legacy_offer['id'] ?? '' );
+            if ( '' === $legacy_id ) {
+                continue;
+            }
+            $add_row( $legacy_id, $legacy_offer, 'legacy' );
+        }
+
+        return $rows;
+    }
+
     protected function sanitize_country_names( $countries ) {
         if ( is_string( $countries ) ) {
             $countries = preg_split( '/[|,]/', $countries );

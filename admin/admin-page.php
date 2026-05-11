@@ -1042,6 +1042,32 @@ class TMW_CR_Slot_Admin_Page {
                 <?php endforeach; ?>
                 </tbody>
             </table>
+            <?php $pps_expansion_rows = $this->offer_repository->get_pps_expansion_readiness_audit_rows( $settings, array( 'cta_url' => (string) ( $settings['cta_url'] ?? '' ), 'cta_text' => (string) ( $settings['cta_text'] ?? '' ) ) ); ?>
+            <h3><?php esc_html_e( 'PPS expansion readiness audit', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
+            <table class="widefat striped">
+                <thead><tr><th>Offer ID</th><th>Offer name</th><th>Source</th><th>PPS detected?</th><th>Blocked by business rule?</th><th>Block reason</th><th>Final CTA source</th><th>Final CTA host only</th><th>Has allowed-country override?</th><th>Allowed countries count</th><th>Example BE result</th><th>Example US result</th><th>Logo resolved?</th><th>Logo filename</th><th>Frontend-ready?</th></tr></thead>
+                <tbody>
+                <?php foreach ( $pps_expansion_rows as $row ) : ?>
+                    <tr>
+                        <td><?php echo esc_html( (string) $row['offer_id'] ); ?></td>
+                        <td><?php echo esc_html( (string) $row['offer_name'] ); ?></td>
+                        <td><?php echo esc_html( (string) $row['source'] ); ?></td>
+                        <td><?php echo esc_html( (string) $row['pps_detected'] ); ?></td>
+                        <td><?php echo esc_html( (string) $row['blocked_by_business_rule'] ); ?></td>
+                        <td><?php echo esc_html( (string) $row['block_reason'] ); ?></td>
+                        <td><?php echo esc_html( (string) $row['final_cta_source'] ); ?></td>
+                        <td><?php echo esc_html( (string) $row['final_cta_host'] ); ?></td>
+                        <td><?php echo esc_html( (string) $row['has_allowed_country_override'] ); ?></td>
+                        <td><?php echo esc_html( (string) $row['allowed_countries_count'] ); ?></td>
+                        <td><?php echo esc_html( (string) $row['example_be_result'] ); ?></td>
+                        <td><?php echo esc_html( (string) $row['example_us_result'] ); ?></td>
+                        <td><?php echo esc_html( (string) $row['logo_resolved'] ); ?></td>
+                        <td><?php echo esc_html( (string) $row['logo_filename'] ); ?></td>
+                        <td><?php echo esc_html( (string) $row['frontend_ready'] ); ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
             <?php if ( 0 === count( $eligible_winner_offers ) ) : ?>
                 <p class="description" style="color:#b32d2e;"><strong><?php esc_html_e( 'No eligible winner offers. Add valid final URL overrides or sync real tracking URLs.', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
             <?php endif; ?>

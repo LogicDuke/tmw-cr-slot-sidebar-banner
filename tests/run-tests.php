@@ -579,6 +579,8 @@ $tests['slot_setup_shows_winner_mode_diagnostics'] = function() {
     $html = ob_get_clean();
 
     tmw_assert_contains( 'Eligible winner offers:', $html, 'Slot setup should show eligible winner pool count.' );
+    tmw_assert_contains( 'Offers with API use_target_rules enabled:', $html, 'Slot setup should show use_target_rules audit count.' );
+    tmw_assert_contains( 'Offers with use_target_rules but no manual country override:', $html, 'Slot setup should show manual override recommendation count.' );
     tmw_assert_contains( 'Winner mode: forced three-logo match', $html, 'Slot setup should show forced winner mode.' );
     tmw_assert_contains( 'Final reel behavior: one selected offer repeated across 3 reels', $html, 'Slot setup should describe final reel behavior.' );
 };
@@ -2258,6 +2260,27 @@ $tests['manual_final_url_override_enables_frontend_pool_without_tracking'] = fun
     $repo->save_offer_overrides( array( '7001' => array( 'final_url_override' => 'https://trk.example.com/?tid=winner' ) ) );
     $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
     tmw_assert_same( 1, count( $offers ), 'Valid final_url_override should allow offer into frontend winner pool.' );
+};
+
+$tests['manual_allowed_country_override_importer_accepts_pipe_separated'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $_POST['allowed_country_override_csv'] = "offer_id,allowed_countries\n8780,\"Belgium|United States|Belgium\"\n";
+    $page->handle_import_allowed_country_overrides();
+    $saved = $repo->get_offer_overrides();
+    tmw_assert_same( array( 'Belgium', 'United States' ), array_values( $saved['8780']['allowed_countries'] ), 'Importer should parse pipe-separated countries and remove duplicates.' );
+};
+
+$tests['allowed_country_override_preserves_existing_final_url_override'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_offer_overrides( array( '8780' => array( 'final_url_override' => 'https://trk.example.com/x' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $_POST['allowed_country_override_csv'] = "offer_id,allowed_countries\n8780,\"Belgium|United States\"\n";
+    $page->handle_import_allowed_country_overrides();
+    $saved = $repo->get_offer_overrides();
+    tmw_assert_same( 'https://trk.example.com/x', (string) $saved['8780']['final_url_override'], 'Country import should preserve existing final URL override.' );
 };
 
 $tests['offer_without_tracking_or_manual_override_remains_excluded'] = function() {

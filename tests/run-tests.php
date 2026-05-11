@@ -2439,6 +2439,116 @@ $tests['manual_winner_audit_matches_override_only_frontend_eligibility'] = funct
     tmw_assert_true( ! in_array( '10366', $ids, true ), 'Frontend should exclude 10366 in BE.' );
 };
 
+$tests['pps_expansion_readiness_audit_reports_sources_and_hosts'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers(
+        array(
+            '8780' => array( 'id' => '8780', 'name' => 'Jerkmate - PPS', 'status' => 'active', 'tracking_url' => 'https://trk.example.com/jm?transaction_id=1' ),
+            '2492' => array( 'id' => '2492', 'name' => 'XLoveGay - PPS', 'status' => 'active', 'tracking_url' => 'https://trk.example.com/gay?transaction_id=1' ),
+        )
+    );
+    $repo->save_offer_overrides(
+        array(
+            '8780' => array( 'final_url_override' => 'https://trk.override.example.com/jm', 'allowed_countries' => array( 'Belgium', 'United States' ) ),
+            '10366' => array( 'final_url_override' => 'https://trk.override.example.com/nc', 'allowed_countries' => array( 'United States' ) ),
+        )
+    );
+    $rows  = $repo->get_pps_expansion_readiness_audit_rows( array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ) );
+    $by_id = array();
+    foreach ( $rows as $row ) {
+        $by_id[ (string) $row['offer_id'] ] = $row;
+    }
+    tmw_assert_same( 'synced', (string) $by_id['8780']['source'], 'Synced offer should be marked synced.' );
+    tmw_assert_same( 'final_url_override', (string) $by_id['8780']['final_cta_source'], 'Override should have highest CTA source priority.' );
+    tmw_assert_same( 'trk.override.example.com', (string) $by_id['8780']['final_cta_host'], 'Audit must expose host only.' );
+    tmw_assert_same( 'manual_override_only', (string) $by_id['10366']['source'], 'Override-only known offer should be included.' );
+    tmw_assert_same( 'yes', (string) $by_id['2492']['blocked_by_business_rule'], 'Blocked offer should be flagged in audit.' );
+};
+
+$tests['pps_expansion_audit_us_only_offer_is_frontend_ready_for_us'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_offer_overrides( array( '10366' => array( 'final_url_override' => 'https://trk.example.com/nc', 'allowed_countries' => array( 'United States' ) ) ) );
+    $rows = $repo->get_pps_expansion_readiness_audit_rows( array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ) );
+    $row  = array_values( array_filter( $rows, static function( $item ) { return '10366' === (string) $item['offer_id']; } ) )[0];
+    tmw_assert_same( 'excluded', (string) $row['example_be_result'], 'US-only offer should be excluded for BE example.' );
+    tmw_assert_same( 'eligible', (string) $row['example_us_result'], 'US-only offer should be eligible for US example.' );
+    tmw_assert_same( 'yes', (string) $row['frontend_ready'], 'US-only eligible offer should still be frontend-ready.' );
+};
+
+$tests['pps_expansion_audit_blocks_missing_country_override'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '8780' => array( 'id' => '8780', 'name' => 'Jerkmate - PPS', 'status' => 'active', 'tracking_url' => 'https://trk.example.com/jm?transaction_id=1' ) ) );
+    $rows = $repo->get_pps_expansion_readiness_audit_rows( array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ) );
+    $row  = array_values( array_filter( $rows, static function( $item ) { return '8780' === (string) $item['offer_id']; } ) )[0];
+    tmw_assert_same( 'no', (string) $row['frontend_ready'], 'Offer missing country override should not be frontend-ready.' );
+    tmw_assert_same( 'missing_allowed_country_override', (string) $row['block_reason'], 'Missing country override reason should be explicit.' );
+};
+
+$tests['pps_expansion_audit_blocks_invalid_cta'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '8780' => array( 'id' => '8780', 'name' => 'Jerkmate - PPS', 'status' => 'active', 'tracking_url' => 'https://preview.example.com/path' ) ) );
+    $repo->save_offer_overrides( array( '8780' => array( 'allowed_countries' => array( 'Belgium' ) ) ) );
+    $rows = $repo->get_pps_expansion_readiness_audit_rows( array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ) );
+    $row  = array_values( array_filter( $rows, static function( $item ) { return '8780' === (string) $item['offer_id']; } ) )[0];
+    tmw_assert_same( 'missing_valid_cta', (string) $row['block_reason'], 'Invalid CTA should map to missing_valid_cta.' );
+};
+
+$tests['pps_expansion_audit_blocks_business_rule_offer'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '2492' => array( 'id' => '2492', 'name' => 'XLoveGay - PPS', 'status' => 'active', 'tracking_url' => 'https://trk.example.com/x?transaction_id=1' ) ) );
+    $repo->save_offer_overrides( array( '2492' => array( 'allowed_countries' => array( 'United States' ) ) ) );
+    $rows = $repo->get_pps_expansion_readiness_audit_rows( array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ) );
+    $row  = array_values( array_filter( $rows, static function( $item ) { return '2492' === (string) $item['offer_id']; } ) )[0];
+    tmw_assert_same( 'business_rule_blocked', (string) $row['block_reason'], 'Blocked term should map to business_rule_blocked.' );
+};
+
+$tests['pps_expansion_audit_unknown_override_only_identity'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_offer_overrides( array( '999999' => array( 'final_url_override' => 'https://trk.example.com/u', 'allowed_countries' => array( 'United States' ) ) ) );
+    $rows = $repo->get_pps_expansion_readiness_audit_rows( array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ) );
+    $row  = array_values( array_filter( $rows, static function( $item ) { return '999999' === (string) $item['offer_id']; } ) )[0];
+    tmw_assert_same( 'unknown_override_only_identity', (string) $row['block_reason'], 'Unknown override-only identity should be explicitly blocked.' );
+};
+
+$tests['pps_expansion_audit_blocks_missing_logo'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( 'u1' => array( 'id' => 'u1', 'name' => 'Unknown Brand - PPS', 'status' => 'active', 'tracking_url' => 'https://trk.example.com/u1?transaction_id=1' ) ) );
+    $repo->save_offer_overrides( array( 'u1' => array( 'allowed_countries' => array( 'United States' ) ) ) );
+    $rows = $repo->get_pps_expansion_readiness_audit_rows( array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ) );
+    $row  = array_values( array_filter( $rows, static function( $item ) { return 'u1' === (string) $item['offer_id']; } ) )[0];
+    tmw_assert_same( 'missing_logo', (string) $row['block_reason'], 'Unknown logo should map to missing_logo.' );
+};
+
+$tests['pps_expansion_audit_summary_counts_are_correct'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers(
+        array(
+            '8780' => array( 'id' => '8780', 'name' => 'Jerkmate - PPS', 'status' => 'active', 'tracking_url' => 'https://trk.example.com/a?transaction_id=1' ),
+            '2492' => array( 'id' => '2492', 'name' => 'XLoveGay - PPS', 'status' => 'active', 'tracking_url' => 'https://trk.example.com/b?transaction_id=1' ),
+        )
+    );
+    $repo->save_offer_overrides(
+        array(
+            '8780' => array( 'allowed_countries' => array( 'Belgium' ) ),
+            '10366' => array( 'final_url_override' => 'https://trk.example.com/c', 'allowed_countries' => array( 'United States' ) ),
+        )
+    );
+    $rows    = $repo->get_pps_expansion_readiness_audit_rows( array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ) );
+    $summary = $repo->get_pps_expansion_readiness_audit_summary( $rows );
+    tmw_assert_true( (int) $summary['total_pps_candidates'] >= 3, 'Summary should count PPS candidates.' );
+    tmw_assert_true( (int) $summary['frontend_ready_pps_offers'] >= 1, 'Summary should count frontend-ready candidates.' );
+    tmw_assert_true( (int) $summary['override_only_candidates'] >= 1, 'Summary should include override-only candidates.' );
+    tmw_assert_true( (int) $summary['synced_candidates'] >= 2, 'Summary should include synced candidates.' );
+};
+
 
 $failures = array();
 $passes   = 0;

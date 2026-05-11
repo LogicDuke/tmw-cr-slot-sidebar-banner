@@ -1006,6 +1006,42 @@ class TMW_CR_Slot_Admin_Page {
                 <p class="description"><?php esc_html_e( 'Saved manual final URL overrides:', 'tmw-cr-slot-sidebar-banner' ); ?></p>
                 <p class="description"><code><?php echo esc_html( implode( '; ', $manual_override_rows ) ); ?></code></p>
             <?php endif; ?>
+            <?php
+            $manual_country_rows = array();
+            foreach ( $this->offer_repository->get_offer_overrides() as $country_offer_id => $country_override ) {
+                $allowed = ! empty( $country_override['allowed_countries'] ) ? $this->offer_repository->get_sanitized_country_names( $country_override['allowed_countries'] ) : array();
+                if ( empty( $allowed ) ) {
+                    continue;
+                }
+                $offer_name = (string) ( $all_synced_offers_for_audit[ $country_offer_id ]['name'] ?? '' );
+                $manual_country_rows[] = sprintf( '%1$s / %2$s countries', sanitize_text_field( (string) $country_offer_id . ( '' !== $offer_name ? ' / ' . $offer_name : '' ) ), count( $allowed ) );
+            }
+            ?>
+            <?php if ( ! empty( $manual_country_rows ) ) : ?>
+                <p class="description"><?php esc_html_e( 'Saved manual allowed country overrides:', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+                <p class="description"><code><?php echo esc_html( implode( '; ', $manual_country_rows ) ); ?></code></p>
+            <?php endif; ?>
+            <?php $eligibility_rows = $this->offer_repository->get_manual_winner_eligibility_audit_rows( $settings, array( 'cta_url' => (string) ( $settings['cta_url'] ?? '' ), 'cta_text' => (string) ( $settings['cta_text'] ?? '' ) ), $country, $legacy_catalog ); ?>
+            <h3><?php esc_html_e( 'Manual winner eligibility audit', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
+            <table class="widefat striped">
+                <thead><tr><th>Offer ID</th><th>Offer name</th><th>Has final URL override</th><th>Final URL host</th><th>Has allowed country override</th><th>Allowed countries count</th><th>Detected visitor country raw</th><th>Detected visitor country normalized</th><th>Eligibility result</th><th>Exclusion reason</th></tr></thead>
+                <tbody>
+                <?php foreach ( $eligibility_rows as $row ) : ?>
+                    <tr>
+                        <td><?php echo esc_html( (string) $row['offer_id'] ); ?></td>
+                        <td><?php echo esc_html( (string) $row['offer_name'] ); ?></td>
+                        <td><?php echo esc_html( ! empty( $row['has_final_url_override'] ) ? 'yes' : 'no' ); ?></td>
+                        <td><?php echo esc_html( (string) $row['final_url_host'] ); ?></td>
+                        <td><?php echo esc_html( ! empty( $row['has_allowed_country_override'] ) ? 'yes' : 'no' ); ?></td>
+                        <td><?php echo esc_html( (string) $row['allowed_countries_count'] ); ?></td>
+                        <td><?php echo esc_html( (string) $row['visitor_country_raw'] ); ?></td>
+                        <td><?php echo esc_html( (string) $row['visitor_country_normalized'] ); ?></td>
+                        <td><?php echo esc_html( (string) $row['eligibility_result'] ); ?></td>
+                        <td><?php echo esc_html( (string) $row['exclusion_reason'] ); ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
             <?php if ( 0 === count( $eligible_winner_offers ) ) : ?>
                 <p class="description" style="color:#b32d2e;"><strong><?php esc_html_e( 'No eligible winner offers. Add valid final URL overrides or sync real tracking URLs.', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
             <?php endif; ?>

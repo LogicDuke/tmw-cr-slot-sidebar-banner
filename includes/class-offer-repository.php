@@ -10,6 +10,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 class TMW_CR_Slot_Offer_Repository {
     const ALLOWED_OFFER_TYPES = array( 'pps', 'revshare', 'soi', 'doi', 'cpa', 'cpl', 'cpc', 'smartlink', 'fallback' );
     const UNAVAILABLE_ACCOUNT_PPS_OFFER_IDS = array( '9647', '9781' );
+    const ELIGIBILITY_REASON_MISSING_FINAL_URL = 'missing_final_url';
+    const ELIGIBILITY_REASON_INVALID_FINAL_URL = 'invalid_final_url';
+    const ELIGIBILITY_REASON_BLOCKED_OFFER = 'blocked_offer';
+    const ELIGIBILITY_REASON_UNAVAILABLE_OFFER = 'unavailable_offer';
+    const ELIGIBILITY_REASON_MISSING_LOGO = 'missing_logo';
+    const ELIGIBILITY_REASON_COUNTRY_NOT_ALLOWED = 'country_not_allowed';
+    const ELIGIBILITY_REASON_OFFER_TYPE_NOT_ALLOWED = 'offer_type_not_allowed';
+    const ELIGIBILITY_REASON_NO_MANUAL_COUNTRY_OVERRIDE = 'no_manual_country_override';
+    const ELIGIBILITY_REASON_VALID = 'valid';
     /** @var string */
     protected $offers_option_key;
 
@@ -1002,13 +1011,9 @@ class TMW_CR_Slot_Offer_Repository {
                     continue;
                 }
                 ++$type_allowed_count;
-                $effective = $this->get_effective_offer_record(
-                    $selected_id,
-                    $settings,
-                    $banner_data,
-                    $country,
-                    $legacy_catalog
-                );
+                $evaluation = $this->evaluate_offer_eligibility( $selected_id, $settings, $banner_data, $country, $legacy_catalog );
+                $effective = $evaluation['effective_offer'];
+                $this->log_eligibility_event( $selected_id, $evaluation['reason'], $country );
 
                 if ( ! empty( $effective ) ) {
                     if ( ! $this->is_valid_frontend_winner_cta_url( (string) ( $effective['cta_url'] ?? '' ) ) ) {
@@ -1058,14 +1063,9 @@ class TMW_CR_Slot_Offer_Repository {
                     continue;
                 }
                 ++$type_allowed_count;
-
-                $effective = $this->get_effective_offer_record(
-                    $offer_id,
-                    $settings,
-                    $banner_data,
-                    $country,
-                    $legacy_catalog
-                );
+                $evaluation = $this->evaluate_offer_eligibility( $offer_id, $settings, $banner_data, $country, $legacy_catalog );
+                $effective = $evaluation['effective_offer'];
+                $this->log_eligibility_event( $offer_id, $evaluation['reason'], $country );
 
                 if ( ! empty( $effective ) ) {
                     if ( ! $this->is_valid_frontend_winner_cta_url( (string) ( $effective['cta_url'] ?? '' ) ) ) {
@@ -1529,7 +1529,7 @@ class TMW_CR_Slot_Offer_Repository {
         }
 
         $allowed = isset( $override['allowed_countries'] ) ? $this->sanitize_country_names( $override['allowed_countries'] ) : array();
-        if ( ! empty( $allowed ) && ( '' === $country || ! in_array( $this->normalize_country_name( $country ), array_map( array( $this, 'normalize_country_name' ), $allowed ), true ) ) ) {
+        if ( ! empty( $allowed ) && ! $this->is_country_allowed_by_name_or_alias( $country, $allowed ) ) {
             error_log( sprintf( '[TMW-BANNER-COUNTRY] country_excluded offer_id=%1$s visitor_country="%2$s" reason="not_allowed"', $offer_id, $country ) );
             return false;
         }
@@ -1688,6 +1688,111 @@ class TMW_CR_Slot_Offer_Repository {
         return strtolower( trim( preg_replace( '/\s+/', ' ', sanitize_text_field( (string) $country ) ) ) );
     }
 
+    protected function get_country_alias_map() {
+        return array(
+            'be' => 'belgium',
+            'us' => 'united states',
+            'gb' => 'united kingdom',
+            'uk' => 'united kingdom',
+            'ca' => 'canada',
+            'de' => 'germany',
+            'fr' => 'france',
+            'nl' => 'netherlands',
+            'au' => 'australia',
+        );
+    }
+
+    protected function normalize_country_for_match( $country ) {
+        $normalized = $this->normalize_country_name( $country );
+        $alias_map = $this->get_country_alias_map();
+        return isset( $alias_map[ $normalized ] ) ? $alias_map[ $normalized ] : $normalized;
+    }
+
+    protected function is_country_allowed_by_name_or_alias( $country, $allowed ) {
+        $needle = $this->normalize_country_for_match( $country );
+        if ( '' === $needle ) {
+            return false;
+        }
+        foreach ( $allowed as $allowed_country ) {
+            if ( $needle === $this->normalize_country_for_match( $allowed_country ) ) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    protected function evaluate_offer_eligibility( $offer_id, $settings, $banner_data, $country, $legacy_catalog ) {
+        $effective = $this->get_effective_offer_record( $offer_id, $settings, $banner_data, $country, $legacy_catalog );
+        if ( empty( $effective ) ) {
+            $synced_offer = $this->get_synced_offer( $offer_id );
+            $override = $this->get_offer_override( $offer_id );
+            if ( ! $this->is_offer_type_allowed( $synced_offer, $settings ) ) {
+                return array( 'reason' => self::ELIGIBILITY_REASON_OFFER_TYPE_NOT_ALLOWED, 'effective_offer' => array() );
+            }
+            if ( $this->is_offer_blocked_for_banner( $synced_offer, $settings ) ) {
+                return array( 'reason' => self::ELIGIBILITY_REASON_BLOCKED_OFFER, 'effective_offer' => array() );
+            }
+            if ( $this->is_unavailable_account_pps_offer( $synced_offer ) ) {
+                return array( 'reason' => self::ELIGIBILITY_REASON_UNAVAILABLE_OFFER, 'effective_offer' => array() );
+            }
+            if ( ! $this->is_offer_allowed_for_country( $offer_id, $country, $override, $synced_offer, $legacy_catalog ) ) {
+                return array( 'reason' => self::ELIGIBILITY_REASON_COUNTRY_NOT_ALLOWED, 'effective_offer' => array() );
+            }
+            if ( empty( $override['final_url_override'] ) ) {
+                return array( 'reason' => self::ELIGIBILITY_REASON_MISSING_FINAL_URL, 'effective_offer' => array() );
+            }
+            if ( ! $this->is_valid_manual_final_url_override( (string) $override['final_url_override'] ) ) {
+                return array( 'reason' => self::ELIGIBILITY_REASON_INVALID_FINAL_URL, 'effective_offer' => array() );
+            }
+            if ( '' === (string) $this->get_offer_logo_url( $synced_offer ) ) {
+                return array( 'reason' => self::ELIGIBILITY_REASON_MISSING_LOGO, 'effective_offer' => array() );
+            }
+            if ( empty( $this->sanitize_country_names( isset( $override['allowed_countries'] ) ? $override['allowed_countries'] : array() ) ) ) {
+                return array( 'reason' => self::ELIGIBILITY_REASON_NO_MANUAL_COUNTRY_OVERRIDE, 'effective_offer' => array() );
+            }
+            return array( 'reason' => self::ELIGIBILITY_REASON_INVALID_FINAL_URL, 'effective_offer' => array() );
+        }
+        return array( 'reason' => self::ELIGIBILITY_REASON_VALID, 'effective_offer' => $effective );
+    }
+
+    protected function get_synced_offer( $offer_id ) {
+        $offers = $this->get_synced_offers();
+        return isset( $offers[ (string) $offer_id ] ) && is_array( $offers[ (string) $offer_id ] ) ? $offers[ (string) $offer_id ] : array();
+    }
+
+    protected function log_eligibility_event( $offer_id, $reason, $country ) {
+        if ( self::ELIGIBILITY_REASON_VALID === $reason ) {
+            error_log( sprintf( '[TMW-BANNER-ELIGIBILITY] offer_id=%1$s result=eligible country="%2$s"', (string) $offer_id, (string) $country ) );
+            return;
+        }
+        error_log( sprintf( '[TMW-BANNER-ELIGIBILITY] offer_id=%1$s result=excluded reason="%2$s" country="%3$s"', (string) $offer_id, (string) $reason, (string) $country ) );
+    }
+
+    public function get_manual_winner_eligibility_audit_rows( $settings, $banner_data, $country, $legacy_catalog ) {
+        $rows = array();
+        foreach ( $this->get_offer_overrides() as $offer_id => $override ) {
+            if ( empty( $override['final_url_override'] ) && empty( $override['allowed_countries'] ) ) {
+                continue;
+            }
+            $synced_offer = $this->get_synced_offer( (string) $offer_id );
+            $allowed = $this->sanitize_country_names( isset( $override['allowed_countries'] ) ? $override['allowed_countries'] : array() );
+            $evaluation = $this->evaluate_offer_eligibility( (string) $offer_id, $settings, $banner_data, $country, $legacy_catalog );
+            $rows[] = array(
+                'offer_id' => (string) $offer_id,
+                'offer_name' => (string) ( $synced_offer['name'] ?? '' ),
+                'has_final_url_override' => ! empty( $override['final_url_override'] ),
+                'final_url_host' => (string) parse_url( (string) ( $override['final_url_override'] ?? '' ), PHP_URL_HOST ),
+                'has_allowed_country_override' => ! empty( $allowed ),
+                'allowed_countries_count' => count( $allowed ),
+                'visitor_country_raw' => (string) $country,
+                'visitor_country_normalized' => $this->normalize_country_for_match( $country ),
+                'eligibility_result' => self::ELIGIBILITY_REASON_VALID === $evaluation['reason'] ? 'eligible' : 'excluded',
+                'exclusion_reason' => (string) $evaluation['reason'],
+            );
+        }
+        return $rows;
+    }
+
     protected function sanitize_country_names( $countries ) {
         if ( is_string( $countries ) ) {
             $countries = preg_split( '/[|,]/', $countries );
@@ -1707,6 +1812,10 @@ class TMW_CR_Slot_Offer_Repository {
             }
         }
         return array_values( $unique );
+    }
+
+    public function get_sanitized_country_names( $countries ) {
+        return $this->sanitize_country_names( $countries );
     }
 
     /**

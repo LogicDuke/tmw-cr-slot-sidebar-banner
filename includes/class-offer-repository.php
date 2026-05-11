@@ -1602,6 +1602,7 @@ class TMW_CR_Slot_Offer_Repository {
             'image' => $this->build_placeholder_image( $name ),
             'cta_url' => esc_url_raw( $final_url_override ),
             'cta_text' => (string) ( $banner_data['cta_text'] ?? '' ),
+            'source' => 'manual_override_only',
             'brand_key' => $this->get_offer_brand_key( $name ),
             'logo_filename' => $this->get_offer_logo_filename( $offer_stub ),
             'logo_url' => $logo_url,

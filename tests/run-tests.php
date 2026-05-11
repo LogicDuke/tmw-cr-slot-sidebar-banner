@@ -2347,6 +2347,15 @@ $tests['override_only_offers_respect_manual_country_and_alias_rules'] = function
     $ids_be = array_map( static function( $row ) { return (string) $row['id']; }, $offers_be );
     tmw_assert_true( in_array( '8780', $ids_be, true ), 'Override-only 8780 should be eligible in Belgium/BE.' );
     tmw_assert_true( ! in_array( '10366', $ids_be, true ), 'Override-only 10366 should remain excluded in Belgium/BE.' );
+    $offer_8780 = array();
+    foreach ( $offers_be as $offer_row ) {
+        if ( '8780' === (string) ( $offer_row['id'] ?? '' ) ) {
+            $offer_8780 = $offer_row;
+            break;
+        }
+    }
+    tmw_assert_same( 'https://trk.example.com/jerkmate-winner', (string) ( $offer_8780['cta_url'] ?? '' ), 'Override-only 8780 should use manual final_url_override as CTA.' );
+    tmw_assert_same( 'manual_override_only', (string) ( $offer_8780['source'] ?? '' ), 'Override-only 8780 should be marked with manual override-only source.' );
 };
 
 $tests['override_only_naughtycharm_us_only_is_eligible_in_us'] = function() {

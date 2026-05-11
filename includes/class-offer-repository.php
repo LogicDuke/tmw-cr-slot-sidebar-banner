@@ -1528,8 +1528,9 @@ class TMW_CR_Slot_Offer_Repository {
             return false;
         }
 
-        $allowed = isset( $override['allowed_countries'] ) ? $this->sanitize_country_codes( $override['allowed_countries'] ) : array();
-        if ( ! empty( $allowed ) && ( '' === $country || ! in_array( $country, $allowed, true ) ) ) {
+        $allowed = isset( $override['allowed_countries'] ) ? $this->sanitize_country_names( $override['allowed_countries'] ) : array();
+        if ( ! empty( $allowed ) && ( '' === $country || ! in_array( $this->normalize_country_name( $country ), array_map( array( $this, 'normalize_country_name' ), $allowed ), true ) ) ) {
+            error_log( sprintf( '[TMW-BANNER-COUNTRY] country_excluded offer_id=%1$s visitor_country="%2$s" reason="not_allowed"', $offer_id, $country ) );
             return false;
         }
 
@@ -1664,9 +1665,13 @@ class TMW_CR_Slot_Offer_Repository {
         $counts = array(
             'manual_final_url_overrides' => 0,
             'invalid_manual_url_overrides_rejected' => 0,
+            'manual_allowed_country_overrides' => 0,
         );
 
         foreach ( $overrides as $override ) {
+            if ( ! empty( $this->sanitize_country_names( isset( $override['allowed_countries'] ) ? $override['allowed_countries'] : array() ) ) ) {
+                ++$counts['manual_allowed_country_overrides'];
+            }
             if ( empty( $override['final_url_override'] ) ) {
                 continue;
             }
@@ -1677,6 +1682,31 @@ class TMW_CR_Slot_Offer_Repository {
         }
 
         return $counts;
+    }
+
+    protected function normalize_country_name( $country ) {
+        return strtolower( trim( preg_replace( '/\s+/', ' ', sanitize_text_field( (string) $country ) ) ) );
+    }
+
+    protected function sanitize_country_names( $countries ) {
+        if ( is_string( $countries ) ) {
+            $countries = preg_split( '/[|,]/', $countries );
+        }
+        $unique = array();
+        foreach ( (array) $countries as $country ) {
+            $display = trim( sanitize_text_field( (string) $country ) );
+            if ( '' === $display ) {
+                continue;
+            }
+            if ( preg_match( '/^[a-z]{2}$/i', $display ) ) {
+                $display = strtoupper( $display );
+            }
+            $key = $this->normalize_country_name( $display );
+            if ( '' !== $key ) {
+                $unique[ $key ] = $display;
+            }
+        }
+        return array_values( $unique );
     }
 
     /**
@@ -2295,7 +2325,7 @@ class TMW_CR_Slot_Offer_Repository {
             'enabled'           => ! isset( $override['enabled'] ) || ! empty( $override['enabled'] ) ? 1 : 0,
             'final_url_override' => ! empty( $override['final_url_override'] ) ? esc_url_raw( (string) $override['final_url_override'] ) : '',
             'image_url_override' => ! empty( $override['image_url_override'] ) ? esc_url_raw( (string) $override['image_url_override'] ) : '',
-            'allowed_countries' => $this->sanitize_country_codes( isset( $override['allowed_countries'] ) ? $override['allowed_countries'] : array() ),
+            'allowed_countries' => $this->sanitize_country_names( isset( $override['allowed_countries'] ) ? $override['allowed_countries'] : array() ),
             'blocked_countries' => $this->sanitize_country_codes( isset( $override['blocked_countries'] ) ? $override['blocked_countries'] : array() ),
             'custom_cta_text'   => ! empty( $override['custom_cta_text'] ) ? sanitize_text_field( (string) $override['custom_cta_text'] ) : '',
             'label_override'    => ! empty( $override['label_override'] ) ? sanitize_text_field( (string) $override['label_override'] ) : '',

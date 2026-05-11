@@ -33,6 +33,7 @@ class TMW_CR_Slot_Admin_Page {
         add_action( 'admin_post_tmw_cr_slot_banner_sync_offers', array( $this, 'handle_sync_offers' ) );
         add_action( 'admin_post_tmw_cr_slot_banner_sync_stats', array( $this, 'handle_sync_stats' ) );
         add_action( 'admin_post_tmw_cr_slot_banner_import_final_url_overrides', array( $this, 'handle_import_final_url_overrides' ) );
+        add_action( 'admin_post_tmw_cr_slot_banner_import_allowed_country_overrides', array( $this, 'handle_import_allowed_country_overrides' ) );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_dashboard_assets' ) );
     }
 
@@ -429,6 +430,49 @@ class TMW_CR_Slot_Admin_Page {
         error_log( sprintf( '[TMW-BANNER-LINK] manual_final_url_import_summary imported=%1$d rejected=%2$d', $imported, $rejected ) );
         $total_saved_overrides = (int) $this->offer_repository->get_manual_override_diagnostics()['manual_final_url_overrides'];
         $this->redirect_with_notice( 'success', sprintf( 'Final URL override import complete. Imported: %1$d, Rejected: %2$d, Total saved overrides: %3$d.', $imported, $rejected, $total_saved_overrides ) );
+    }
+
+    /**
+     * @return void
+     */
+    public function handle_import_allowed_country_overrides() {
+        $this->assert_admin_action( 'tmw_cr_slot_banner_import_allowed_country_overrides' );
+        $raw_csv   = isset( $_POST['allowed_country_override_csv'] ) ? (string) wp_unslash( $_POST['allowed_country_override_csv'] ) : '';
+        $lines     = preg_split( '/\r?\n/', trim( $raw_csv ) );
+        $overrides = $this->offer_repository->get_offer_overrides();
+        $imported  = 0;
+        $rejected  = 0;
+
+        foreach ( (array) $lines as $idx => $line ) {
+            $line = trim( (string) $line );
+            if ( '' === $line ) {
+                continue;
+            }
+            if ( 0 === $idx && false !== strpos( strtolower( $line ), 'offer_id,allowed_countries' ) ) {
+                continue;
+            }
+            $parts     = str_getcsv( $line );
+            $offer_id  = preg_replace( '/\D+/', '', (string) ( $parts[0] ?? '' ) );
+            $countries = array_filter( array_map( 'trim', explode( '|', (string) ( $parts[1] ?? '' ) ) ) );
+            $countries = array_values( array_unique( $countries ) );
+
+            if ( '' === $offer_id || empty( $countries ) ) {
+                ++$rejected;
+                continue;
+            }
+
+            if ( ! isset( $overrides[ $offer_id ] ) || ! is_array( $overrides[ $offer_id ] ) ) {
+                $overrides[ $offer_id ] = array();
+            }
+            $overrides[ $offer_id ]['allowed_countries'] = $countries;
+            ++$imported;
+            error_log( sprintf( '[TMW-BANNER-COUNTRY] allowed_country_imported offer_id=%1$s countries=%2$d', $offer_id, count( $countries ) ) );
+        }
+
+        $this->offer_repository->save_offer_overrides( $overrides );
+        $total_saved = (int) $this->offer_repository->get_manual_override_diagnostics()['manual_allowed_country_overrides'];
+        error_log( sprintf( '[TMW-BANNER-COUNTRY] country_import_summary imported=%1$d rejected=%2$d total_saved=%3$d', $imported, $rejected, $total_saved ) );
+        $this->redirect_with_notice( 'success', sprintf( 'Allowed country override import complete. Imported: %1$d, Rejected: %2$d, Total saved overrides: %3$d.', $imported, $rejected, $total_saved ) );
     }
 
     /**
@@ -928,6 +972,7 @@ class TMW_CR_Slot_Admin_Page {
             <p class="description"><?php echo esc_html( sprintf( 'Eligible winner offers: %d', count( $eligible_winner_offers ) ) ); ?></p>
             <?php $manual_diag = $this->offer_repository->get_manual_override_diagnostics(); ?>
             <p class="description"><?php echo esc_html( sprintf( 'Manual final URL overrides: %d', (int) $manual_diag['manual_final_url_overrides'] ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Manual allowed country overrides: %d', (int) $manual_diag['manual_allowed_country_overrides'] ) ); ?></p>
             <p class="description"><?php echo esc_html( sprintf( 'Invalid manual URL overrides rejected: %d', (int) $manual_diag['invalid_manual_url_overrides_rejected'] ) ); ?></p>
             <?php
             $manual_override_rows = array();
@@ -1110,6 +1155,13 @@ class TMW_CR_Slot_Admin_Page {
         <?php
         if ( current_user_can( 'manage_options' ) ) :
         ?>
+        <h3><?php esc_html_e( 'Import Final URL Overrides', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
+        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+            <?php wp_nonce_field( 'tmw_cr_slot_banner_import_allowed_country_overrides' ); ?>
+            <input type="hidden" name="action" value="tmw_cr_slot_banner_import_allowed_country_overrides" />
+            <textarea name="allowed_country_override_csv" class="large-text code" rows="6" placeholder="offer_id,allowed_countries&#10;8780,&quot;Belgium|United States|United Kingdom|Germany|France&quot;"></textarea>
+            <?php submit_button( __( 'Import Allowed Country Overrides', 'tmw-cr-slot-sidebar-banner' ), 'secondary', 'submit', false ); ?>
+        </form>
         <h3><?php esc_html_e( 'Import Final URL Overrides', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
         <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
             <?php wp_nonce_field( 'tmw_cr_slot_banner_import_final_url_overrides' ); ?>

@@ -2322,6 +2322,123 @@ $tests['country_alias_matching_name_code_cases'] = function() {
     tmw_assert_true( in_array( '10366', $ids_us, true ), 'Offer 10366 should be eligible in US.' );
 };
 
+$tests['override_only_offers_respect_manual_country_and_alias_rules'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array() );
+    $repo->save_offer_overrides(
+        array(
+            '8780' => array(
+                'final_url_override' => 'https://trk.example.com/jerkmate-winner',
+                'allowed_countries' => array( 'Belgium' ),
+            ),
+            '10366' => array(
+                'final_url_override' => 'https://trk.example.com/naughtycharm-winner',
+                'allowed_countries' => array( 'United States' ),
+            ),
+        )
+    );
+
+    $legacy_catalog = array(
+        '8780' => array( 'id' => '8780', 'name' => 'Jerkmate - PPS' ),
+        '10366' => array( 'id' => '10366', 'name' => 'NaughtyCharm - PPS' ),
+    );
+    $offers_be = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'BE', $legacy_catalog );
+    $ids_be = array_map( static function( $row ) { return (string) $row['id']; }, $offers_be );
+    tmw_assert_true( in_array( '8780', $ids_be, true ), 'Override-only 8780 should be eligible in Belgium/BE.' );
+    tmw_assert_true( ! in_array( '10366', $ids_be, true ), 'Override-only 10366 should remain excluded in Belgium/BE.' );
+    $offer_8780 = array();
+    foreach ( $offers_be as $offer_row ) {
+        if ( '8780' === (string) ( $offer_row['id'] ?? '' ) ) {
+            $offer_8780 = $offer_row;
+            break;
+        }
+    }
+    tmw_assert_same( 'https://trk.example.com/jerkmate-winner', (string) ( $offer_8780['cta_url'] ?? '' ), 'Override-only 8780 should use manual final_url_override as CTA.' );
+    tmw_assert_same( 'manual_override_only', (string) ( $offer_8780['source'] ?? '' ), 'Override-only 8780 should be marked with manual override-only source.' );
+};
+
+$tests['override_only_naughtycharm_us_only_is_eligible_in_us'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_offer_overrides( array( '10366' => array( 'final_url_override' => 'https://trk.example.com/naughtycharm', 'allowed_countries' => array( 'United States' ) ) ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    $ids = array_map( static function( $row ) { return (string) $row['id']; }, $offers );
+    tmw_assert_true( in_array( '10366', $ids, true ), 'Override-only 10366 should be eligible in US with identity map fallback.' );
+};
+
+$tests['override_only_unknown_offer_id_is_not_surfaced'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_offer_overrides( array( '999999' => array( 'final_url_override' => 'https://trk.example.com/u', 'allowed_countries' => array( 'United States' ) ) ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    tmw_assert_same( 0, count( $offers ), 'Unknown override-only IDs should remain excluded without safe identity/logo resolution.' );
+};
+
+$tests['override_only_offer_requires_manual_allowed_country'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_offer_overrides( array( '8780' => array( 'final_url_override' => 'https://trk.example.com/jm' ) ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'BE', array() );
+    tmw_assert_same( 0, count( $offers ), 'Override-only offer must have manual allowed_countries.' );
+};
+
+$tests['override_only_offer_requires_valid_manual_final_url'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_offer_overrides( array( '8780' => array( 'final_url_override' => 'https://preview.example.com/path', 'allowed_countries' => array( 'Belgium' ) ) ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'BE', array() );
+    tmw_assert_same( 0, count( $offers ), 'Override-only offer must use a valid non-preview CTA URL.' );
+};
+
+$tests['override_only_disabled_offer_is_excluded'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_offer_overrides( array( '8780' => array( 'enabled' => 0, 'final_url_override' => 'https://trk.example.com/jm', 'allowed_countries' => array( 'Belgium' ) ) ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'BE', array() );
+    tmw_assert_same( 0, count( $offers ), 'Disabled override-only offer should be excluded.' );
+};
+
+$tests['override_only_blocked_country_overrides_allowed_country'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_offer_overrides( array( '8780' => array( 'final_url_override' => 'https://trk.example.com/jm', 'allowed_countries' => array( 'Belgium' ), 'blocked_countries' => array( 'BE' ) ) ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    tmw_assert_same( 0, count( $offers ), 'Blocked countries must override allowed countries for override-only offers.' );
+};
+
+$tests['override_only_unavailable_account_offer_is_excluded'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_offer_overrides( array( '9781' => array( 'label_override' => 'Group Fallback - Dating.com PPS', 'final_url_override' => 'https://trk.example.com/dating', 'allowed_countries' => array( 'United States' ) ) ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    tmw_assert_same( 0, count( $offers ), 'Override-only unavailable-account PPS offers must be excluded.' );
+};
+
+$tests['manual_winner_audit_matches_override_only_frontend_eligibility'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_offer_overrides(
+        array(
+            '8780' => array( 'final_url_override' => 'https://trk.example.com/jm', 'allowed_countries' => array( 'Belgium' ) ),
+            '10366' => array( 'final_url_override' => 'https://trk.example.com/nc', 'allowed_countries' => array( 'United States' ) ),
+        )
+    );
+
+    $rows = $repo->get_manual_winner_eligibility_audit_rows( array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'BE', array() );
+    $by_id = array();
+    foreach ( $rows as $row ) {
+        $by_id[ (string) $row['offer_id'] ] = $row;
+    }
+    tmw_assert_same( 'eligible', (string) $by_id['8780']['eligibility_result'], 'Audit should mark override-only 8780 eligible in BE.' );
+    tmw_assert_same( 'country_not_allowed', (string) $by_id['10366']['exclusion_reason'], 'Audit should mark 10366 country_not_allowed in BE.' );
+
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'BE', array() );
+    $ids = array_map( static function( $row ) { return (string) $row['id']; }, $offers );
+    tmw_assert_true( in_array( '8780', $ids, true ), 'Frontend should include 8780 in BE.' );
+    tmw_assert_true( ! in_array( '10366', $ids, true ), 'Frontend should exclude 10366 in BE.' );
+};
+
 
 $failures = array();
 $passes   = 0;

@@ -1076,6 +1076,21 @@ class TMW_CR_Slot_Offer_Repository {
             }
         }
 
+        if ( count( $offers ) < 3 ) {
+            foreach ( $overrides_map as $offer_id => $override ) {
+                $offer_id = (string) $offer_id;
+                if ( '' === $offer_id || isset( $synced_offers[ $offer_id ] ) ) {
+                    continue;
+                }
+
+                $effective = $this->get_override_only_effective_offer_record( $offer_id, $override, $settings, $banner_data, $country, $legacy_catalog );
+                if ( empty( $effective ) ) {
+                    continue;
+                }
+                $offers[] = $effective;
+            }
+        }
+
         $offers = array_values( array_filter( $offers ) );
 
         $offers = $this->rank_offers_for_slot( $offers, $settings, $country, $priorities );
@@ -1512,6 +1527,89 @@ class TMW_CR_Slot_Offer_Repository {
     }
 
     /**
+     * @param string              $offer_id Offer ID.
+     * @param array<string,mixed> $override Override row.
+     * @param array<string,mixed> $settings Settings payload.
+     * @param array<string,string> $banner_data Banner data.
+     * @param string              $country Visitor country.
+     * @param array<string,array<string,mixed>> $legacy_catalog Legacy fallback catalog.
+     *
+     * @return array<string,string>
+     */
+    protected function get_override_only_effective_offer_record( $offer_id, $override, $settings, $banner_data, $country, $legacy_catalog ) {
+        if ( '' === (string) $offer_id ) {
+            return array();
+        }
+        if ( isset( $override['enabled'] ) && ( false === $override['enabled'] || '0' === (string) $override['enabled'] || 0 === (int) $override['enabled'] ) ) {
+            return array();
+        }
+        if ( empty( $override['final_url_override'] ) ) {
+            return array();
+        }
+
+        $final_url_override = (string) $override['final_url_override'];
+        if ( ! $this->is_valid_manual_final_url_override( $final_url_override ) || ! $this->is_valid_frontend_winner_cta_url( $final_url_override ) ) {
+            return array();
+        }
+
+        $allowed_countries = $this->sanitize_country_names( isset( $override['allowed_countries'] ) ? $override['allowed_countries'] : array() );
+        if ( empty( $allowed_countries ) || ! $this->is_country_allowed_by_name_or_alias( $country, $allowed_countries ) ) {
+            return array();
+        }
+        $blocked_countries = $this->sanitize_country_names( isset( $override['blocked_countries'] ) ? $override['blocked_countries'] : array() );
+        if ( ! empty( $blocked_countries ) && $this->is_country_allowed_by_name_or_alias( $country, $blocked_countries ) ) {
+            return array();
+        }
+
+        $name = sanitize_text_field( (string) ( $override['label_override'] ?? '' ) );
+        if ( '' === $name ) {
+            $name = sanitize_text_field( (string) ( $override['offer_name'] ?? '' ) );
+        }
+        if ( '' === $name && isset( $legacy_catalog[ (string) $offer_id ] ) && is_array( $legacy_catalog[ (string) $offer_id ] ) ) {
+            $name = sanitize_text_field( (string) ( $legacy_catalog[ (string) $offer_id ]['name'] ?? '' ) );
+        }
+        if ( '' === $name ) {
+            $identity_map = $this->get_manual_override_offer_identity_map();
+            if ( isset( $identity_map[ (string) $offer_id ]['name'] ) ) {
+                $name = sanitize_text_field( (string) $identity_map[ (string) $offer_id ]['name'] );
+            }
+        }
+        if ( '' === $name ) {
+            return array();
+        }
+
+        $offer_stub = array(
+            'id' => (string) $offer_id,
+            'name' => $name,
+            'status' => 'active',
+        );
+        if ( ! $this->is_offer_type_allowed( $offer_stub, $settings ) || $this->is_offer_blocked_for_banner( $offer_stub, $settings ) ) {
+            return array();
+        }
+        if ( $this->is_unavailable_account_pps_offer( $offer_stub ) ) {
+            $this->log_unavailable_account_offer_excluded( $offer_stub );
+            return array();
+        }
+
+        $logo_url = $this->get_offer_logo_url( $offer_stub );
+        if ( '' === $logo_url ) {
+            return array();
+        }
+
+        return array(
+            'id' => (string) $offer_id,
+            'name' => $name,
+            'image' => $this->build_placeholder_image( $name ),
+            'cta_url' => esc_url_raw( $final_url_override ),
+            'cta_text' => (string) ( $banner_data['cta_text'] ?? '' ),
+            'source' => 'manual_override_only',
+            'brand_key' => $this->get_offer_brand_key( $name ),
+            'logo_filename' => $this->get_offer_logo_filename( $offer_stub ),
+            'logo_url' => $logo_url,
+        );
+    }
+
+    /**
      * @param string $offer_id Offer ID.
      * @param string $country Country code.
      * @param array<string,mixed> $override Override row.
@@ -1702,6 +1800,16 @@ class TMW_CR_Slot_Offer_Repository {
         );
     }
 
+    /**
+     * @return array<string,array<string,string>>
+     */
+    protected function get_manual_override_offer_identity_map() {
+        return array(
+            '8780' => array( 'brand_key' => 'jerkmate', 'name' => 'Jerkmate - PPS' ),
+            '10366' => array( 'brand_key' => 'naughtycharm', 'name' => 'NaughtyCharm - PPS' ),
+        );
+    }
+
     protected function normalize_country_for_match( $country ) {
         $normalized = $this->normalize_country_name( $country );
         $alias_map = $this->get_country_alias_map();
@@ -1726,6 +1834,26 @@ class TMW_CR_Slot_Offer_Repository {
         if ( empty( $effective ) ) {
             $synced_offer = $this->get_synced_offer( $offer_id );
             $override = $this->get_offer_override( $offer_id );
+            if ( empty( $synced_offer ) ) {
+                $override_effective = $this->get_override_only_effective_offer_record( (string) $offer_id, $override, $settings, $banner_data, $country, $legacy_catalog );
+                if ( ! empty( $override_effective ) && $this->is_valid_frontend_winner_cta_url( (string) ( $override_effective['cta_url'] ?? '' ) ) ) {
+                    return array( 'reason' => self::ELIGIBILITY_REASON_VALID, 'effective_offer' => $override_effective );
+                }
+                if ( empty( $override['final_url_override'] ) ) {
+                    return array( 'reason' => self::ELIGIBILITY_REASON_MISSING_FINAL_URL, 'effective_offer' => array() );
+                }
+                if ( ! $this->is_valid_manual_final_url_override( (string) $override['final_url_override'] ) || ! $this->is_valid_frontend_winner_cta_url( (string) $override['final_url_override'] ) ) {
+                    return array( 'reason' => self::ELIGIBILITY_REASON_INVALID_FINAL_URL, 'effective_offer' => array() );
+                }
+                $allowed = $this->sanitize_country_names( isset( $override['allowed_countries'] ) ? $override['allowed_countries'] : array() );
+                if ( empty( $allowed ) ) {
+                    return array( 'reason' => self::ELIGIBILITY_REASON_NO_MANUAL_COUNTRY_OVERRIDE, 'effective_offer' => array() );
+                }
+                if ( ! $this->is_country_allowed_by_name_or_alias( $country, $allowed ) ) {
+                    return array( 'reason' => self::ELIGIBILITY_REASON_COUNTRY_NOT_ALLOWED, 'effective_offer' => array() );
+                }
+                return array( 'reason' => self::ELIGIBILITY_REASON_INVALID_FINAL_URL, 'effective_offer' => array() );
+            }
             if ( ! $this->is_offer_type_allowed( $synced_offer, $settings ) ) {
                 return array( 'reason' => self::ELIGIBILITY_REASON_OFFER_TYPE_NOT_ALLOWED, 'effective_offer' => array() );
             }

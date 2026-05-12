@@ -169,7 +169,7 @@ $tests['slot_setup_renders_override_import_sections'] = function() {
 };
 
 
-$tests['admin_page_runtime_file_contains_no_skipped_offers_slot_setup_render'] = function() {
+$tests['slot_setup_renders_safe_skipped_offers_import_section'] = function() {
     tmw_reset_test_state();
     $_GET = array( 'tab' => 'slot-setup' );
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
@@ -178,7 +178,9 @@ $tests['admin_page_runtime_file_contains_no_skipped_offers_slot_setup_render'] =
     $page->render_page();
     $html = (string) ob_get_clean();
 
-    tmw_assert_same( false, strpos( $html, 'Skipped PPS Offers' ), 'Slot Setup should not render skipped-offers UI in the runtime hotfix.' );
+    tmw_assert_contains( 'Import Skipped / Rejected Offers', $html, 'Slot Setup should render skipped offers import section.' );
+    tmw_assert_contains( 'Import Skipped Offers', $html, 'Slot Setup should render skipped offers import submit button.' );
+    tmw_assert_contains( 'Current skipped / rejected offers (latest 50)', $html, 'Slot Setup should render skipped offers summary table.' );
 };
 
 $tests['sanitize_settings_preserves_blank_api_key'] = function() {
@@ -707,7 +709,72 @@ $tests['skipped_offers_table_not_rendered_in_settings_runtime_hotfix'] = functio
     tmw_assert_same( false, strpos( $html, '8757' ), 'Settings tab should not render skipped offers rows during runtime hotfix.' );
 };
 
-$tests['skipped_offers_tracker_does_not_change_frontend_pool'] = function() {
+$tests['skipped_offers_import_handler_preserves_existing_rows'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_skipped_offers( array( '1111' => array( 'offer_id' => '1111', 'offer_name' => 'Old Offer', 'decision' => 'skip', 'reason' => 'legacy', 'notes' => '', 'updated_at' => '2026-01-01 00:00:00' ) ) );
+    $_POST['skipped_offers_csv'] = "offer_id,offer_name,decision,reason,notes
+2222,New Offer,skip,policy,No fit";
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $page->handle_import_skipped_offers();
+    $rows = $repo->get_skipped_offers();
+    tmw_assert_true( isset( $rows['1111'] ), 'Skipped offers import should preserve existing rows not present in new CSV.' );
+    tmw_assert_true( isset( $rows['2222'] ), 'Skipped offers import should add new rows.' );
+};
+
+$tests['skipped_offers_import_handler_redirects_to_slot_setup'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $_POST['skipped_offers_csv'] = "offer_id,offer_name,decision,reason,notes
+2222,New Offer,skip,policy,No fit";
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $page->handle_import_skipped_offers();
+    tmw_assert_same( 'slot-setup', (string) $page->notice['tab'], 'Skipped offers import should redirect back to slot-setup tab.' );
+};
+
+$tests['skipped_offers_import_handler_requires_reason_and_offer_id'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $_POST['skipped_offers_csv'] = "offer_id,offer_name,decision,reason,notes
+,Missing ID,skip,policy,No fit
+3333,Missing Reason,skip,,No fit
+4444,Valid,skip,policy,Keep";
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $page->handle_import_skipped_offers();
+    $rows = $repo->get_skipped_offers();
+    tmw_assert_true( ! isset( $rows['3333'] ), 'Rows without reason should be skipped.' );
+    tmw_assert_true( isset( $rows['4444'] ), 'Rows with required fields should be imported.' );
+};
+
+$tests['skipped_offers_import_notes_strip_urls'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $_POST['skipped_offers_csv'] = "offer_id,offer_name,decision,reason,notes
+5555,URL Notes,skip,policy,Reject https://evil.test and www.bad.test";
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $page->handle_import_skipped_offers();
+    $row = $repo->get_skipped_offer( '5555' );
+    tmw_assert_true( false === strpos( (string) $row['notes'], 'https://' ), 'Skipped-offers handler should strip URL-like notes.' );
+    tmw_assert_true( false === strpos( (string) $row['notes'], 'www.' ), 'Skipped-offers handler should strip www notes.' );
+};
+
+$tests['skipped_offers_ui_does_not_change_frontend_pool'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        '8757' => array( 'id' => '8757', 'name' => 'Offer A - PPS', 'status' => 'active' ),
+        '9770' => array( 'id' => '9770', 'name' => 'Offer B - PPS', 'status' => 'active' ),
+    ) );
+    $before = $repo->get_frontend_slot_offers( 'sidebar', TMW_CR_Slot_Sidebar_Banner::get_settings(), array(), 'US', array() );
+    $_POST['skipped_offers_csv'] = "offer_id,offer_name,decision,reason,notes
+8757,Offer A - PPS,skip,internal,No use";
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $page->handle_import_skipped_offers();
+    $after = $repo->get_frontend_slot_offers( 'sidebar', TMW_CR_Slot_Sidebar_Banner::get_settings(), array(), 'US', array() );
+    tmw_assert_same( count( $before ), count( $after ), 'Skipped offers UI/storage should not change frontend pool eligibility.' );
+};
+
+$tests['skipped_offers_tracker_does_not_change_frontend_pool_legacy'] = function() {
     tmw_reset_test_state();
     $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
     $offers = array(

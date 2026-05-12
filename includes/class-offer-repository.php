@@ -36,18 +36,22 @@ class TMW_CR_Slot_Offer_Repository {
     /** @var string */
     protected $dashboard_meta_option_key;
 
+    /** @var string */
+    protected $skipped_offers_option_key;
+
     /**
      * @param string $offers_option_key     Option key for synced offers.
      * @param string $meta_option_key       Option key for sync meta.
      * @param string $overrides_option_key  Option key for offer overrides.
      */
-    public function __construct( $offers_option_key, $meta_option_key, $overrides_option_key = 'tmw_cr_slot_banner_offer_overrides', $stats_option_key = 'tmw_cr_slot_banner_offer_stats', $stats_meta_option_key = 'tmw_cr_slot_banner_offer_stats_meta', $dashboard_meta_option_key = 'tmw_cr_slot_banner_offer_dashboard_meta' ) {
+    public function __construct( $offers_option_key, $meta_option_key, $overrides_option_key = 'tmw_cr_slot_banner_offer_overrides', $stats_option_key = 'tmw_cr_slot_banner_offer_stats', $stats_meta_option_key = 'tmw_cr_slot_banner_offer_stats_meta', $dashboard_meta_option_key = 'tmw_cr_slot_banner_offer_dashboard_meta', $skipped_offers_option_key = 'tmw_cr_slot_banner_skipped_offers' ) {
         $this->offers_option_key    = $offers_option_key;
         $this->meta_option_key      = $meta_option_key;
         $this->overrides_option_key = $overrides_option_key;
         $this->stats_option_key     = $stats_option_key;
         $this->stats_meta_option_key = $stats_meta_option_key;
         $this->dashboard_meta_option_key = $dashboard_meta_option_key;
+        $this->skipped_offers_option_key = $skipped_offers_option_key;
     }
 
     /**
@@ -99,6 +103,134 @@ class TMW_CR_Slot_Offer_Repository {
     /**
      * @return array<string,mixed>
      */
+    /**
+     * @return array<string,array<string,string>>
+     */
+    public function get_skipped_offers() {
+        $rows = get_option( $this->skipped_offers_option_key, array() );
+
+        if ( ! is_array( $rows ) ) {
+            return array();
+        }
+
+        $clean = array();
+        foreach ( $rows as $key => $row ) {
+            if ( ! is_array( $row ) ) {
+                continue;
+            }
+
+            $offer_id = sanitize_text_field( (string) ( $row['offer_id'] ?? $key ) );
+            $offer_name = sanitize_text_field( (string) ( $row['offer_name'] ?? '' ) );
+            $decision = sanitize_key( (string) ( $row['decision'] ?? 'skip' ) );
+            $reason = sanitize_text_field( (string) ( $row['reason'] ?? '' ) );
+            $notes = $this->sanitize_skipped_offer_notes( (string) ( $row['notes'] ?? '' ) );
+            $updated_at = sanitize_text_field( (string) ( $row['updated_at'] ?? '' ) );
+
+            if ( '' === $offer_id ) {
+                continue;
+            }
+            if ( ! in_array( $decision, array( 'skip', 'review_later' ), true ) ) {
+                $decision = 'skip';
+            }
+
+            $clean[ $offer_id ] = array(
+                'offer_id' => $offer_id,
+                'offer_name' => $offer_name,
+                'decision' => $decision,
+                'reason' => $reason,
+                'notes' => $notes,
+                'updated_at' => $updated_at,
+            );
+        }
+
+        return $clean;
+    }
+    public function get_skipped_offer( $offer_id ) {
+        $offer_id = sanitize_text_field( (string) $offer_id );
+        if ( '' === $offer_id ) { return null; }
+        $all = $this->get_skipped_offers();
+        return isset( $all[ $offer_id ] ) ? $all[ $offer_id ] : null;
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $rows Rows to save.
+     *
+     * @return void
+     */
+    public function save_skipped_offers( $rows ) {
+        $clean = array();
+
+        if ( is_array( $rows ) ) {
+            foreach ( $rows as $row ) {
+                if ( ! is_array( $row ) ) {
+                    continue;
+                }
+
+                $offer_id = sanitize_text_field( (string) ( $row['offer_id'] ?? '' ) );
+                if ( '' === $offer_id ) {
+                    continue;
+                }
+
+                $decision = sanitize_key( (string) ( $row['decision'] ?? 'skip' ) );
+                if ( ! in_array( $decision, array( 'skip', 'review_later' ), true ) ) {
+                    $decision = 'skip';
+                }
+                $clean[ $offer_id ] = array(
+                    'offer_id' => $offer_id,
+                    'offer_name' => sanitize_text_field( (string) ( $row['offer_name'] ?? '' ) ),
+                    'decision' => $decision,
+                    'reason' => sanitize_text_field( (string) ( $row['reason'] ?? '' ) ),
+                    'notes' => $this->sanitize_skipped_offer_notes( (string) ( $row['notes'] ?? '' ) ),
+                    'updated_at' => sanitize_text_field( (string) ( $row['updated_at'] ?? gmdate( 'Y-m-d H:i:s' ) ) ),
+                );
+            }
+        }
+
+        update_option( $this->skipped_offers_option_key, $clean, false );
+    }
+
+    public function import_skipped_offers_csv( $csv_text ) {
+        $lines = preg_split( '/\r\n|\r|\n/', (string) $csv_text );
+        $header_map = array();
+        $rows = $this->get_skipped_offers();
+        $counts = array( 'imported' => 0, 'skipped' => 0 );
+        foreach ( (array) $lines as $index => $line ) {
+            if ( '' === trim( (string) $line ) ) { continue; }
+            $cols = str_getcsv( (string) $line );
+            if ( 0 === $index ) {
+                foreach ( $cols as $i => $header ) {
+                    $header_map[ sanitize_key( (string) $header ) ] = $i;
+                }
+                continue;
+            }
+            $offer_id = isset( $header_map['offer_id'] ) ? sanitize_text_field( (string) ( $cols[ $header_map['offer_id'] ] ?? '' ) ) : '';
+            $decision = isset( $header_map['decision'] ) ? sanitize_key( (string) ( $cols[ $header_map['decision'] ] ?? '' ) ) : 'skip';
+            $reason = isset( $header_map['reason'] ) ? sanitize_text_field( (string) ( $cols[ $header_map['reason'] ] ?? '' ) ) : '';
+            if ( '' === $offer_id || '' === $reason ) { ++$counts['skipped']; continue; }
+            if ( '' === $decision ) { $decision = 'skip'; }
+            if ( ! in_array( $decision, array( 'skip', 'review_later' ), true ) ) { $decision = 'skip'; }
+            $rows[ $offer_id ] = array(
+                'offer_id' => $offer_id,
+                'offer_name' => isset( $header_map['offer_name'] ) ? sanitize_text_field( (string) ( $cols[ $header_map['offer_name'] ] ?? '' ) ) : '',
+                'decision' => $decision,
+                'reason' => $reason,
+                'notes' => isset( $header_map['notes'] ) ? $this->sanitize_skipped_offer_notes( (string) ( $cols[ $header_map['notes'] ] ?? '' ) ) : '',
+                'updated_at' => gmdate( 'Y-m-d H:i:s' ),
+            );
+            ++$counts['imported'];
+        }
+        $this->save_skipped_offers( $rows );
+        return $counts;
+    }
+
+    protected function sanitize_skipped_offer_notes( $notes ) {
+        $clean = sanitize_textarea_field( (string) $notes );
+        $clean = preg_replace( '/https?:\/\/\S+/i', '', $clean );
+        $clean = preg_replace( '/\bwww\.\S+/i', '', (string) $clean );
+        $clean = trim( preg_replace( '/\s+/', ' ', (string) $clean ) );
+        return $clean;
+    }
+
     public function get_sync_meta() {
         $meta = get_option( $this->meta_option_key, array() );
 

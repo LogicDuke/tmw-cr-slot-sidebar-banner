@@ -588,6 +588,9 @@ $tests['slot_setup_shows_winner_mode_diagnostics'] = function() {
     tmw_assert_contains( 'Offers with use_target_rules but no manual country override:', $html, 'Slot setup should show manual override recommendation count.' );
     tmw_assert_contains( 'Winner mode: forced three-logo match', $html, 'Slot setup should show forced winner mode.' );
     tmw_assert_contains( 'Final reel behavior: one selected offer repeated across 3 reels', $html, 'Slot setup should describe final reel behavior.' );
+    tmw_assert_contains( 'Import Both Override CSVs', $html, 'Slot setup should show only the combined override import UI heading/button label.' );
+    tmw_assert_true( false === strpos( $html, 'Import Allowed Country Overrides' ), 'Slot setup should not show legacy allowed-country-only import label.' );
+    tmw_assert_true( false === strpos( $html, 'Import Final URL Overrides' ), 'Slot setup should not show legacy final-url-only import label.' );
 };
 
 $tests['extract_offer_rows_supports_response_data_and_keyed_collections'] = function() {

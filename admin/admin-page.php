@@ -1320,20 +1320,6 @@ class TMW_CR_Slot_Admin_Page {
         <?php
         if ( current_user_can( 'manage_options' ) ) :
         ?>
-        <h3><?php esc_html_e( 'Import Allowed Country Overrides', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
-        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-            <?php wp_nonce_field( 'tmw_cr_slot_banner_import_allowed_country_overrides' ); ?>
-            <input type="hidden" name="action" value="tmw_cr_slot_banner_import_allowed_country_overrides" />
-            <textarea name="allowed_country_override_csv" class="large-text code" rows="6" placeholder="offer_id,allowed_countries&#10;8780,&quot;Belgium|United States|United Kingdom|Germany|France&quot;"></textarea>
-            <?php submit_button( __( 'Import Allowed Country Overrides', 'tmw-cr-slot-sidebar-banner' ), 'secondary', 'submit', false ); ?>
-        </form>
-        <h3><?php esc_html_e( 'Import Final URL Overrides', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
-        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-            <?php wp_nonce_field( 'tmw_cr_slot_banner_import_final_url_overrides' ); ?>
-            <input type="hidden" name="action" value="tmw_cr_slot_banner_import_final_url_overrides" />
-            <textarea name="final_url_override_csv" class="large-text code" rows="6" placeholder="offer_id,final_url_override&#10;8873,https://real-cr-tracking-link.example/..."></textarea>
-            <?php submit_button( __( 'Import Final URL Overrides', 'tmw-cr-slot-sidebar-banner' ), 'secondary', 'submit', false ); ?>
-        </form>
         <h3><?php esc_html_e( 'Import Both Override CSVs', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
         <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
             <?php wp_nonce_field( 'tmw_cr_slot_banner_import_both_overrides' ); ?>

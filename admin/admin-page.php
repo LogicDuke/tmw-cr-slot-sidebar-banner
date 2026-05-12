@@ -205,6 +205,33 @@ class TMW_CR_Slot_Admin_Page {
             }
         }
 
+        
+        $skipped_offers = array();
+        if ( isset( $input['skipped_offers_raw'] ) ) {
+            $lines = preg_split( '/\r\n|\r|\n/', (string) $input['skipped_offers_raw'] );
+            foreach ( (array) $lines as $line ) {
+                $line = trim( (string) $line );
+                if ( '' === $line ) {
+                    continue;
+                }
+
+                $parts = array_map( 'trim', explode( '|', $line ) );
+                $offer_id = isset( $parts[0] ) ? sanitize_text_field( (string) $parts[0] ) : '';
+                if ( '' === $offer_id ) {
+                    continue;
+                }
+
+                $skipped_offers[] = array(
+                    'offer_id' => $offer_id,
+                    'offer_name' => isset( $parts[1] ) ? sanitize_text_field( (string) $parts[1] ) : '',
+                    'skip_reason' => isset( $parts[2] ) ? sanitize_text_field( (string) $parts[2] ) : '',
+                    'notes' => isset( $parts[3] ) ? sanitize_textarea_field( (string) $parts[3] ) : '',
+                );
+            }
+        }
+        $this->offer_repository->save_skipped_offers( $skipped_offers );
+        $output['skipped_offers_raw'] = '';
+
         $this->offer_repository->save_offer_overrides( $offer_overrides );
         $offers = $this->offer_repository->get_synced_offers();
         $type_allowed_count = 0;
@@ -1584,6 +1611,35 @@ class TMW_CR_Slot_Admin_Page {
                         <td>
                             <textarea class="large-text code" rows="8" id="tmw-cr-country-overrides" name="<?php echo esc_attr( $this->option_key ); ?>[country_overrides_raw]" placeholder="US|https://example.com/us-banner.png|https://offer.com/us|Join Now|Exclusive US Bonus"><?php echo esc_textarea( $settings['country_overrides_raw'] ); ?></textarea>
                             <p class="description"><?php esc_html_e( 'One override per line using the format CC|Image URL|CTA URL|CTA Text|Headline.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+
+
+            <?php
+            $skipped_rows = $this->offer_repository->get_skipped_offers();
+            $skipped_lines = array();
+            foreach ( $skipped_rows as $skipped_row ) {
+                $skipped_lines[] = implode(
+                    '|',
+                    array(
+                        (string) ( $skipped_row['offer_id'] ?? '' ),
+                        (string) ( $skipped_row['offer_name'] ?? '' ),
+                        (string) ( $skipped_row['skip_reason'] ?? '' ),
+                        (string) ( $skipped_row['notes'] ?? '' ),
+                    )
+                );
+            }
+            ?>
+            <h2><?php esc_html_e( 'Skipped PPS Offers Notes (Admin Only)', 'tmw-cr-slot-sidebar-banner' ); ?></h2>
+            <table class="form-table" role="presentation">
+                <tbody>
+                    <tr>
+                        <th scope="row"><label for="tmw-cr-skipped-offers-raw"><?php esc_html_e( 'Skipped offers tracker', 'tmw-cr-slot-sidebar-banner' ); ?></label></th>
+                        <td>
+                            <textarea class="large-text code" rows="8" id="tmw-cr-skipped-offers-raw" name="<?php echo esc_attr( $this->option_key ); ?>[skipped_offers_raw]" placeholder="8757|Endura Naturals|Male enhancement|Not aligned with banner strategy"><?php echo esc_textarea( implode( "\n", $skipped_lines ) ); ?></textarea>
+                            <p class="description"><?php esc_html_e( 'Admin notes only. Format: offer_id|offer_name|skip_reason|notes (one offer per line). This does not affect frontend eligibility or winner logic.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
                         </td>
                     </tr>
                 </tbody>

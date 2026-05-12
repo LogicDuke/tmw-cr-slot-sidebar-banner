@@ -36,18 +36,22 @@ class TMW_CR_Slot_Offer_Repository {
     /** @var string */
     protected $dashboard_meta_option_key;
 
+    /** @var string */
+    protected $skipped_offers_option_key;
+
     /**
      * @param string $offers_option_key     Option key for synced offers.
      * @param string $meta_option_key       Option key for sync meta.
      * @param string $overrides_option_key  Option key for offer overrides.
      */
-    public function __construct( $offers_option_key, $meta_option_key, $overrides_option_key = 'tmw_cr_slot_banner_offer_overrides', $stats_option_key = 'tmw_cr_slot_banner_offer_stats', $stats_meta_option_key = 'tmw_cr_slot_banner_offer_stats_meta', $dashboard_meta_option_key = 'tmw_cr_slot_banner_offer_dashboard_meta' ) {
+    public function __construct( $offers_option_key, $meta_option_key, $overrides_option_key = 'tmw_cr_slot_banner_offer_overrides', $stats_option_key = 'tmw_cr_slot_banner_offer_stats', $stats_meta_option_key = 'tmw_cr_slot_banner_offer_stats_meta', $dashboard_meta_option_key = 'tmw_cr_slot_banner_offer_dashboard_meta', $skipped_offers_option_key = 'tmw_cr_slot_banner_skipped_offers' ) {
         $this->offers_option_key    = $offers_option_key;
         $this->meta_option_key      = $meta_option_key;
         $this->overrides_option_key = $overrides_option_key;
         $this->stats_option_key     = $stats_option_key;
         $this->stats_meta_option_key = $stats_meta_option_key;
         $this->dashboard_meta_option_key = $dashboard_meta_option_key;
+        $this->skipped_offers_option_key = $skipped_offers_option_key;
     }
 
     /**
@@ -99,6 +103,73 @@ class TMW_CR_Slot_Offer_Repository {
     /**
      * @return array<string,mixed>
      */
+    /**
+     * @return array<int,array<string,string>>
+     */
+    public function get_skipped_offers() {
+        $rows = get_option( $this->skipped_offers_option_key, array() );
+
+        if ( ! is_array( $rows ) ) {
+            return array();
+        }
+
+        $clean = array();
+        foreach ( $rows as $row ) {
+            if ( ! is_array( $row ) ) {
+                continue;
+            }
+
+            $offer_id = sanitize_text_field( (string) ( $row['offer_id'] ?? '' ) );
+            $offer_name = sanitize_text_field( (string) ( $row['offer_name'] ?? '' ) );
+            $skip_reason = sanitize_text_field( (string) ( $row['skip_reason'] ?? '' ) );
+            $notes = sanitize_textarea_field( (string) ( $row['notes'] ?? '' ) );
+
+            if ( '' === $offer_id ) {
+                continue;
+            }
+
+            $clean[] = array(
+                'offer_id' => $offer_id,
+                'offer_name' => $offer_name,
+                'skip_reason' => $skip_reason,
+                'notes' => $notes,
+            );
+        }
+
+        return $clean;
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $rows Rows to save.
+     *
+     * @return void
+     */
+    public function save_skipped_offers( $rows ) {
+        $clean = array();
+
+        if ( is_array( $rows ) ) {
+            foreach ( $rows as $row ) {
+                if ( ! is_array( $row ) ) {
+                    continue;
+                }
+
+                $offer_id = sanitize_text_field( (string) ( $row['offer_id'] ?? '' ) );
+                if ( '' === $offer_id ) {
+                    continue;
+                }
+
+                $clean[] = array(
+                    'offer_id' => $offer_id,
+                    'offer_name' => sanitize_text_field( (string) ( $row['offer_name'] ?? '' ) ),
+                    'skip_reason' => sanitize_text_field( (string) ( $row['skip_reason'] ?? '' ) ),
+                    'notes' => sanitize_textarea_field( (string) ( $row['notes'] ?? '' ) ),
+                );
+            }
+        }
+
+        update_option( $this->skipped_offers_option_key, array_values( $clean ), false );
+    }
+
     public function get_sync_meta() {
         $meta = get_option( $this->meta_option_key, array() );
 

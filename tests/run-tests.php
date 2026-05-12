@@ -568,6 +568,41 @@ $tests['admin_sanitize_and_render_supports_offer_overrides'] = function() {
     tmw_assert_true( false === strpos( $html, 'secure-key' ), 'Admin render path must not leak raw API key.' );
 };
 
+
+$tests['admin_skipped_offers_tracker_is_persisted_and_rendered'] = function() {
+    tmw_reset_test_state();
+
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'cr_api_key' => 'secure-key' ) );
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $page = new TMW_CR_Slot_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repository, 'sidebar' );
+
+    $page->sanitize_settings(
+        array(
+            'headline' => 'Headline',
+            'subheadline' => 'Subheadline',
+            'cta_text' => 'CTA',
+            'cta_url' => 'https://base.test',
+            'subid_param' => 'subid',
+            'subid_value' => 'slot',
+            'cr_api_key' => '',
+            'skipped_offers_raw' => "8757|Endura Naturals|Male enhancement|Not aligned
+9770|Gabrielle Moore Masterclasses|Course intent|Different strategy",
+        )
+    );
+
+    $skipped = $repository->get_skipped_offers();
+    tmw_assert_same( 2, count( $skipped ), 'Skipped offers tracker should persist admin rows.' );
+    tmw_assert_same( '8757', $skipped[0]['offer_id'], 'Skipped tracker should store offer id.' );
+
+    $_GET = array( 'tab' => 'settings' );
+    ob_start();
+    $page->render_page();
+    $html = ob_get_clean();
+
+    tmw_assert_contains( 'Skipped PPS Offers Notes (Admin Only)', $html, 'Settings tab should render skipped offers tracker section.' );
+    tmw_assert_contains( 'name="tmw_cr_slot_banner_settings[skipped_offers_raw]"', $html, 'Settings tab should render skipped_offers_raw input.' );
+};
+
 $tests['slot_setup_shows_winner_mode_diagnostics'] = function() {
     tmw_reset_test_state();
     $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );

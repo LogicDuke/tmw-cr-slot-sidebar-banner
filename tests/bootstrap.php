@@ -11,6 +11,9 @@ $GLOBALS['tmw_test_remote_get']   = null;
 $GLOBALS['tmw_test_last_redirect'] = '';
 $GLOBALS['tmw_test_nonce_ok']     = true;
 $GLOBALS['tmw_test_cron_events']  = array();
+$GLOBALS['tmw_test_actions']      = array();
+$GLOBALS['tmw_test_options_pages'] = array();
+$GLOBALS['tmw_test_user_caps']    = array( 'manage_options' => true );
 
 class WP_Error {
     protected $code;
@@ -45,7 +48,13 @@ function selected( $selected, $current = true, $display = true ) {
     if ( $display ) { echo $result; }
     return $result;
 }
-function current_user_can() { return true; }
+function current_user_can( $capability = '' ) {
+    if ( '' === $capability ) {
+        return true;
+    }
+
+    return ! empty( $GLOBALS['tmw_test_user_caps'][ $capability ] );
+}
 function admin_url( $path = '' ) { return 'https://example.test/wp-admin/' . ltrim( $path, '/' ); }
 function wp_unslash( $value ) { return $value; }
 function wp_nonce_field() { echo '<input type="hidden" value="1" />'; }
@@ -53,9 +62,24 @@ function check_admin_referer() { if ( empty( $GLOBALS['tmw_test_nonce_ok'] ) ) {
 function settings_fields() { echo '<input type="hidden" value="settings" />'; }
 function submit_button( $text = 'Submit', $type = 'primary', $name = 'submit', $wrap = true ) { echo '<button type="submit" name="' . $name . '" class="' . $type . '">' . $text . '</button>'; }
 function register_setting() {}
-function add_action() {}
+function add_action( $hook, $callback = null, $priority = 10, $accepted_args = 1 ) {
+    $GLOBALS['tmw_test_actions'][] = array(
+        'hook' => $hook,
+        'callback' => $callback,
+        'priority' => $priority,
+        'accepted_args' => $accepted_args,
+    );
+}
 function add_filter() {}
-function add_options_page() {}
+function add_options_page( $page_title, $menu_title, $capability, $menu_slug, $callback = null ) {
+    $GLOBALS['tmw_test_options_pages'][] = array(
+        'page_title' => $page_title,
+        'menu_title' => $menu_title,
+        'capability' => $capability,
+        'menu_slug' => $menu_slug,
+        'callback' => $callback,
+    );
+}
 function is_admin() { return true; }
 function shortcode_atts( $pairs, $atts ) { return array_merge( $pairs, (array) $atts ); }
 function add_shortcode() {}

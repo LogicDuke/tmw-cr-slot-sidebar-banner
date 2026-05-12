@@ -105,11 +105,53 @@ function tmw_reset_test_state() {
     $GLOBALS['tmw_test_remote_get']   = null;
     $GLOBALS['tmw_test_last_redirect'] = '';
     $GLOBALS['tmw_test_cron_events'] = array();
+    $GLOBALS['tmw_test_actions']      = array();
+    $GLOBALS['tmw_test_options_pages'] = array();
+    $GLOBALS['tmw_test_user_caps']    = array( 'manage_options' => true );
     $_GET  = array();
     $_POST = array();
 }
 
 $tests = array();
+
+$tests['admin_menu_registers_tmw_slot_banner_page'] = function() {
+    tmw_reset_test_state();
+    $page = new TMW_CR_Slot_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    $page->register_menu();
+
+    tmw_assert_same( 1, count( $GLOBALS['tmw_test_options_pages'] ), 'Expected one options page registration.' );
+    $registration = $GLOBALS['tmw_test_options_pages'][0];
+    tmw_assert_same( 'tmw-cr-slot-sidebar-banner', $registration['menu_slug'], 'Menu slug must remain tmw-cr-slot-sidebar-banner.' );
+    tmw_assert_same( 'manage_options', $registration['capability'], 'Admin page must require manage_options.' );
+    tmw_assert_true( is_array( $registration['callback'] ) && 'render_page' === $registration['callback'][1], 'Admin page callback must be render_page.' );
+};
+
+$tests['slot_setup_page_accessible_for_manage_options_user'] = function() {
+    tmw_reset_test_state();
+    $page = new TMW_CR_Slot_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+
+    ob_start();
+    $page->render_page();
+    $output = ob_get_clean();
+
+    tmw_assert_contains( 'tmw-cr-slot-sidebar-banner', $output, 'Rendered page should include canonical plugin slug in tab links.' );
+    tmw_assert_contains( 'slot-setup', $output, 'Rendered page should include slot-setup tab link.' );
+};
+
+$tests['slot_setup_url_uses_correct_menu_slug'] = function() {
+    tmw_reset_test_state();
+    $page = new TMW_CR_Slot_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+
+    ob_start();
+    $page->render_page();
+    $output = ob_get_clean();
+
+    tmw_assert_contains(
+        'options-general.php?page=tmw-cr-slot-sidebar-banner&tab=slot-setup',
+        $output,
+        'Slot setup tab URL must keep page=tmw-cr-slot-sidebar-banner.'
+    );
+};
 
 $tests['sanitize_settings_preserves_blank_api_key'] = function() {
     tmw_reset_test_state();

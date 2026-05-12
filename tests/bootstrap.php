@@ -11,6 +11,8 @@ $GLOBALS['tmw_test_remote_get']   = null;
 $GLOBALS['tmw_test_last_redirect'] = '';
 $GLOBALS['tmw_test_nonce_ok']     = true;
 $GLOBALS['tmw_test_cron_events']  = array();
+$GLOBALS['tmw_test_current_user_can'] = true;
+$GLOBALS['tmw_test_added_options_pages'] = array();
 
 class WP_Error {
     protected $code;
@@ -45,7 +47,7 @@ function selected( $selected, $current = true, $display = true ) {
     if ( $display ) { echo $result; }
     return $result;
 }
-function current_user_can() { return true; }
+function current_user_can() { return ! empty( $GLOBALS['tmw_test_current_user_can'] ); }
 function admin_url( $path = '' ) { return 'https://example.test/wp-admin/' . ltrim( $path, '/' ); }
 function wp_unslash( $value ) { return $value; }
 function wp_nonce_field() { echo '<input type="hidden" value="1" />'; }
@@ -55,7 +57,16 @@ function submit_button( $text = 'Submit', $type = 'primary', $name = 'submit', $
 function register_setting() {}
 function add_action() {}
 function add_filter() {}
-function add_options_page() {}
+function add_options_page( $page_title, $menu_title, $capability, $menu_slug, $callback ) {
+    $GLOBALS['tmw_test_added_options_pages'][] = array(
+        'page_title' => $page_title,
+        'menu_title' => $menu_title,
+        'capability' => $capability,
+        'menu_slug' => $menu_slug,
+        'callback' => $callback,
+    );
+}
+
 function is_admin() { return true; }
 function shortcode_atts( $pairs, $atts ) { return array_merge( $pairs, (array) $atts ); }
 function add_shortcode() {}

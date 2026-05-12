@@ -585,6 +585,17 @@ $tests['skipped_offers_import_sanitizes_values'] = function() {
     $skipped = $repository->get_skipped_offers();
     tmw_assert_true( false === strpos( $skipped['8757']['offer_name'], '<' ), 'Offer name should be sanitized.' );
     tmw_assert_true( false === strpos( $skipped['8757']['reason'], '<' ), 'Reason should be sanitized.' );
+    tmw_assert_true( false === strpos( $skipped['8757']['notes'], 'https://' ), 'Notes should strip https URLs.' );
+};
+
+$tests['skipped_offers_import_strips_urls_from_notes'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repository->import_skipped_offers_csv( "offer_id,offer_name,decision,reason,notes\n8757,Endura,skip,male_enhancement,Do not add http://bad.example and https://evil.example or www.spam.test" );
+    $skipped = $repository->get_skipped_offer( '8757' );
+    tmw_assert_true( false === strpos( $skipped['notes'], 'http://' ), 'Stored notes should not contain http URLs.' );
+    tmw_assert_true( false === strpos( $skipped['notes'], 'https://' ), 'Stored notes should not contain https URLs.' );
+    tmw_assert_true( false === strpos( $skipped['notes'], 'www.' ), 'Stored notes should not contain www URLs.' );
 };
 
 $tests['skipped_offers_import_defaults_empty_decision_to_skip'] = function() {

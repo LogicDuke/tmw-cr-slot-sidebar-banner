@@ -123,7 +123,7 @@ class TMW_CR_Slot_Offer_Repository {
             $offer_name = sanitize_text_field( (string) ( $row['offer_name'] ?? '' ) );
             $decision = sanitize_key( (string) ( $row['decision'] ?? 'skip' ) );
             $reason = sanitize_text_field( (string) ( $row['reason'] ?? '' ) );
-            $notes = sanitize_textarea_field( (string) ( $row['notes'] ?? '' ) );
+            $notes = $this->sanitize_skipped_offer_notes( (string) ( $row['notes'] ?? '' ) );
             $updated_at = sanitize_text_field( (string) ( $row['updated_at'] ?? '' ) );
 
             if ( '' === $offer_id ) {
@@ -180,7 +180,7 @@ class TMW_CR_Slot_Offer_Repository {
                     'offer_name' => sanitize_text_field( (string) ( $row['offer_name'] ?? '' ) ),
                     'decision' => $decision,
                     'reason' => sanitize_text_field( (string) ( $row['reason'] ?? '' ) ),
-                    'notes' => sanitize_textarea_field( (string) ( $row['notes'] ?? '' ) ),
+                    'notes' => $this->sanitize_skipped_offer_notes( (string) ( $row['notes'] ?? '' ) ),
                     'updated_at' => sanitize_text_field( (string) ( $row['updated_at'] ?? gmdate( 'Y-m-d H:i:s' ) ) ),
                 );
             }
@@ -214,13 +214,21 @@ class TMW_CR_Slot_Offer_Repository {
                 'offer_name' => isset( $header_map['offer_name'] ) ? sanitize_text_field( (string) ( $cols[ $header_map['offer_name'] ] ?? '' ) ) : '',
                 'decision' => $decision,
                 'reason' => $reason,
-                'notes' => isset( $header_map['notes'] ) ? sanitize_textarea_field( (string) ( $cols[ $header_map['notes'] ] ?? '' ) ) : '',
+                'notes' => isset( $header_map['notes'] ) ? $this->sanitize_skipped_offer_notes( (string) ( $cols[ $header_map['notes'] ] ?? '' ) ) : '',
                 'updated_at' => gmdate( 'Y-m-d H:i:s' ),
             );
             ++$counts['imported'];
         }
         $this->save_skipped_offers( $rows );
         return $counts;
+    }
+
+    protected function sanitize_skipped_offer_notes( $notes ) {
+        $clean = sanitize_textarea_field( (string) $notes );
+        $clean = preg_replace( '/https?:\/\/\S+/i', '', $clean );
+        $clean = preg_replace( '/\bwww\.\S+/i', '', (string) $clean );
+        $clean = trim( preg_replace( '/\s+/', ' ', (string) $clean ) );
+        return $clean;
     }
 
     public function get_sync_meta() {

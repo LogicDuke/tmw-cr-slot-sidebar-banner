@@ -2353,6 +2353,7 @@ $tests['combined_override_import_allows_one_empty_textarea'] = function() {
     $page->handle_import_both_overrides();
     $saved = $repo->get_offer_overrides();
     tmw_assert_same( 'https://trk.example.com/?tid=solo', (string) $saved['8873']['final_url_override'], 'Combined import should process the non-empty textarea only.' );
+    tmw_assert_same( 'slot-setup', (string) $page->notice['tab'], 'Single-textarea combined import should redirect back to slot-setup.' );
 };
 
 $tests['combined_override_import_with_both_empty_shows_notice'] = function() {
@@ -2363,6 +2364,7 @@ $tests['combined_override_import_with_both_empty_shows_notice'] = function() {
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
     $page->handle_import_both_overrides();
     tmw_assert_same( 'No override rows were submitted.', (string) $page->notice['message'], 'Combined import should show a safe notice when both textareas are empty.' );
+    tmw_assert_same( 'slot-setup', (string) $page->notice['tab'], 'Empty combined import should still redirect back to slot-setup.' );
 };
 
 $tests['offer_without_tracking_or_manual_override_remains_excluded'] = function() {

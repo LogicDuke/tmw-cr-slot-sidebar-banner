@@ -471,7 +471,7 @@ class TMW_CR_Slot_Admin_Page {
                 continue;
             }
             $parts = str_getcsv( $line );
-            $offer_id = sanitize_text_field( (string) ( $parts[0] ?? '' ) );
+            $offer_id = sanitize_text_field( trim( (string) ( $parts[0] ?? '' ) ) );
             $final_url = esc_url_raw( trim( (string) ( $parts[1] ?? '' ) ) );
 
             if ( '' === $offer_id || '' === $final_url || ! $this->offer_repository->is_valid_manual_final_url_override( $final_url ) ) {

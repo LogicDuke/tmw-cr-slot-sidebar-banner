@@ -1308,7 +1308,6 @@ class TMW_CR_Slot_Admin_Page {
             ?>
         </ol>
         <?php
-        $this->render_skipped_offers_section();
         if ( current_user_can( 'manage_options' ) ) :
         ?>
         <h3><?php esc_html_e( 'Import Allowed Country Overrides', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
@@ -1333,6 +1332,7 @@ class TMW_CR_Slot_Admin_Page {
             <textarea name="final_url_override_csv" class="large-text code" rows="6" placeholder="offer_id,final_url_override&#10;8873,https://real-cr-tracking-link.example/..."></textarea>
             <?php submit_button( __( 'Import Both Override CSVs', 'tmw-cr-slot-sidebar-banner' ), 'secondary', 'submit', false ); ?>
         </form>
+        <?php $this->render_skipped_offers_section(); ?>
         <?php
         endif;
         ?>
@@ -1652,7 +1652,7 @@ class TMW_CR_Slot_Admin_Page {
         <table class="form-table" role="presentation">
             <tbody>
                 <tr>
-                    <th scope="row"><label for="tmw-cr-skipped-offers-csv"><?php esc_html_e( 'CSV import', 'tmw-cr-slot-sidebar-banner' ); ?></label></th>
+                    <th scope="row"><label for="tmw-cr-skipped-offers-csv"><?php esc_html_e( 'Import skipped PPS offers CSV', 'tmw-cr-slot-sidebar-banner' ); ?></label></th>
                     <td>
                         <textarea class="large-text code" rows="8" id="tmw-cr-skipped-offers-csv" name="<?php echo esc_attr( $this->option_key ); ?>[skipped_offers_csv]" placeholder="offer_id,offer_name,decision,reason,notes&#10;8757,Endura Naturals - PPS,skip,male_enhancement_penis_enlarger,Not aligned"><?php echo esc_textarea( '' ); ?></textarea>
                         <p class="description"><?php esc_html_e( 'Headers: offer_id,offer_name,decision,reason,notes. Required: offer_id,decision,reason. Decisions: skip, review_later. Admin-only tracker; does not change frontend behavior.', 'tmw-cr-slot-sidebar-banner' ); ?></p>

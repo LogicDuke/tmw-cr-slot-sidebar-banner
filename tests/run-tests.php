@@ -647,7 +647,9 @@ $tests['skipped_offers_section_visible_on_slot_setup_tab'] = function() {
     $page->render_page();
     $html = ob_get_clean();
     tmw_assert_contains( 'Skipped PPS offers', $html, 'Slot Setup tab should show skipped offers section.' );
+    tmw_assert_contains( 'Import skipped PPS offers CSV', $html, 'Slot Setup tab should show explicit skipped CSV label.' );
     tmw_assert_contains( 'name="tmw_cr_slot_banner_settings[skipped_offers_csv]"', $html, 'Slot Setup tab should show skipped CSV importer field.' );
+    tmw_assert_contains( 'offer_id,offer_name,decision,reason,notes', $html, 'Slot Setup tab should show skipped CSV header format guidance.' );
 };
 
 $tests['skipped_offers_tracker_does_not_change_frontend_pool'] = function() {

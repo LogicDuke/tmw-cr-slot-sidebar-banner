@@ -168,6 +168,19 @@ $tests['slot_setup_renders_override_import_sections'] = function() {
     tmw_assert_contains( 'Import Both Override CSVs', $html, 'Slot Setup should render combined override import action.' );
 };
 
+
+$tests['admin_page_runtime_file_contains_no_skipped_offers_slot_setup_render'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+
+    ob_start();
+    $page->render_page();
+    $html = (string) ob_get_clean();
+
+    tmw_assert_same( false, strpos( $html, 'Skipped PPS Offers' ), 'Slot Setup should not render skipped-offers UI in the runtime hotfix.' );
+};
+
 $tests['sanitize_settings_preserves_blank_api_key'] = function() {
     tmw_reset_test_state();
 
@@ -680,7 +693,7 @@ $tests['skipped_offers_not_erased_when_settings_save_omits_tracker_field'] = fun
     tmw_assert_true( null !== $repository->get_skipped_offer( '8757' ), 'Saving unrelated settings should not erase skipped offers.' );
 };
 
-$tests['skipped_offers_table_renders_read_only_rows'] = function() {
+$tests['skipped_offers_table_not_rendered_in_settings_runtime_hotfix'] = function() {
     tmw_reset_test_state();
     update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'cr_api_key' => 'secure-key' ) );
     $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
@@ -690,8 +703,8 @@ $tests['skipped_offers_table_renders_read_only_rows'] = function() {
     ob_start();
     $page->render_page();
     $html = ob_get_clean();
-    tmw_assert_contains( 'Skipped PPS offers', $html, 'Settings tab should render read-only skipped offers table.' );
-    tmw_assert_contains( '8757', $html, 'Settings tab should render skipped offer row.' );
+    tmw_assert_same( false, strpos( $html, 'Skipped PPS offers' ), 'Settings tab should not render skipped offers UI during runtime hotfix.' );
+    tmw_assert_same( false, strpos( $html, '8757' ), 'Settings tab should not render skipped offers rows during runtime hotfix.' );
 };
 
 $tests['skipped_offers_tracker_does_not_change_frontend_pool'] = function() {

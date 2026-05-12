@@ -42,16 +42,57 @@
         }
     }
 
+    function getOfferAbbreviation(offer) {
+        var name = ((offer && offer.name) || '').trim();
+        var clean = name.replace(/[^a-z0-9 ]/gi, ' ').trim();
+        var parts = clean ? clean.split(/\s+/) : [];
+        var letters = '';
+
+        for (var i = 0; i < parts.length && letters.length < 3; i++) {
+            if (parts[i]) {
+                letters += parts[i].charAt(0).toUpperCase();
+            }
+        }
+
+        if (letters.length < 3) {
+            letters = clean.replace(/\s+/g, '').slice(0, 3).toUpperCase();
+        }
+
+        return letters || 'N/A';
+    }
+
+    function renderReelFace(wrapper, offer) {
+        wrapper.innerHTML = '';
+
+        var fallback = document.createElement('span');
+        fallback.className = 'tmw-cr-slot-banner__reel-text';
+        fallback.textContent = getOfferAbbreviation(offer);
+        wrapper.appendChild(fallback);
+
+        if (!offer || !offer.logo_url) {
+            return;
+        }
+
+        var logo = document.createElement('img');
+        logo.className = 'tmw-cr-slot-banner__reel-logo';
+        logo.src = offer.logo_url;
+        logo.alt = ((offer.name || 'Offer') + ' logo').trim();
+        logo.loading = 'lazy';
+        logo.setAttribute('data-offer-id', offer.id || '');
+        logo.onerror = function() {
+            logo.remove();
+            fallback.style.display = '';
+        };
+        logo.onload = function() {
+            fallback.style.display = 'none';
+        };
+        wrapper.appendChild(logo);
+    }
+
     function createIcon(offer) {
         var wrapper = document.createElement('div');
         wrapper.className = 'icon';
-
-        var img = document.createElement('img');
-        img.src = offer.image;
-        img.alt = offer.name || '';
-        img.setAttribute('data-offer-id', offer.id || '');
-
-        wrapper.appendChild(img);
+        renderReelFace(wrapper, offer);
 
         return {
             node: wrapper,
@@ -64,17 +105,7 @@
             return;
         }
 
-        var img = iconState.node.querySelector('img');
-
-        if (!img) {
-            img = document.createElement('img');
-            iconState.node.innerHTML = '';
-            iconState.node.appendChild(img);
-        }
-
-        img.src = offer.image;
-        img.alt = offer.name || '';
-        img.setAttribute('data-offer-id', offer.id || '');
+        renderReelFace(iconState.node, offer);
 
         iconState.offer = offer;
     }
@@ -170,17 +201,26 @@
 
     function setResult(state, prepareForSpin) {
         var results = [];
+        var winner = null;
+
+        if (state.offers.length) {
+            winner = state.offers[Math.floor(Math.random() * state.offers.length)];
+
+            if (state.debugEnabled && window.console && typeof window.console.debug === 'function') {
+                window.console.debug('[TMW-BANNER-WINNER] spin_start eligible_count=' + state.offers.length);
+                window.console.debug('[TMW-BANNER-WINNER] winner_selected offer_id=' + (winner.id || '') + ' logo="' + (winner.logo_filename || '') + '"');
+            }
+        }
 
         state.columns.forEach(function(reel) {
-            if (!state.offers.length || !reel.items.length) {
+            if (!winner || !reel.items.length) {
                 results.push(null);
                 return;
             }
 
-            var offer = state.offers[Math.floor(Math.random() * state.offers.length)];
-            results.push(offer);
+            results.push(winner);
 
-            applyOffer(reel.items[0], offer);
+            applyOffer(reel.items[0], winner);
             copyTopIconsToClones(reel);
 
             if (prepareForSpin) {
@@ -230,16 +270,12 @@
             return;
         }
 
-        var first = results[0];
-        var matchingOffer = null;
-
-        if (first && results.every(function(result) {
-            return result && result.id === first.id;
-        })) {
-            matchingOffer = first;
-        }
+        var matchingOffer = results[0] || null;
 
         if (matchingOffer) {
+            if (state.debugEnabled && window.console && typeof window.console.debug === 'function') {
+                window.console.debug('[TMW-BANNER-WINNER] reel_final offer_id=' + (matchingOffer.id || '') + ' repeated=3 cta_url_present=' + (matchingOffer.cta_url ? '1' : '0'));
+            }
             state.banner.classList.add('tmw-cr-slot-banner--win');
 
             if (state.resultLabel) {
@@ -337,6 +373,7 @@
         var defaultCtaText = banner.getAttribute('data-default-cta-text') || '';
         var defaultCtaUrl = banner.getAttribute('data-default-cta-url') || '';
         var defaultOfferName = offerNameTarget ? offerNameTarget.textContent : '';
+        var debugEnabled = banner.getAttribute('data-debug-enabled') === '1';
 
         var state = {
             banner: banner,
@@ -360,7 +397,8 @@
             defaultOfferName: defaultOfferName,
             param: param,
             value: value,
-            isSpinning: false
+            isSpinning: false,
+            debugEnabled: debugEnabled
         };
 
         if (state.spinButton) {

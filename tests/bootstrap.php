@@ -3,13 +3,14 @@
 define( 'ABSPATH', __DIR__ . '/' );
 define( 'HOUR_IN_SECONDS', 3600 );
 define( 'TMW_CR_SLOT_BANNER_PATH', dirname( __DIR__ ) . '/' );
-define( 'TMW_CR_SLOT_BANNER_VERSION', '1.4.0-test' );
+define( 'TMW_CR_SLOT_BANNER_VERSION', '1.8.1-test' );
 
 $GLOBALS['tmw_test_options']      = array();
 $GLOBALS['tmw_test_transients']   = array();
 $GLOBALS['tmw_test_remote_get']   = null;
 $GLOBALS['tmw_test_last_redirect'] = '';
 $GLOBALS['tmw_test_nonce_ok']     = true;
+$GLOBALS['tmw_test_cron_events']  = array();
 
 class WP_Error {
     protected $code;
@@ -39,6 +40,11 @@ function esc_attr( $text ) { return (string) $text; }
 function esc_html( $text ) { return (string) $text; }
 function esc_textarea( $text ) { return (string) $text; }
 function checked( $checked, $current = true ) { if ( (bool) $checked === (bool) $current ) { echo 'checked'; } }
+function selected( $selected, $current = true, $display = true ) {
+    $result = (string) $selected === (string) $current ? 'selected' : '';
+    if ( $display ) { echo $result; }
+    return $result;
+}
 function current_user_can() { return true; }
 function admin_url( $path = '' ) { return 'https://example.test/wp-admin/' . ltrim( $path, '/' ); }
 function wp_unslash( $value ) { return $value; }
@@ -53,6 +59,38 @@ function add_options_page() {}
 function is_admin() { return true; }
 function shortcode_atts( $pairs, $atts ) { return array_merge( $pairs, (array) $atts ); }
 function add_shortcode() {}
+function wp_next_scheduled( $hook ) {
+    foreach ( $GLOBALS['tmw_test_cron_events'] as $event ) {
+        if ( $event['hook'] === $hook ) {
+            return $event['timestamp'];
+        }
+    }
+    return false;
+}
+function wp_schedule_event( $timestamp, $recurrence, $hook ) {
+    foreach ( $GLOBALS['tmw_test_cron_events'] as $event ) {
+        if ( $event['hook'] === $hook ) {
+            return true;
+        }
+    }
+    $GLOBALS['tmw_test_cron_events'][] = array(
+        'timestamp' => (int) $timestamp,
+        'recurrence' => (string) $recurrence,
+        'hook' => (string) $hook,
+    );
+    return true;
+}
+function wp_clear_scheduled_hook( $hook ) {
+    $GLOBALS['tmw_test_cron_events'] = array_values(
+        array_filter(
+            $GLOBALS['tmw_test_cron_events'],
+            static function ( $event ) use ( $hook ) {
+                return $event['hook'] !== $hook;
+            }
+        )
+    );
+    return true;
+}
 function do_action() {}
 function did_action() { return 1; }
 function wp_register_style() {}
@@ -106,6 +144,8 @@ function tmw_assert_same( $expected, $actual, $message ) { if ( $expected !== $a
 function tmw_assert_contains( $needle, $haystack, $message ) { if ( false === strpos( (string) $haystack, (string) $needle ) ) { throw new Exception( $message . ' Missing: ' . $needle ); } }
 
 require_once dirname( __DIR__ ) . '/includes/class-offer-repository.php';
+require_once dirname( __DIR__ ) . '/includes/geo-helper.php';
 require_once dirname( __DIR__ ) . '/includes/class-cr-api-client.php';
 require_once dirname( __DIR__ ) . '/includes/class-offer-sync-service.php';
+require_once dirname( __DIR__ ) . '/includes/class-stats-sync-service.php';
 require_once dirname( __DIR__ ) . '/admin/admin-page.php';

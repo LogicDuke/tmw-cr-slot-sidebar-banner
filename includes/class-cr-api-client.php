@@ -107,6 +107,76 @@ class TMW_CR_Slot_CR_API_Client {
     }
 
     /**
+     * Calls Affiliate_Report.getStats.
+     *
+     * @param array<string,mixed> $args Request arguments.
+     *
+     * @return array<string,mixed>|WP_Error
+     */
+    public function get_offer_stats( $args = array() ) {
+        if ( ! $this->has_api_key() ) {
+            return new WP_Error( 'tmw_cr_slot_missing_api_key', __( 'CrakRevenue API key is missing.', 'tmw-cr-slot-sidebar-banner' ) );
+        }
+
+        $defaults = array(
+            'fields'      => array(),
+            'groups'      => array(),
+            'filters'     => array(),
+            'sort'        => array(),
+            'limit'       => 100,
+            'page'        => 1,
+            'data_start'  => '',
+            'data_end'    => '',
+            'totals'      => '',
+            'hour_offset' => '',
+        );
+
+        $args = wp_parse_args( $args, $defaults );
+
+        $query = array(
+            'Target'  => 'Affiliate_Report',
+            'Method'  => 'getStats',
+            'api_key' => $this->api_key,
+            'limit'   => max( 1, (int) $args['limit'] ),
+            'page'    => max( 1, (int) $args['page'] ),
+        );
+
+        foreach ( (array) $args['fields'] as $field ) {
+            $query['fields'][] = (string) $field;
+        }
+
+        foreach ( (array) $args['groups'] as $group ) {
+            $query['groups'][] = (string) $group;
+        }
+
+        foreach ( (array) $args['filters'] as $field => $value ) {
+            $query[ sprintf( 'filters[%s]', $field ) ] = $value;
+        }
+
+        foreach ( (array) $args['sort'] as $field => $direction ) {
+            $query[ sprintf( 'sort[%s]', $field ) ] = strtolower( (string) $direction );
+        }
+
+        if ( '' !== (string) $args['data_start'] ) {
+            $query['data_start'] = sanitize_text_field( (string) $args['data_start'] );
+        }
+
+        if ( '' !== (string) $args['data_end'] ) {
+            $query['data_end'] = sanitize_text_field( (string) $args['data_end'] );
+        }
+
+        if ( '' !== (string) $args['totals'] ) {
+            $query['totals'] = sanitize_text_field( (string) $args['totals'] );
+        }
+
+        if ( '' !== (string) $args['hour_offset'] ) {
+            $query['hour_offset'] = sanitize_text_field( (string) $args['hour_offset'] );
+        }
+
+        return $this->request( $query );
+    }
+
+    /**
      * @param array<string,mixed> $query Query arguments.
      *
      * @return array<string,mixed>|WP_Error
@@ -124,7 +194,7 @@ class TMW_CR_Slot_CR_API_Client {
         );
 
         if ( is_wp_error( $response ) ) {
-            return new WP_Error( 'tmw_cr_slot_api_unavailable', __( 'CrakRevenue API request failed.', 'tmw-cr-slot-sidebar-banner' ) );
+            return new WP_Error( 'tmw_cr_slot_api_unavailable', __( '[TMW-CR-API] CrakRevenue API request failed.', 'tmw-cr-slot-sidebar-banner' ) );
         }
 
         $status = (int) wp_remote_retrieve_response_code( $response );
@@ -132,11 +202,11 @@ class TMW_CR_Slot_CR_API_Client {
         $data   = json_decode( $body, true );
 
         if ( 200 !== $status ) {
-            return new WP_Error( 'tmw_cr_slot_api_http_error', sprintf( __( 'CrakRevenue API returned HTTP %d.', 'tmw-cr-slot-sidebar-banner' ), $status ) );
+            return new WP_Error( 'tmw_cr_slot_api_http_error', sprintf( __( '[TMW-CR-API] CrakRevenue API returned HTTP %d.', 'tmw-cr-slot-sidebar-banner' ), $status ) );
         }
 
         if ( ! is_array( $data ) ) {
-            return new WP_Error( 'tmw_cr_slot_api_invalid_json', __( 'CrakRevenue API returned an unexpected response.', 'tmw-cr-slot-sidebar-banner' ) );
+            return new WP_Error( 'tmw_cr_slot_api_invalid_json', __( '[TMW-CR-API] CrakRevenue API returned an unexpected response.', 'tmw-cr-slot-sidebar-banner' ) );
         }
 
         if ( isset( $data['error'] ) && ! empty( $data['error'] ) ) {

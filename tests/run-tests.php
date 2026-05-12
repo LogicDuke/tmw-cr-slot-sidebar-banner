@@ -629,12 +629,12 @@ $tests['skipped_offers_table_renders_read_only_rows'] = function() {
     $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
     $repository->save_skipped_offers( array( '8757' => array( 'offer_id' => '8757', 'offer_name' => 'Endura', 'decision' => 'skip', 'reason' => 'male_enhancement', 'notes' => '', 'updated_at' => '2026-01-01 00:00:00' ) ) );
     $page = new TMW_CR_Slot_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repository, 'sidebar' );
-    $_GET = array( 'tab' => 'settings' );
+    $_GET = array( 'tab' => 'slot-setup' );
     ob_start();
     $page->render_page();
     $html = ob_get_clean();
-    tmw_assert_contains( 'Skipped PPS offers', $html, 'Settings tab should render read-only skipped offers table.' );
-    tmw_assert_contains( '8757', $html, 'Settings tab should render skipped offer row.' );
+    tmw_assert_contains( 'Skipped PPS offers', $html, 'Slot Setup tab should render read-only skipped offers table.' );
+    tmw_assert_contains( '8757', $html, 'Slot Setup tab should render skipped offer row.' );
 };
 
 $tests['skipped_offers_tracker_does_not_change_frontend_pool'] = function() {
@@ -671,6 +671,23 @@ $tests['slot_setup_shows_winner_mode_diagnostics'] = function() {
     tmw_assert_contains( 'Offers with use_target_rules but no manual country override:', $html, 'Slot setup should show manual override recommendation count.' );
     tmw_assert_contains( 'Winner mode: forced three-logo match', $html, 'Slot setup should show forced winner mode.' );
     tmw_assert_contains( 'Final reel behavior: one selected offer repeated across 3 reels', $html, 'Slot setup should describe final reel behavior.' );
+};
+
+$tests['skipped_offers_section_visible_on_slot_setup_tab'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'cr_api_key' => 'secure-key' ) );
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $page       = new TMW_CR_Slot_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repository, 'sidebar' );
+    $_GET       = array( 'tab' => 'slot-setup' );
+
+    ob_start();
+    $page->render_page();
+    $html = ob_get_clean();
+
+    tmw_assert_contains( 'Skipped PPS offers', $html, 'Slot Setup tab should render skipped offers table title.' );
+    tmw_assert_contains( 'Import skipped PPS offers CSV', $html, 'Slot Setup tab should render skipped offers CSV import label.' );
+    tmw_assert_contains( 'name="tmw_cr_slot_banner_settings[skipped_offers_csv]"', $html, 'Slot Setup tab should render skipped offers CSV textarea name.' );
+    tmw_assert_contains( 'offer_id,offer_name,decision,reason,notes', $html, 'Slot Setup tab should render skipped offers CSV guidance.' );
 };
 
 $tests['extract_offer_rows_supports_response_data_and_keyed_collections'] = function() {

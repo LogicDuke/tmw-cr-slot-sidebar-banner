@@ -206,31 +206,10 @@ class TMW_CR_Slot_Admin_Page {
         }
 
         
-        $skipped_offers = array();
-        if ( isset( $input['skipped_offers_raw'] ) ) {
-            $lines = preg_split( '/\r\n|\r|\n/', (string) $input['skipped_offers_raw'] );
-            foreach ( (array) $lines as $line ) {
-                $line = trim( (string) $line );
-                if ( '' === $line ) {
-                    continue;
-                }
-
-                $parts = array_map( 'trim', explode( '|', $line ) );
-                $offer_id = isset( $parts[0] ) ? sanitize_text_field( (string) $parts[0] ) : '';
-                if ( '' === $offer_id ) {
-                    continue;
-                }
-
-                $skipped_offers[] = array(
-                    'offer_id' => $offer_id,
-                    'offer_name' => isset( $parts[1] ) ? sanitize_text_field( (string) $parts[1] ) : '',
-                    'skip_reason' => isset( $parts[2] ) ? sanitize_text_field( (string) $parts[2] ) : '',
-                    'notes' => isset( $parts[3] ) ? sanitize_textarea_field( (string) $parts[3] ) : '',
-                );
-            }
+        if ( isset( $input['skipped_offers_csv'] ) ) {
+            $this->offer_repository->import_skipped_offers_csv( (string) $input['skipped_offers_csv'] );
         }
-        $this->offer_repository->save_skipped_offers( $skipped_offers );
-        $output['skipped_offers_raw'] = '';
+        $output['skipped_offers_csv'] = '';
 
         $this->offer_repository->save_offer_overrides( $offer_overrides );
         $offers = $this->offer_repository->get_synced_offers();
@@ -1619,29 +1598,30 @@ class TMW_CR_Slot_Admin_Page {
 
             <?php
             $skipped_rows = $this->offer_repository->get_skipped_offers();
-            $skipped_lines = array();
-            foreach ( $skipped_rows as $skipped_row ) {
-                $skipped_lines[] = implode(
-                    '|',
-                    array(
-                        (string) ( $skipped_row['offer_id'] ?? '' ),
-                        (string) ( $skipped_row['offer_name'] ?? '' ),
-                        (string) ( $skipped_row['skip_reason'] ?? '' ),
-                        (string) ( $skipped_row['notes'] ?? '' ),
-                    )
-                );
-            }
             ?>
             <h2><?php esc_html_e( 'Skipped PPS Offers Notes (Admin Only)', 'tmw-cr-slot-sidebar-banner' ); ?></h2>
             <table class="form-table" role="presentation">
                 <tbody>
                     <tr>
-                        <th scope="row"><label for="tmw-cr-skipped-offers-raw"><?php esc_html_e( 'Skipped offers tracker', 'tmw-cr-slot-sidebar-banner' ); ?></label></th>
+                        <th scope="row"><label for="tmw-cr-skipped-offers-csv"><?php esc_html_e( 'CSV import', 'tmw-cr-slot-sidebar-banner' ); ?></label></th>
                         <td>
-                            <textarea class="large-text code" rows="8" id="tmw-cr-skipped-offers-raw" name="<?php echo esc_attr( $this->option_key ); ?>[skipped_offers_raw]" placeholder="8757|Endura Naturals|Male enhancement|Not aligned with banner strategy"><?php echo esc_textarea( implode( "\n", $skipped_lines ) ); ?></textarea>
-                            <p class="description"><?php esc_html_e( 'Admin notes only. Format: offer_id|offer_name|skip_reason|notes (one offer per line). This does not affect frontend eligibility or winner logic.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+                            <textarea class="large-text code" rows="8" id="tmw-cr-skipped-offers-csv" name="<?php echo esc_attr( $this->option_key ); ?>[skipped_offers_csv]" placeholder="offer_id,offer_name,decision,reason,notes&#10;8757,Endura Naturals - PPS,skip,male_enhancement_penis_enlarger,Not aligned"><?php echo esc_textarea( '' ); ?></textarea>
+                            <p class="description"><?php esc_html_e( 'Headers: offer_id,offer_name,decision,reason,notes. Required: offer_id,decision,reason. Decisions: skip, review_later. Admin-only tracker; does not change frontend behavior.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
                         </td>
                     </tr>
+                </tbody>
+            </table>
+            <h2><?php esc_html_e( 'Skipped PPS offers', 'tmw-cr-slot-sidebar-banner' ); ?></h2>
+            <table class="widefat striped" role="presentation">
+                <thead><tr><th>Offer ID</th><th>Offer name</th><th>Decision</th><th>Reason</th><th>Notes</th><th>Updated at</th></tr></thead>
+                <tbody>
+                <?php if ( empty( $skipped_rows ) ) : ?>
+                    <tr><td colspan="6"><?php esc_html_e( 'No skipped PPS offers recorded yet.', 'tmw-cr-slot-sidebar-banner' ); ?></td></tr>
+                <?php else : foreach ( $skipped_rows as $row ) : ?>
+                    <tr>
+                        <td><?php echo esc_html( (string) ( $row['offer_id'] ?? '' ) ); ?></td><td><?php echo esc_html( (string) ( $row['offer_name'] ?? '' ) ); ?></td><td><?php echo esc_html( (string) ( $row['decision'] ?? '' ) ); ?></td><td><?php echo esc_html( (string) ( $row['reason'] ?? '' ) ); ?></td><td><?php echo esc_html( (string) ( $row['notes'] ?? '' ) ); ?></td><td><?php echo esc_html( (string) ( $row['updated_at'] ?? '' ) ); ?></td>
+                    </tr>
+                <?php endforeach; endif; ?>
                 </tbody>
             </table>
 

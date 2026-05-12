@@ -569,38 +569,75 @@ $tests['admin_sanitize_and_render_supports_offer_overrides'] = function() {
 };
 
 
-$tests['admin_skipped_offers_tracker_is_persisted_and_rendered'] = function() {
+$tests['skipped_offers_import_saves_rows'] = function() {
     tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repository->import_skipped_offers_csv( "offer_id,offer_name,decision,reason,notes\n8757,Endura Naturals - PPS,skip,male_enhancement_penis_enlarger,\n9770,Gabrielle Moore Masterclasses,review_later,course_intent,Different strategy" );
+    $skipped = $repository->get_skipped_offers();
+    tmw_assert_same( 2, count( $skipped ), 'CSV import should persist keyed skipped offers rows.' );
+    tmw_assert_same( 'review_later', $skipped['9770']['decision'], 'Decision should be persisted.' );
+};
 
+$tests['skipped_offers_import_sanitizes_values'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repository->import_skipped_offers_csv( "offer_id,offer_name,decision,reason,notes\n8757,<b>Endura</b>,skip,<script>x</script>,https://bad.example" );
+    $skipped = $repository->get_skipped_offers();
+    tmw_assert_true( false === strpos( $skipped['8757']['offer_name'], '<' ), 'Offer name should be sanitized.' );
+    tmw_assert_true( false === strpos( $skipped['8757']['reason'], '<' ), 'Reason should be sanitized.' );
+};
+
+$tests['skipped_offers_import_defaults_empty_decision_to_skip'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repository->import_skipped_offers_csv( "offer_id,offer_name,decision,reason,notes\n8757,Endura,,male_enhancement,Note" );
+    $skipped = $repository->get_skipped_offer( '8757' );
+    tmw_assert_same( 'skip', $skipped['decision'], 'Empty decision should default to skip.' );
+};
+
+$tests['skipped_offers_import_rejects_missing_offer_id'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $counts = $repository->import_skipped_offers_csv( "offer_id,offer_name,decision,reason,notes\n,Endura,skip,male_enhancement,Note" );
+    tmw_assert_same( 0, $counts['imported'], 'Rows missing offer_id should be skipped.' );
+};
+
+$tests['skipped_offers_not_erased_when_settings_save_omits_tracker_field'] = function() {
+    tmw_reset_test_state();
     update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'cr_api_key' => 'secure-key' ) );
     $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repository->save_skipped_offers( array( '8757' => array( 'offer_id' => '8757', 'decision' => 'skip', 'reason' => 'r', 'notes' => '', 'updated_at' => '2026-01-01 00:00:00' ) ) );
     $page = new TMW_CR_Slot_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repository, 'sidebar' );
+    $page->sanitize_settings( array( 'headline' => 'H', 'subheadline' => 'S', 'cta_text' => 'C', 'cta_url' => 'https://base.test', 'subid_param' => 'subid', 'subid_value' => 'slot', 'cr_api_key' => '' ) );
+    tmw_assert_true( null !== $repository->get_skipped_offer( '8757' ), 'Saving unrelated settings should not erase skipped offers.' );
+};
 
-    $page->sanitize_settings(
-        array(
-            'headline' => 'Headline',
-            'subheadline' => 'Subheadline',
-            'cta_text' => 'CTA',
-            'cta_url' => 'https://base.test',
-            'subid_param' => 'subid',
-            'subid_value' => 'slot',
-            'cr_api_key' => '',
-            'skipped_offers_raw' => "8757|Endura Naturals|Male enhancement|Not aligned
-9770|Gabrielle Moore Masterclasses|Course intent|Different strategy",
-        )
-    );
-
-    $skipped = $repository->get_skipped_offers();
-    tmw_assert_same( 2, count( $skipped ), 'Skipped offers tracker should persist admin rows.' );
-    tmw_assert_same( '8757', $skipped[0]['offer_id'], 'Skipped tracker should store offer id.' );
-
+$tests['skipped_offers_table_renders_read_only_rows'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'cr_api_key' => 'secure-key' ) );
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repository->save_skipped_offers( array( '8757' => array( 'offer_id' => '8757', 'offer_name' => 'Endura', 'decision' => 'skip', 'reason' => 'male_enhancement', 'notes' => '', 'updated_at' => '2026-01-01 00:00:00' ) ) );
+    $page = new TMW_CR_Slot_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repository, 'sidebar' );
     $_GET = array( 'tab' => 'settings' );
     ob_start();
     $page->render_page();
     $html = ob_get_clean();
+    tmw_assert_contains( 'Skipped PPS offers', $html, 'Settings tab should render read-only skipped offers table.' );
+    tmw_assert_contains( '8757', $html, 'Settings tab should render skipped offer row.' );
+};
 
-    tmw_assert_contains( 'Skipped PPS Offers Notes (Admin Only)', $html, 'Settings tab should render skipped offers tracker section.' );
-    tmw_assert_contains( 'name="tmw_cr_slot_banner_settings[skipped_offers_raw]"', $html, 'Settings tab should render skipped_offers_raw input.' );
+$tests['skipped_offers_tracker_does_not_change_frontend_pool'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $offers = array(
+        '8757' => array( 'id' => '8757', 'name' => 'Offer A - PPS', 'status' => 'active' ),
+        '9770' => array( 'id' => '9770', 'name' => 'Offer B - PPS', 'status' => 'active' ),
+    );
+    $repository->save_synced_offers( $offers );
+    $before = $repository->get_frontend_slot_offers( 'sidebar', TMW_CR_Slot_Sidebar_Banner::get_settings(), array(), 'US', array() );
+    $repository->save_skipped_offers( array( '8757' => array( 'offer_id' => '8757', 'decision' => 'skip', 'reason' => 'internal', 'notes' => '', 'updated_at' => '2026-01-01 00:00:00' ) ) );
+    $after = $repository->get_frontend_slot_offers( 'sidebar', TMW_CR_Slot_Sidebar_Banner::get_settings(), array(), 'US', array() );
+    tmw_assert_same( count( $before ), count( $after ), 'Skipped offers tracker must not change frontend pool eligibility.' );
 };
 
 $tests['slot_setup_shows_winner_mode_diagnostics'] = function() {

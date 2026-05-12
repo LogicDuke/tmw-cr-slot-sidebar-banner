@@ -2356,6 +2356,19 @@ $tests['combined_override_import_allows_one_empty_textarea'] = function() {
     tmw_assert_same( 'slot-setup', (string) $page->notice['tab'], 'Single-textarea combined import should redirect back to slot-setup.' );
 };
 
+
+$tests['combined_override_import_preserves_distinct_safe_offer_ids'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $_POST['allowed_country_override_csv'] = "offer_id,allowed_countries\nsafe1,\"Belgium\"\nfallback-1,\"United States\"\n";
+    $_POST['final_url_override_csv'] = "offer_id,final_url_override\nsafe1,https://trk.example.com/?tid=safe1\nfallback-1,https://trk.example.com/?tid=fallback1\n";
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $page->handle_import_both_overrides();
+    $saved = $repo->get_offer_overrides();
+    tmw_assert_true( isset( $saved['safe1'] ) && isset( $saved['fallback-1'] ), 'Combined import should keep safe1 and fallback-1 as distinct override keys.' );
+    tmw_assert_true( ! isset( $saved['1'] ), 'Combined import should not coerce safe text IDs to numeric key 1.' );
+};
+
 $tests['combined_override_import_with_both_empty_shows_notice'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );

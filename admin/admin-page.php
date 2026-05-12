@@ -35,6 +35,7 @@ class TMW_CR_Slot_Admin_Page {
         add_action( 'admin_post_tmw_cr_slot_banner_import_final_url_overrides', array( $this, 'handle_import_final_url_overrides' ) );
         add_action( 'admin_post_tmw_cr_slot_banner_import_allowed_country_overrides', array( $this, 'handle_import_allowed_country_overrides' ) );
         add_action( 'admin_post_tmw_cr_slot_banner_import_both_overrides', array( $this, 'handle_import_both_overrides' ) );
+        add_action( 'admin_post_tmw_cr_slot_import_skipped_offers', array( $this, 'handle_import_skipped_offers' ) );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_dashboard_assets' ) );
     }
 
@@ -449,6 +450,23 @@ class TMW_CR_Slot_Admin_Page {
                 $final_url_result['rejected'],
                 $final_url_result['total_saved']
             ),
+            'slot-setup'
+        );
+    }
+
+
+
+    /**
+     * @return void
+     */
+    public function handle_import_skipped_offers() {
+        $this->assert_admin_action( 'tmw_cr_slot_import_skipped_offers' );
+        $raw_csv = isset( $_POST['skipped_offers_csv'] ) ? (string) wp_unslash( $_POST['skipped_offers_csv'] ) : '';
+        $result = $this->offer_repository->import_skipped_offers_csv( $raw_csv );
+
+        $this->redirect_with_notice_to_tab(
+            'success',
+            sprintf( 'Skipped offers import complete. Imported: %1$d, Skipped: %2$d.', (int) ( $result['imported'] ?? 0 ), (int) ( $result['skipped'] ?? 0 ) ),
             'slot-setup'
         );
     }
@@ -1332,6 +1350,44 @@ class TMW_CR_Slot_Admin_Page {
             <textarea name="final_url_override_csv" class="large-text code" rows="6" placeholder="offer_id,final_url_override&#10;8873,https://real-cr-tracking-link.example/..."></textarea>
             <?php submit_button( __( 'Import Both Override CSVs', 'tmw-cr-slot-sidebar-banner' ), 'secondary', 'submit', false ); ?>
         </form>
+
+        <h3><?php esc_html_e( 'Import Skipped / Rejected Offers', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
+        <p class="description"><?php esc_html_e( 'Audit-only tracker for offers we do not want in the banner. This does not change frontend winner logic in this hotfix.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+            <?php wp_nonce_field( 'tmw_cr_slot_import_skipped_offers' ); ?>
+            <input type="hidden" name="action" value="tmw_cr_slot_import_skipped_offers" />
+            <textarea name="skipped_offers_csv" class="large-text code" rows="6" placeholder="offer_id,offer_name,decision,reason,notes&#10;2492,Example Offer,skip,male-targeted,Do not use in sidebar banner&#10;9781,Dating.com PPS,skip,unavailable-account,Excluded from account&#10;9647,Tapyn PPS,skip,unavailable-account,Excluded from account"></textarea>
+            <?php submit_button( __( 'Import Skipped Offers', 'tmw-cr-slot-sidebar-banner' ), 'secondary', 'submit', false ); ?>
+        </form>
+        <?php
+        $skipped_rows = array_values( $this->offer_repository->get_skipped_offers() );
+        usort(
+            $skipped_rows,
+            static function ( $left, $right ) {
+                return strcmp( (string) ( $right['updated_at'] ?? '' ), (string) ( $left['updated_at'] ?? '' ) );
+            }
+        );
+        $skipped_rows = array_slice( $skipped_rows, 0, 50 );
+        ?>
+        <h4><?php esc_html_e( 'Current skipped / rejected offers (latest 50)', 'tmw-cr-slot-sidebar-banner' ); ?></h4>
+        <table class="widefat striped">
+            <thead><tr><th><?php esc_html_e( 'Offer ID', 'tmw-cr-slot-sidebar-banner' ); ?></th><th><?php esc_html_e( 'Offer Name', 'tmw-cr-slot-sidebar-banner' ); ?></th><th><?php esc_html_e( 'Decision', 'tmw-cr-slot-sidebar-banner' ); ?></th><th><?php esc_html_e( 'Reason', 'tmw-cr-slot-sidebar-banner' ); ?></th><th><?php esc_html_e( 'Updated', 'tmw-cr-slot-sidebar-banner' ); ?></th></tr></thead>
+            <tbody>
+                <?php if ( empty( $skipped_rows ) ) : ?>
+                    <tr><td colspan="5"><?php esc_html_e( 'No skipped offers saved yet.', 'tmw-cr-slot-sidebar-banner' ); ?></td></tr>
+                <?php else : ?>
+                    <?php foreach ( $skipped_rows as $row ) : ?>
+                        <tr>
+                            <td><?php echo esc_html( (string) ( $row['offer_id'] ?? '' ) ); ?></td>
+                            <td><?php echo esc_html( (string) ( $row['offer_name'] ?? '' ) ); ?></td>
+                            <td><?php echo esc_html( (string) ( $row['decision'] ?? '' ) ); ?></td>
+                            <td><?php echo esc_html( (string) ( $row['reason'] ?? '' ) ); ?></td>
+                            <td><?php echo esc_html( (string) ( $row['updated_at'] ?? '' ) ); ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </tbody>
+        </table>
         <?php
         endif;
         ?>

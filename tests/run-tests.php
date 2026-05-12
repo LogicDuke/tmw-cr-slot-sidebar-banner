@@ -105,11 +105,81 @@ function tmw_reset_test_state() {
     $GLOBALS['tmw_test_remote_get']   = null;
     $GLOBALS['tmw_test_last_redirect'] = '';
     $GLOBALS['tmw_test_cron_events'] = array();
+    $GLOBALS['tmw_test_current_user_can'] = true;
+    $GLOBALS['tmw_test_added_options_pages'] = array();
     $_GET  = array();
     $_POST = array();
 }
 
 $tests = array();
+
+
+$tests['admin_menu_registers_tmw_slot_banner_page'] = function() {
+    tmw_reset_test_state();
+    $GLOBALS['tmw_test_added_options_pages'] = array();
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    $page->register_menu();
+
+    tmw_assert_same( 1, count( $GLOBALS['tmw_test_added_options_pages'] ), 'Admin menu should register exactly one options page entry.' );
+    $entry = $GLOBALS['tmw_test_added_options_pages'][0];
+    tmw_assert_same( 'TMW Slot Banner', (string) $entry['menu_title'], 'Admin menu title should be visible as TMW Slot Banner.' );
+    tmw_assert_same( 'manage_options', (string) $entry['capability'], 'Admin page capability should require manage_options.' );
+    tmw_assert_same( 'tmw-cr-slot-sidebar-banner', (string) $entry['menu_slug'], 'Admin menu slug should remain stable.' );
+};
+
+$tests['slot_setup_page_accessible_for_manage_options_user'] = function() {
+    tmw_reset_test_state();
+    $GLOBALS['tmw_test_current_user_can'] = true;
+    $_GET = array( 'tab' => 'slot-setup' );
+
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+
+    ob_start();
+    $page->render_page();
+    $html = (string) ob_get_clean();
+
+    tmw_assert_contains( 'TMW CrakRevenue Slot Operations Dashboard', $html, 'Manage options users should be able to load the admin dashboard page.' );
+    tmw_assert_contains( 'Slot Setup', $html, 'Slot Setup tab should render for manage_options users.' );
+};
+
+$tests['slot_setup_url_uses_correct_menu_slug'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+
+    ob_start();
+    $page->render_page();
+    $html = (string) ob_get_clean();
+
+    tmw_assert_contains( 'options-general.php?page=tmw-cr-slot-sidebar-banner&tab=slot-setup', $html, 'Slot Setup tab links should use the stable options-general.php menu slug URL.' );
+};
+
+$tests['slot_setup_renders_override_import_sections'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+
+    ob_start();
+    $page->render_page();
+    $html = (string) ob_get_clean();
+
+    tmw_assert_contains( 'Import Allowed Country Overrides', $html, 'Slot Setup should render allowed country import section.' );
+    tmw_assert_contains( 'Import Final URL Overrides', $html, 'Slot Setup should render final URL import section.' );
+    tmw_assert_contains( 'Import Both Override CSVs', $html, 'Slot Setup should render combined override import action.' );
+};
+
+
+$tests['admin_page_runtime_file_contains_no_skipped_offers_slot_setup_render'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+
+    ob_start();
+    $page->render_page();
+    $html = (string) ob_get_clean();
+
+    tmw_assert_same( false, strpos( $html, 'Skipped PPS Offers' ), 'Slot Setup should not render skipped-offers UI in the runtime hotfix.' );
+};
 
 $tests['sanitize_settings_preserves_blank_api_key'] = function() {
     tmw_reset_test_state();
@@ -623,7 +693,7 @@ $tests['skipped_offers_not_erased_when_settings_save_omits_tracker_field'] = fun
     tmw_assert_true( null !== $repository->get_skipped_offer( '8757' ), 'Saving unrelated settings should not erase skipped offers.' );
 };
 
-$tests['skipped_offers_table_renders_read_only_rows'] = function() {
+$tests['skipped_offers_table_not_rendered_in_settings_runtime_hotfix'] = function() {
     tmw_reset_test_state();
     update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'cr_api_key' => 'secure-key' ) );
     $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
@@ -633,8 +703,8 @@ $tests['skipped_offers_table_renders_read_only_rows'] = function() {
     ob_start();
     $page->render_page();
     $html = ob_get_clean();
-    tmw_assert_contains( 'Skipped PPS offers', $html, 'Settings tab should render read-only skipped offers table.' );
-    tmw_assert_contains( '8757', $html, 'Settings tab should render skipped offer row.' );
+    tmw_assert_same( false, strpos( $html, 'Skipped PPS offers' ), 'Settings tab should not render skipped offers UI during runtime hotfix.' );
+    tmw_assert_same( false, strpos( $html, '8757' ), 'Settings tab should not render skipped offers rows during runtime hotfix.' );
 };
 
 $tests['skipped_offers_tracker_does_not_change_frontend_pool'] = function() {

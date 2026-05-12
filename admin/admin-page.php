@@ -1596,34 +1596,7 @@ class TMW_CR_Slot_Admin_Page {
             </table>
 
 
-            <?php
-            $skipped_rows = $this->offer_repository->get_skipped_offers();
-            ?>
-            <h2><?php esc_html_e( 'Skipped PPS Offers Notes (Admin Only)', 'tmw-cr-slot-sidebar-banner' ); ?></h2>
-            <table class="form-table" role="presentation">
-                <tbody>
-                    <tr>
-                        <th scope="row"><label for="tmw-cr-skipped-offers-csv"><?php esc_html_e( 'CSV import', 'tmw-cr-slot-sidebar-banner' ); ?></label></th>
-                        <td>
-                            <textarea class="large-text code" rows="8" id="tmw-cr-skipped-offers-csv" name="<?php echo esc_attr( $this->option_key ); ?>[skipped_offers_csv]" placeholder="offer_id,offer_name,decision,reason,notes&#10;8757,Endura Naturals - PPS,skip,male_enhancement_penis_enlarger,Not aligned"><?php echo esc_textarea( '' ); ?></textarea>
-                            <p class="description"><?php esc_html_e( 'Headers: offer_id,offer_name,decision,reason,notes. Required: offer_id,decision,reason. Decisions: skip, review_later. Admin-only tracker; does not change frontend behavior.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-            <h2><?php esc_html_e( 'Skipped PPS offers', 'tmw-cr-slot-sidebar-banner' ); ?></h2>
-            <table class="widefat striped" role="presentation">
-                <thead><tr><th>Offer ID</th><th>Offer name</th><th>Decision</th><th>Reason</th><th>Notes</th><th>Updated at</th></tr></thead>
-                <tbody>
-                <?php if ( empty( $skipped_rows ) ) : ?>
-                    <tr><td colspan="6"><?php esc_html_e( 'No skipped PPS offers recorded yet.', 'tmw-cr-slot-sidebar-banner' ); ?></td></tr>
-                <?php else : foreach ( $skipped_rows as $row ) : ?>
-                    <tr>
-                        <td><?php echo esc_html( (string) ( $row['offer_id'] ?? '' ) ); ?></td><td><?php echo esc_html( (string) ( $row['offer_name'] ?? '' ) ); ?></td><td><?php echo esc_html( (string) ( $row['decision'] ?? '' ) ); ?></td><td><?php echo esc_html( (string) ( $row['reason'] ?? '' ) ); ?></td><td><?php echo esc_html( (string) ( $row['notes'] ?? '' ) ); ?></td><td><?php echo esc_html( (string) ( $row['updated_at'] ?? '' ) ); ?></td>
-                    </tr>
-                <?php endforeach; endif; ?>
-                </tbody>
-            </table>
+            <?php // Skipped offers UI intentionally disabled in runtime hotfix to restore stable admin surface. ?>
 
             <?php submit_button( __( 'Save Banner Settings', 'tmw-cr-slot-sidebar-banner' ) ); ?>
         </form>

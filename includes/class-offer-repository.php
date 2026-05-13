@@ -1168,6 +1168,7 @@ class TMW_CR_Slot_Offer_Repository {
         $admin_filter = array_fill_keys( $families, 0 );
         $group_admin_filter = array_fill_keys( $families, 0 );
         $frontend_eligible = array_fill_keys( $families, 0 );
+        $cr_ui_label_comparison = array_fill_keys( $families, 0 );
 
         foreach ( $offers as $offer ) {
             if ( ! is_array( $offer ) ) {
@@ -1195,16 +1196,37 @@ class TMW_CR_Slot_Offer_Repository {
             $detected_keys = array_values( array_unique( $detected_keys ) );
 
             $name_haystack = strtolower( (string) ( $offer['name'] ?? '' ) );
+            $is_cr_ui_comparison_normal_offer = false;
             if ( false !== strpos( $name_haystack, 'group fallback' ) ) {
                 ++$source_class['group_fallback'];
-            } elseif ( in_array( 'fallback', $detected_keys, true ) ) {
+            } elseif ( in_array( 'fallback', $detected_keys, true ) || false !== strpos( $name_haystack, 'fallback' ) ) {
                 ++$source_class['fallback'];
             } elseif ( in_array( 'smartlink', $detected_keys, true ) ) {
                 ++$source_class['smartlink'];
             } elseif ( ! empty( $offer['id'] ) ) {
                 ++$source_class['normal_offer'];
+                $is_cr_ui_comparison_normal_offer = true;
             } else {
                 ++$source_class['unknown'];
+            }
+
+            if ( $is_cr_ui_comparison_normal_offer ) {
+                $comparison_key = '';
+                if ( false !== strpos( $name_haystack, 'revshare lifetime' ) ) {
+                    $comparison_key = 'revshare_lifetime';
+                } elseif ( false !== strpos( $name_haystack, 'revshare' ) ) {
+                    $comparison_key = 'revshare';
+                } else {
+                    foreach ( $detected_keys as $detected_key ) {
+                        if ( in_array( $detected_key, array( 'pps', 'soi', 'doi', 'cpc', 'cpi', 'cpm', 'multi_cpa', 'revshare', 'revshare_lifetime' ), true ) ) {
+                            $comparison_key = $detected_key;
+                            break;
+                        }
+                    }
+                }
+                if ( '' !== $comparison_key && isset( $cr_ui_label_comparison[ $comparison_key ] ) ) {
+                    ++$cr_ui_label_comparison[ $comparison_key ];
+                }
             }
 
             $offer_id = (string) ( $offer['id'] ?? '' );
@@ -1229,6 +1251,7 @@ class TMW_CR_Slot_Offer_Repository {
             'detected' => $detected,
             'admin_filter' => $admin_filter,
             'group_admin_filter' => $group_admin_filter,
+            'cr_ui_label_comparison' => $cr_ui_label_comparison,
             'frontend_eligible' => $frontend_eligible, // TODO(PR#61): add safe precomputed frontend-eligible counters if needed.
         );
     }

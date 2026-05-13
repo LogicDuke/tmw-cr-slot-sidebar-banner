@@ -2178,7 +2178,9 @@ class TMW_CR_Slot_Admin_Page {
                     $raw_count = (int) ( $this->get_reconciliation_family_count( $reconciliation_counts, 'raw', $normalized ) );
                     $detected_count = (int) ( $this->get_reconciliation_family_count( $reconciliation_counts, 'detected', $normalized ) );
                     $fallback_group_count = (int) $this->get_reconciliation_group_family_count( $reconciliation_counts, $normalized );
-                    $context .= sprintf( ' | Raw payout_type %1$s rows: %2$d | Detected local %1$s rows: %3$d | Group fallback/local rows in this family: %4$d', $label, $raw_count, $detected_count, $fallback_group_count );
+                    $comparison_count = (int) ( $this->get_reconciliation_family_count( $reconciliation_counts, 'cr_ui_label_comparison', $normalized ) );
+                    $extras_count = max( 0, (int) ( $this->get_reconciliation_family_count( $reconciliation_counts, 'admin_filter', $normalized ) - $comparison_count ) );
+                    $context .= sprintf( ' | CR UI-label comparison %1$s rows: %2$d | Local fallback/smartlink %1$s extras: %3$d', $label, $comparison_count, $extras_count );
                     if ( 'revshare_lifetime' === $normalized ) {
                         $context .= sprintf( ' | Raw cpa_flat rows mapped locally: %d', (int) ( $reconciliation_counts['raw']['cpa_flat'] ?? 0 ) );
                     }
@@ -2225,9 +2227,11 @@ class TMW_CR_Slot_Admin_Page {
                 <thead>
                     <tr>
                         <th><?php esc_html_e( 'Payout family', 'tmw-cr-slot-sidebar-banner' ); ?></th>
-                        <th><?php esc_html_e( 'Raw payout_type', 'tmw-cr-slot-sidebar-banner' ); ?></th>
+                        <th><?php esc_html_e( 'API payout_type raw count', 'tmw-cr-slot-sidebar-banner' ); ?></th>
                         <th><?php esc_html_e( 'Detected local type', 'tmw-cr-slot-sidebar-banner' ); ?></th>
                         <th><?php esc_html_e( 'Admin filter count', 'tmw-cr-slot-sidebar-banner' ); ?></th>
+                        <th><?php esc_html_e( 'CR UI-label comparison', 'tmw-cr-slot-sidebar-banner' ); ?></th>
+                        <th><?php esc_html_e( 'Local fallback/smartlink extras', 'tmw-cr-slot-sidebar-banner' ); ?></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -2238,15 +2242,19 @@ class TMW_CR_Slot_Admin_Page {
                             <td><?php echo esc_html( (string) $this->get_reconciliation_family_count( $counts, 'raw', $family ) ); ?></td>
                             <td><?php echo esc_html( (string) $this->get_reconciliation_family_count( $counts, 'detected', $family ) ); ?></td>
                             <td><?php echo esc_html( (string) $this->get_reconciliation_family_count( $counts, 'admin_filter', $family ) ); ?></td>
+                            <?php $comparison_count = (int) $this->get_reconciliation_family_count( $counts, 'cr_ui_label_comparison', $family ); ?>
+                            <td><?php echo esc_html( (string) $comparison_count ); ?></td>
+                            <td><?php echo esc_html( (string) max( 0, (int) $this->get_reconciliation_family_count( $counts, 'admin_filter', $family ) - $comparison_count ) ); ?></td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
             </table>
             <p class="description">
-                <?php esc_html_e( 'Raw CR/API field counts use the synced raw payout_type field only.', 'tmw-cr-slot-sidebar-banner' ); ?><br />
-                <?php esc_html_e( 'Detected local type counts use offer name/type detection.', 'tmw-cr-slot-sidebar-banner' ); ?><br />
-                <?php esc_html_e( 'Admin filter counts use the same normalized families as the Offers filters.', 'tmw-cr-slot-sidebar-banner' ); ?><br />
-                <?php esc_html_e( 'These counts may differ from the CrakRevenue website dashboard.', 'tmw-cr-slot-sidebar-banner' ); ?>
+                <?php esc_html_e( 'API payout_type is the CR API calculation method. It is not always the same as the CrakRevenue dashboard Payout Type label. CR UI-label comparison excludes local group fallback, fallback, smartlink, and unknown rows.', 'tmw-cr-slot-sidebar-banner' ); ?><br />
+                <?php esc_html_e( 'API payout_type: The raw API calculation method, such as cpa_flat, cpa_percentage, cpc, cpm.', 'tmw-cr-slot-sidebar-banner' ); ?><br />
+                <?php esc_html_e( 'Detected local type: Local inferred CR UI-style payout label from offer names/type keys.', 'tmw-cr-slot-sidebar-banner' ); ?><br />
+                <?php esc_html_e( 'Admin filter count: Current local filter matching family.', 'tmw-cr-slot-sidebar-banner' ); ?><br />
+                <?php esc_html_e( 'CR UI-label comparison: Local approximation for comparing with the CrakRevenue website dashboard.', 'tmw-cr-slot-sidebar-banner' ); ?>
             </p>
         </div>
         <?php

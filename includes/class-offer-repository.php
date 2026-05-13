@@ -1168,6 +1168,7 @@ class TMW_CR_Slot_Offer_Repository {
         $admin_filter = array_fill_keys( $families, 0 );
         $group_admin_filter = array_fill_keys( $families, 0 );
         $frontend_eligible = array_fill_keys( $families, 0 );
+        $cr_ui_label_comparison = array_fill_keys( $families, 0 );
 
         foreach ( $offers as $offer ) {
             if ( ! is_array( $offer ) ) {
@@ -1207,6 +1208,25 @@ class TMW_CR_Slot_Offer_Repository {
                 ++$source_class['unknown'];
             }
 
+            if ( ! in_array( 'fallback', $detected_keys, true ) && ! in_array( 'smartlink', $detected_keys, true ) && false === strpos( $name_haystack, 'group fallback' ) && ! empty( $offer['id'] ) ) {
+                $comparison_key = '';
+                if ( false !== strpos( $name_haystack, 'revshare lifetime' ) ) {
+                    $comparison_key = 'revshare_lifetime';
+                } elseif ( false !== strpos( $name_haystack, 'revshare' ) ) {
+                    $comparison_key = 'revshare';
+                } else {
+                    foreach ( $detected_keys as $detected_key ) {
+                        if ( in_array( $detected_key, array( 'pps', 'soi', 'doi', 'cpc', 'cpi', 'cpm', 'multi_cpa', 'revshare', 'revshare_lifetime' ), true ) ) {
+                            $comparison_key = $detected_key;
+                            break;
+                        }
+                    }
+                }
+                if ( '' !== $comparison_key && isset( $cr_ui_label_comparison[ $comparison_key ] ) ) {
+                    ++$cr_ui_label_comparison[ $comparison_key ];
+                }
+            }
+
             $offer_id = (string) ( $offer['id'] ?? '' );
             $meta = '' !== $offer_id ? $this->get_offer_dashboard_metadata( $offer_id, $offer ) : array();
             $admin_values = (array) ( $this->get_admin_offer_filter_values( $offer, $meta )['payout_type'] ?? array() );
@@ -1229,6 +1249,7 @@ class TMW_CR_Slot_Offer_Repository {
             'detected' => $detected,
             'admin_filter' => $admin_filter,
             'group_admin_filter' => $group_admin_filter,
+            'cr_ui_label_comparison' => $cr_ui_label_comparison,
             'frontend_eligible' => $frontend_eligible, // TODO(PR#61): add safe precomputed frontend-eligible counters if needed.
         );
     }

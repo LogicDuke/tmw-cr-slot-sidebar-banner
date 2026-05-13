@@ -1385,7 +1385,7 @@ class TMW_CR_Slot_Offer_Repository {
                     continue;
                 }
 
-                if ( $this->is_offer_skipped_for_frontend( $legacy_id, $skipped_offer_ids ) ) { ++$excluded_during_pool_build; continue; }
+                if ( $this->should_exclude_skipped_frontend_offer( $legacy_id, $skipped_offer_ids, $excluded_during_pool_build ) ) { continue; }
                 if ( ! $this->is_offer_allowed_for_country( $legacy_id, $country, array(), array(), $legacy_catalog ) ) {
                     continue;
                 }

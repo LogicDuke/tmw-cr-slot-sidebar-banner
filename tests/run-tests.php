@@ -3917,6 +3917,20 @@ $tests['offers_dashboard_payout_type_multi_cpa_falls_back_from_raw_cpa_when_meta
     tmw_assert_same( 1, (int) $result['total'], 'Multi-CPA filter should include raw CPA offer when metadata families are missing.' );
     tmw_assert_same( 'mc1', (string) $result['items'][0]['id'], 'Fallback should map raw CPA to multi_cpa family.' );
 };
+$tests['offers_dashboard_payout_type_multi_cpa_matches_direct_raw_cpa'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'mc2' => array( 'id' => 'mc2', 'name' => 'Direct CPA', 'status' => 'active', 'payout_type' => 'CPA' ) ) );
+    $result = $repo->get_filtered_synced_offers_for_admin( array( 'payout_type' => array( 'multi_cpa' ) ), array() );
+    tmw_assert_same( 1, (int) $result['total'], 'Direct raw CPA payout_type should map to multi_cpa.' );
+};
+$tests['offers_dashboard_payout_type_multi_cpa_matches_direct_raw_cpa_flat'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'mc3' => array( 'id' => 'mc3', 'name' => 'Direct CPA Flat', 'status' => 'active', 'payout_type' => 'cpa_flat' ) ) );
+    $result = $repo->get_filtered_synced_offers_for_admin( array( 'payout_type' => array( 'multi_cpa' ) ), array() );
+    tmw_assert_same( 1, (int) $result['total'], 'Direct raw cpa_flat payout_type should map to multi_cpa.' );
+};
 $tests['offers_dashboard_status_filter_preserves_spaced_status_value'] = function() {
     tmw_reset_test_state();
     $_GET = array( 'tab' => 'offers', 'status' => 'pending review' );
@@ -3956,12 +3970,45 @@ $tests['offers_dashboard_performs_and_accepted_country_match_code_and_name'] = f
     tmw_assert_same( 1, (int) $repo->get_filtered_synced_offers_for_admin( array( 'performs_in' => array( 'BE' ) ), array() )['total'], 'BE code should match Belgium name.' );
     tmw_assert_same( 1, (int) $repo->get_filtered_synced_offers_for_admin( array( 'accepted_country' => array( 'usa' ) ), array() )['total'], 'USA should normalize to US.' );
 };
+$tests['offers_dashboard_performs_in_matches_germany_name_to_de_code'] = function() {
+    tmw_reset_test_state(); $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'de1' => array( 'id' => 'de1', 'name' => 'Germany Offer', 'status' => 'active', 'payout_type' => 'PPS', 'performs_in' => 'Germany' ) ) );
+    tmw_assert_same( 1, (int) $repo->get_filtered_synced_offers_for_admin( array( 'performs_in' => array( 'DE' ) ), array() )['total'], 'Germany should normalize to DE.' );
+};
+$tests['offers_dashboard_accepted_country_matches_united_kingdom_name_to_gb_code'] = function() {
+    tmw_reset_test_state(); $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'gb1' => array( 'id' => 'gb1', 'name' => 'UK Offer', 'status' => 'active', 'payout_type' => 'PPS', 'accepted_country' => 'United Kingdom' ) ) );
+    tmw_assert_same( 1, (int) $repo->get_filtered_synced_offers_for_admin( array( 'accepted_country' => array( 'GB' ) ), array() )['total'], 'United Kingdom should normalize to GB.' );
+};
+$tests['offers_dashboard_accepted_country_matches_netherlands_name_to_nl_code'] = function() {
+    tmw_reset_test_state(); $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'nl1' => array( 'id' => 'nl1', 'name' => 'NL Offer', 'status' => 'active', 'payout_type' => 'PPS', 'accepted_country' => 'Netherlands' ) ) );
+    tmw_assert_same( 1, (int) $repo->get_filtered_synced_offers_for_admin( array( 'accepted_country' => array( 'NL' ) ), array() )['total'], 'Netherlands should normalize to NL.' );
+};
 $tests['offers_dashboard_combined_live_url_shape_with_payout_type_soi_returns_rows'] = function() {
     tmw_reset_test_state(); $_GET = array( 'tab' => 'offers', 'search' => '', 'payout_type' => array( 'soi' ), 'status' => '', 'featured' => '', 'approval_required' => '', 'image_status' => '', 'logo_status' => '' );
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ); $repo->save_synced_offers( array( 's01' => array( 'id' => 's01', 'name' => 'SOI URL Shape', 'status' => 'active', 'payout_type' => 'SOI' ) ) );
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); ob_start(); $page->render_page(); $html = (string) ob_get_clean();
     tmw_assert_contains( 'SOI URL Shape', $html, 'SOI row should render for live URL shape params.' );
     tmw_assert_contains( 'TMW-BANNER-OFFERS-FILTER', $html, 'Debug comment should render when filters are active.' );
+};
+$tests['offers_dashboard_filter_options_include_raw_only_tag'] = function() {
+    tmw_reset_test_state(); $_GET = array( 'tab' => 'offers' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'ot1' => array( 'id' => 'ot1', 'name' => 'Tag Raw', 'status' => 'active', 'payout_type' => 'PPS', 'tag' => 'cam' ) ) );
+    update_option( 'tmw_cr_slot_banner_offer_dashboard_meta', array( 'ot1' => array( 'tag' => array( 'wrong' ) ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'name="tag[]" value="cam"', $html, 'Tag filter panel should include raw-only tag.' );
+};
+$tests['offers_dashboard_filter_options_include_raw_only_vertical'] = function() { tmw_reset_test_state(); $_GET = array( 'tab' => 'offers' ); $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ); $repo->save_synced_offers( array( 'ov1' => array( 'id' => 'ov1', 'name' => 'Vert Raw', 'status' => 'active', 'payout_type' => 'PPS', 'vertical' => 'dating' ) ) ); $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); ob_start(); $page->render_page(); $html = (string) ob_get_clean(); tmw_assert_contains( 'name="vertical[]" value="dating"', $html, 'Vertical filter panel should include raw-only vertical.' ); };
+$tests['offers_dashboard_filter_options_include_raw_only_payout_type_soi'] = function() { tmw_reset_test_state(); $_GET = array( 'tab' => 'offers' ); $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ); $repo->save_synced_offers( array( 'op1' => array( 'id' => 'op1', 'name' => 'SOI Raw', 'status' => 'active', 'payout_type' => 'SOI' ) ) ); $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); ob_start(); $page->render_page(); $html = (string) ob_get_clean(); tmw_assert_contains( 'name="payout_type[]" value="soi"', $html, 'Payout filter panel should include raw-only SOI.' ); };
+$tests['offers_dashboard_filter_options_include_raw_country_name_as_code'] = function() { tmw_reset_test_state(); $_GET = array( 'tab' => 'offers' ); $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ); $repo->save_synced_offers( array( 'oc1' => array( 'id' => 'oc1', 'name' => 'Country Raw', 'status' => 'active', 'payout_type' => 'PPS', 'accepted_country' => 'Germany' ) ) ); $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); ob_start(); $page->render_page(); $html = (string) ob_get_clean(); tmw_assert_contains( 'name="accepted_country[]" value="DE"', $html, 'Accepted country filter panel should include DE from Germany raw value.' ); };
+$tests['offers_dashboard_filter_diagnostics_are_not_placeholder_counts'] = function() {
+    tmw_reset_test_state(); $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'lg1' => array( 'id' => 'lg1', 'name' => 'Log Fixture', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $log = tmw_capture_error_log( function() use ( $repo ) { $repo->get_filtered_synced_offers_for_admin( array( 'payout_type' => array( 'pps' ) ), array() ); } );
+    tmw_assert_true( false === strpos( $log, 'matched=0 raw_used=1 metadata_used=1' ), 'Placeholder family log pattern must not appear.' );
+    tmw_assert_true( false !== strpos( $log, '[TMW-BANNER-OFFERS-FILTER]' ), 'Summary filter diagnostic log should remain present.' );
 };
 $tests['offers_dashboard_clear_all_link_has_clean_base_url'] = function() {
     tmw_reset_test_state();

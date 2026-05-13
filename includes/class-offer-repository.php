@@ -891,9 +891,10 @@ class TMW_CR_Slot_Offer_Repository {
 
         foreach ( $offers as $offer_id => $offer ) {
             $meta = $this->get_offer_dashboard_metadata( (string) $offer_id, $offer );
+            $combined = $this->get_admin_offer_filter_values( $offer, $meta );
 
             foreach ( $supported as $field_key => $values ) {
-                $field_values = isset( $meta[ $field_key ] ) ? (array) $meta[ $field_key ] : array();
+                $field_values = isset( $combined[ $field_key ] ) ? (array) $combined[ $field_key ] : array();
                 foreach ( $field_values as $value ) {
                     $value = $this->normalize_filter_family_value( $field_key, $value );
                     if ( '' === $value ) {
@@ -1116,7 +1117,6 @@ class TMW_CR_Slot_Offer_Repository {
         foreach ( $family_filters as $family => $requested_values ) {
             if ( empty( $requested_values ) ) { continue; }
             $active_filters[] = sanitize_key( $family );
-            error_log( sprintf( '[TMW-BANNER-OFFERS-FILTER-FAMILY] family=%s requested=%s matched=%d raw_used=%d metadata_used=%d', sanitize_key( $family ), implode( ',', array_map( 'sanitize_key', (array) $requested_values ) ), 0, 1, 1 ) );
         }
         $active_filters = array_values( array_unique( $active_filters ) );
         if ( ! empty( $active_filters ) ) {
@@ -3364,6 +3364,7 @@ class TMW_CR_Slot_Offer_Repository {
                 'cpa_percentage' => 'revshare',
                 'revshare' => 'revshare',
                 'revenue_share' => 'revshare',
+                'cpa' => 'multi_cpa',
                 'cpa_flat' => 'revshare_lifetime',
                 'revshare_lifetime' => 'revshare_lifetime',
                 'pps' => 'pps',
@@ -3401,6 +3402,12 @@ class TMW_CR_Slot_Offer_Repository {
         $map = array(
             'be' => 'BE', 'belgium' => 'BE',
             'us' => 'US', 'usa' => 'US', 'united states' => 'US', 'united_states' => 'US',
+            'united kingdom' => 'GB', 'uk' => 'GB', 'great britain' => 'GB',
+            'germany' => 'DE', 'france' => 'FR', 'canada' => 'CA', 'australia' => 'AU',
+            'netherlands' => 'NL', 'spain' => 'ES', 'italy' => 'IT', 'austria' => 'AT',
+            'switzerland' => 'CH', 'sweden' => 'SE', 'norway' => 'NO', 'denmark' => 'DK',
+            'finland' => 'FI', 'ireland' => 'IE', 'portugal' => 'PT', 'poland' => 'PL',
+            'brazil' => 'BR', 'mexico' => 'MX',
         );
         if ( isset( $map[ $value ] ) ) {
             return $map[ $value ];

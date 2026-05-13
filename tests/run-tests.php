@@ -4852,6 +4852,177 @@ $tests['slot_setup_cpi_cpm_options_render_unchecked_by_default'] = function() {
     tmw_assert_true( false !== strpos( $html, 'value="pps" checked' ), 'PPS should remain checked by default.' );
 };
 
+$tests['cr_fixture_reconciliation_returns_expected_shape'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        '235' => array( 'id' => '235', 'name' => 'CR Match 235', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+        'local-only-1' => array( 'id' => 'local-only-1', 'name' => 'Local Only PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+        'smart-1' => array( 'id' => 'smart-1', 'name' => 'CR Smartlink - Global', 'status' => 'active', 'payout_type' => 'cpa_both' ),
+    ) );
+    $audit = $repo->get_cr_fixture_reconciliation_audit();
+    foreach ( array( 'fixture_available', 'fixture_rows', 'matched_ids', 'cr_missing_locally', 'local_normal_missing_from_cr', 'local_fallback_missing_from_cr', 'local_smartlink_missing_from_cr', 'payout_label_mismatches', 'summary_by_cr_payout_type' ) as $key ) {
+        tmw_assert_true( array_key_exists( $key, $audit ), 'Expected key missing: ' . $key );
+    }
+    tmw_assert_true( is_array( $audit['cr_missing_locally'] ), 'cr_missing_locally should be array.' );
+};
+
+$tests['cr_fixture_reconciliation_matches_known_fixture_ids'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $audit = $repo->get_cr_fixture_reconciliation_audit();
+    tmw_assert_same( 273, (int) $audit['fixture_rows'], 'Fixture rows should be 273.' );
+    tmw_assert_same( 273, (int) $audit['fixture_unique_ids'], 'Fixture unique IDs should be 273.' );
+    $found_235 = false;
+    foreach ( (array) $audit['cr_missing_locally'] as $row ) {
+        if ( '235' === (string) ( $row['cr_id'] ?? '' ) ) {
+            $found_235 = true;
+            tmw_assert_same( 'Revshare Lifetime', (string) ( $row['payout_type'] ?? '' ), 'CR 235 payout_type should match fixture.' );
+            tmw_assert_same( 'Required', (string) ( $row['approval'] ?? '' ), 'CR 235 approval should match fixture.' );
+        }
+    }
+    tmw_assert_true( $found_235, 'Known CR ID 235 should be loaded from fixture.' );
+};
+
+$tests['cr_fixture_reconciliation_detects_cr_missing_locally'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '1000' => array( 'id' => '1000', 'name' => 'Only local', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $audit = $repo->get_cr_fixture_reconciliation_audit();
+    $ids = array_map( static function( $row ) { return (string) ( $row['cr_id'] ?? '' ); }, (array) $audit['cr_missing_locally'] );
+    tmw_assert_true( in_array( '235', $ids, true ), 'CR missing locally should include ID 235 when absent.' );
+};
+
+$tests['cr_fixture_reconciliation_detects_local_normal_missing_from_cr'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( 'local-only-1' => array( 'id' => 'local-only-1', 'name' => 'Local Offer', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $audit = $repo->get_cr_fixture_reconciliation_audit();
+    $ids = array_map( static function( $row ) { return (string) ( $row['id'] ?? '' ); }, (array) $audit['local_normal_missing_from_cr'] );
+    tmw_assert_true( in_array( 'local-only-1', $ids, true ), 'Normal local-only row should appear in normal bucket.' );
+};
+
+$tests['cr_fixture_reconciliation_separates_fallback_and_smartlink_missing_from_cr'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        'fallback-1' => array( 'id' => 'fallback-1', 'name' => 'Group Fallback - Offer', 'status' => 'active', 'payout_type' => 'PPS' ),
+        'smart-1' => array( 'id' => 'smart-1', 'name' => 'CR Smartlink - Offer', 'status' => 'active', 'payout_type' => 'cpa_both' ),
+    ) );
+    $audit = $repo->get_cr_fixture_reconciliation_audit();
+    $fallback_ids = array_map( static function( $row ) { return (string) ( $row['id'] ?? '' ); }, (array) $audit['local_fallback_missing_from_cr'] );
+    $smart_ids = array_map( static function( $row ) { return (string) ( $row['id'] ?? '' ); }, (array) $audit['local_smartlink_missing_from_cr'] );
+    $normal_ids = array_map( static function( $row ) { return (string) ( $row['id'] ?? '' ); }, (array) $audit['local_normal_missing_from_cr'] );
+    tmw_assert_true( in_array( 'fallback-1', $fallback_ids, true ), 'Fallback row should appear in fallback bucket.' );
+    tmw_assert_true( in_array( 'smart-1', $smart_ids, true ), 'Smartlink row should appear in smartlink bucket.' );
+    tmw_assert_true( ! in_array( 'fallback-1', $normal_ids, true ) && ! in_array( 'smart-1', $normal_ids, true ), 'Fallback/smartlink must not appear in normal bucket.' );
+};
+
+$tests['cr_fixture_reconciliation_detects_payout_label_mismatch_conservatively'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        '235' => array( 'id' => '235', 'name' => 'Mismatched 235', 'status' => 'active', 'payout_type' => 'cpc' ),
+    ) );
+    $audit = $repo->get_cr_fixture_reconciliation_audit();
+    $match = null;
+    foreach ( (array) $audit['payout_label_mismatches'] as $row ) {
+        if ( '235' === (string) ( $row['cr_id'] ?? '' ) ) { $match = $row; break; }
+    }
+    tmw_assert_true( is_array( $match ), 'Mismatch entry for 235 should exist.' );
+    tmw_assert_true( ! empty( $match['cr_payout_type'] ) && array_key_exists( 'local_detected_type_keys', $match ) && array_key_exists( 'local_admin_filter_families', $match ), 'Mismatch should include CR payout and local detected/admin families.' );
+};
+
+$tests['offers_tab_renders_cr_fixture_reconciliation_panel'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    foreach ( array( 'CR CSV vs local offer ID reconciliation', 'parsed CrakRevenue dashboard CSV fixture', 'read-only audit data', 'CR fixture rows', 'Matched IDs', 'CR IDs missing locally', 'Local normal offers missing from CR fixture', 'Payout label mismatches' ) as $needle ) {
+        tmw_assert_contains( $needle, $html, 'Missing panel content: ' . $needle );
+    }
+};
+
+$tests['cr_fixture_reconciliation_missing_fixture_does_not_fatal'] = function() {
+    tmw_reset_test_state();
+    $fixture_path = __DIR__ . '/fixtures/cr_offers_parsed.csv';
+    $tmp_path = __DIR__ . '/fixtures/cr_offers_parsed.csv.bak-for-test';
+    if ( file_exists( $tmp_path ) ) { unlink( $tmp_path ); }
+    rename( $fixture_path, $tmp_path );
+    try {
+        $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+        $audit = $repo->get_cr_fixture_reconciliation_audit();
+        tmw_assert_same( false, (bool) $audit['fixture_available'], 'Missing fixture should set fixture_available false.' );
+        $_GET = array( 'tab' => 'offers' );
+        $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+        ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+        tmw_assert_contains( 'CR fixture not found; ID reconciliation unavailable.', $html, 'Missing fixture notice should render.' );
+    } finally {
+        rename( $tmp_path, $fixture_path );
+    }
+};
+
+$tests['frontend_pool_unchanged_after_cr_fixture_reconciliation'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        '8780' => array( 'id' => '8780', 'name' => 'Jerkmate', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '10366' => array( 'id' => '10366', 'name' => 'NaughtyCharm', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '9647' => array( 'id' => '9647', 'name' => 'Group Fallback - Tapyn - PPS - Mobile - Android', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '9781' => array( 'id' => '9781', 'name' => 'Group Fallback - Dating.com PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+        'x-soi' => array( 'id' => 'x-soi', 'name' => 'SOI Offer', 'status' => 'active', 'payout_type' => 'SOI' ),
+    ) );
+    $repo->save_offer_overrides( array(
+        '8780' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/8780', 'allowed_countries' => 'Belgium' ),
+        '10366' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/10366', 'allowed_countries' => 'United States' ),
+        '9647' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/9647', 'allowed_countries' => 'United States' ),
+        '9781' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/9781', 'allowed_countries' => 'United States' ),
+        'x-soi' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/x-soi', 'allowed_countries' => 'United States' ),
+    ) );
+    $repo->get_cr_fixture_reconciliation_audit();
+    $offers_be = wp_json_encode( $repo->get_frontend_slot_offers( 'sidebar', array(), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() ) );
+    $offers_us = wp_json_encode( $repo->get_frontend_slot_offers( 'sidebar', array(), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'United States', array() ) );
+    tmw_assert_true( false !== strpos( $offers_be, '8780' ), '8780 remains eligible for Belgium.' );
+    tmw_assert_true( false === strpos( $offers_be, '10366' ) && false !== strpos( $offers_us, '10366' ), '10366 remains US-only.' );
+    tmw_assert_true( false === strpos( $offers_us, '9647' ) && false === strpos( $offers_us, '9781' ), '9647/9781 remain unavailable-account excluded.' );
+    tmw_assert_true( false === strpos( $offers_us, 'x-soi' ), 'SOI should remain excluded by default PPS-only frontend allowlist.' );
+};
+
+$tests['cr_fixture_reconciliation_normalizes_revshare_lifetime_label'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        '235' => array( 'id' => '235', 'name' => 'Exposed Webcams / Live Free Fun - Revshare Lifetime', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+    ) );
+    $audit = $repo->get_cr_fixture_reconciliation_audit();
+    $fixture_has_235 = false;
+    foreach ( (array) $audit['cr_missing_locally'] as $row ) {
+        if ( '235' === (string) ( $row['cr_id'] ?? '' ) ) {
+            $fixture_has_235 = true;
+            break;
+        }
+    }
+    tmw_assert_true( ! $fixture_has_235, 'Fixture ID 235 should be matched locally in this scenario.' );
+    $mismatch_ids = array_map( static function( $row ) { return (string) ( $row['cr_id'] ?? '' ); }, (array) $audit['payout_label_mismatches'] );
+    tmw_assert_true( ! in_array( '235', $mismatch_ids, true ), 'Revshare Lifetime row 235 should not be falsely marked as mismatch.' );
+    $summary = (array) ( $audit['summary_by_cr_payout_type']['Revshare Lifetime'] ?? array() );
+    tmw_assert_true( (int) ( $summary['mismatch_count'] ?? 0 ) >= 0, 'Revshare Lifetime summary should be present.' );
+    tmw_assert_same( 0, (int) ( $summary['mismatch_count'] ?? 0 ), 'Revshare Lifetime mismatch_count should remain 0 for matched 235 row.' );
+};
+
+$tests['cr_fixture_reconciliation_normalizes_multi_cpa_label'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        '1421' => array( 'id' => '1421', 'name' => 'Deal 4 Porn - Multi-CPA', 'status' => 'active', 'payout_type' => 'cpa_both' ),
+    ) );
+    $audit = $repo->get_cr_fixture_reconciliation_audit();
+    $mismatch_ids = array_map( static function( $row ) { return (string) ( $row['cr_id'] ?? '' ); }, (array) $audit['payout_label_mismatches'] );
+    tmw_assert_true( ! in_array( '1421', $mismatch_ids, true ), 'Multi-CPA row 1421 should not be falsely marked as mismatch.' );
+    $summary = (array) ( $audit['summary_by_cr_payout_type']['Multi-CPA'] ?? array() );
+    tmw_assert_true( (int) ( $summary['matched_local_count'] ?? 0 ) >= 1, 'Multi-CPA summary should include a matched local row.' );
+};
+
 
 foreach ( $tests as $name => $test ) {
     try {

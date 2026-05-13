@@ -1150,6 +1150,7 @@ class TMW_CR_Slot_Offer_Repository {
      */
     public function get_admin_payout_reconciliation_counts() {
         $offers = array_values( $this->get_synced_offers() );
+        $source_total = 0;
         $families = array( 'pps', 'soi', 'doi', 'cpc', 'cpi', 'cpm', 'multi_cpa', 'revshare', 'revshare_lifetime', 'fallback', 'smartlink' );
 
         $raw = array(
@@ -1172,6 +1173,7 @@ class TMW_CR_Slot_Offer_Repository {
             if ( ! is_array( $offer ) ) {
                 continue;
             }
+            ++$source_total;
 
             $raw_key = sanitize_key( strtolower( trim( (string) ( $offer['payout_type'] ?? '' ) ) ) );
             if ( '' === $raw_key ) {
@@ -1221,7 +1223,7 @@ class TMW_CR_Slot_Offer_Repository {
         }
 
         return array(
-            'source_total' => count( $offers ),
+            'source_total' => $source_total,
             'source_class' => $source_class,
             'raw' => $raw,
             'detected' => $detected,

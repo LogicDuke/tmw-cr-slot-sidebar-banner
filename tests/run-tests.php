@@ -4203,6 +4203,23 @@ $tests['payout_reconciliation_counts_separate_raw_detected_and_admin_filter'] = 
     tmw_assert_same( 2, (int) $counts['admin_filter']['revshare_lifetime'], 'Admin filter revshare_lifetime should include cpa_flat rows.' );
     tmw_assert_same( 2, (int) $counts['admin_filter']['multi_cpa'], 'Admin filter multi_cpa should include cpa_flat rows.' );
 };
+$tests['payout_reconciliation_counts_source_total_excludes_malformed_rows'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    update_option(
+        'offers',
+        array(
+            'v1' => array( 'id' => 'v1', 'name' => 'Valid PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+            'bad1' => 'malformed-row',
+        )
+    );
+    $counts = $repo->get_admin_payout_reconciliation_counts();
+    tmw_assert_same( 1, (int) $counts['source_total'], 'source_total should count only processed valid offer rows.' );
+    tmw_assert_same( 1, (int) $counts['raw']['pps'], 'Raw counts should reflect only valid rows.' );
+    tmw_assert_same( 1, (int) $counts['detected']['pps'], 'Detected counts should reflect only valid rows.' );
+    tmw_assert_same( 1, (int) $counts['admin_filter']['pps'], 'Admin filter counts should reflect only valid rows.' );
+    tmw_assert_same( 1, (int) $counts['source_class']['normal_offer'], 'Source class counts should reflect only valid rows.' );
+};
 $tests['offers_tab_renders_payout_reconciliation_panel'] = function() {
     tmw_reset_test_state();
     $_GET = array( 'tab' => 'offers' );

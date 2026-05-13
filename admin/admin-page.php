@@ -398,7 +398,7 @@ class TMW_CR_Slot_Admin_Page {
      * @return void
      */
     public function handle_import_final_url_overrides() {
-        $this->assert_admin_action( 'tmw_cr_slot_banner_import_final_url_overrides' );
+        $this->assert_admin_action( 'tmw_cr_slot_banner_import_final_url_overrides', 'tmw_legacy_final_url_nonce' );
         $raw_csv = isset( $_POST['final_url_override_csv'] ) ? (string) wp_unslash( $_POST['final_url_override_csv'] ) : '';
         $result = $this->import_final_url_override_rows( $raw_csv );
         $this->redirect_with_notice_to_tab( 'success', sprintf( 'Final URL override import complete. Imported: %1$d, Rejected: %2$d, Total saved overrides: %3$d.', $result['imported'], $result['rejected'], $result['total_saved'] ), 'slot-setup' );
@@ -408,7 +408,7 @@ class TMW_CR_Slot_Admin_Page {
      * @return void
      */
     public function handle_import_allowed_country_overrides() {
-        $this->assert_admin_action( 'tmw_cr_slot_banner_import_allowed_country_overrides' );
+        $this->assert_admin_action( 'tmw_cr_slot_banner_import_allowed_country_overrides', 'tmw_legacy_allowed_country_nonce' );
         $raw_csv   = isset( $_POST['allowed_country_override_csv'] ) ? (string) wp_unslash( $_POST['allowed_country_override_csv'] ) : '';
         $result = $this->import_allowed_country_override_rows( $raw_csv );
         $this->redirect_with_notice_to_tab( 'success', sprintf( 'Allowed country override import complete. Imported: %1$d, Rejected: %2$d, Total saved overrides: %3$d.', $result['imported'], $result['rejected'], $result['total_saved'] ), 'slot-setup' );
@@ -1979,9 +1979,21 @@ class TMW_CR_Slot_Admin_Page {
      *
      * @return void
      */
-    protected function assert_admin_action( $nonce_action ) {
+    protected function assert_admin_action( $nonce_action, $custom_nonce_field = '' ) {
         if ( ! current_user_can( 'manage_options' ) ) {
             wp_die( esc_html__( 'You are not allowed to perform this action.', 'tmw-cr-slot-sidebar-banner' ) );
+        }
+
+        if ( isset( $_REQUEST['_wpnonce'] ) ) {
+            check_admin_referer( $nonce_action );
+
+            return;
+        }
+
+        if ( '' !== $custom_nonce_field && isset( $_REQUEST[ $custom_nonce_field ] ) ) {
+            check_admin_referer( $nonce_action, $custom_nonce_field );
+
+            return;
         }
 
         check_admin_referer( $nonce_action );

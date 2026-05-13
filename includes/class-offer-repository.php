@@ -1256,6 +1256,169 @@ class TMW_CR_Slot_Offer_Repository {
         );
     }
 
+    /**
+     * Read-only reconciliation audit between CR parsed CSV fixture and local synced offers.
+     *
+     * @return array<string,mixed>
+     */
+    public function get_cr_fixture_reconciliation_audit() {
+        $fixture_path = dirname( __DIR__ ) . '/tests/fixtures/cr_offers_parsed.csv';
+        $empty = array(
+            'fixture_available' => false,
+            'fixture_rows' => 0,
+            'fixture_unique_ids' => 0,
+            'local_total_synced' => 0,
+            'local_unique_ids' => 0,
+            'matched_ids' => 0,
+            'cr_missing_locally' => array(),
+            'local_normal_missing_from_cr' => array(),
+            'local_fallback_missing_from_cr' => array(),
+            'local_smartlink_missing_from_cr' => array(),
+            'payout_label_mismatches' => array(),
+            'approval_mismatches' => array(),
+            'summary_by_cr_payout_type' => array(),
+        );
+        if ( ! file_exists( $fixture_path ) || ! is_readable( $fixture_path ) ) {
+            return $empty;
+        }
+        $handle = fopen( $fixture_path, 'r' );
+        if ( false === $handle ) {
+            return $empty;
+        }
+        $header = fgetcsv( $handle );
+        if ( ! is_array( $header ) ) {
+            fclose( $handle );
+            return $empty;
+        }
+        $idx = array_flip( $header );
+        $fixture_rows = array();
+        while ( false !== ( $row = fgetcsv( $handle ) ) ) {
+            if ( ! is_array( $row ) ) {
+                continue;
+            }
+            $cr_id = sanitize_text_field( trim( (string) ( $row[ $idx['cr_id'] ?? -1 ] ?? '' ) ) );
+            if ( '' === $cr_id ) {
+                continue;
+            }
+            $fixture_rows[ $cr_id ] = array(
+                'cr_id' => $cr_id,
+                'name' => sanitize_text_field( (string) ( $row[ $idx['name'] ?? -1 ] ?? '' ) ),
+                'approval' => sanitize_text_field( (string) ( $row[ $idx['approval'] ?? -1 ] ?? '' ) ),
+                'payout_type' => sanitize_text_field( (string) ( $row[ $idx['payout_type'] ?? -1 ] ?? '' ) ),
+            );
+        }
+        fclose( $handle );
+
+        $offers = array_values( $this->get_synced_offers() );
+        $local_by_id = array();
+        $local_normal_missing = array();
+        $local_fallback_missing = array();
+        $local_smartlink_missing = array();
+        $payout_label_mismatches = array();
+
+        foreach ( $offers as $offer ) {
+            if ( ! is_array( $offer ) ) {
+                continue;
+            }
+            $offer_id = sanitize_text_field( trim( (string) ( $offer['id'] ?? '' ) ) );
+            if ( '' === $offer_id ) {
+                continue;
+            }
+            $local_by_id[ $offer_id ] = $offer;
+        }
+
+        $cr_missing_locally = array();
+        $summary_by_type = array();
+        foreach ( $fixture_rows as $cr_id => $cr_row ) {
+            $cr_payout = (string) ( $cr_row['payout_type'] ?? '' );
+            if ( ! isset( $summary_by_type[ $cr_payout ] ) ) {
+                $summary_by_type[ $cr_payout ] = array( 'cr_count' => 0, 'matched_local_count' => 0, 'missing_local_count' => 0, 'local_comparison_count' => 0, 'mismatch_count' => 0 );
+            }
+            ++$summary_by_type[ $cr_payout ]['cr_count'];
+            if ( ! isset( $local_by_id[ $cr_id ] ) ) {
+                $cr_missing_locally[] = $cr_row;
+                ++$summary_by_type[ $cr_payout ]['missing_local_count'];
+                continue;
+            }
+            ++$summary_by_type[ $cr_payout ]['matched_local_count'];
+            $local_offer = $local_by_id[ $cr_id ];
+            $detected = array_values( array_unique( array_map( 'sanitize_key', (array) $this->get_offer_type_keys( $local_offer ) ) ) );
+            $meta = $this->get_offer_dashboard_metadata( $cr_id, $local_offer );
+            $admin_families = (array) ( $this->get_admin_offer_filter_values( $local_offer, $meta )['payout_type'] ?? array() );
+            $normalized_cr = $this->normalize_filter_family_value( 'payout_type', $cr_payout );
+            if ( '' !== $normalized_cr ) {
+                ++$summary_by_type[ $cr_payout ]['local_comparison_count'];
+                if ( ! in_array( $normalized_cr, $detected, true ) && ! in_array( $normalized_cr, $admin_families, true ) ) {
+                    ++$summary_by_type[ $cr_payout ]['mismatch_count'];
+                    $payout_label_mismatches[] = array(
+                        'cr_id' => $cr_id,
+                        'local_name' => sanitize_text_field( (string) ( $local_offer['name'] ?? '' ) ),
+                        'cr_name' => (string) ( $cr_row['name'] ?? '' ),
+                        'cr_payout_type' => $cr_payout,
+                        'local_raw_payout_type' => sanitize_text_field( (string) ( $local_offer['payout_type'] ?? '' ) ),
+                        'local_detected_type_keys' => $detected,
+                        'local_admin_filter_families' => array_values( array_unique( array_map( 'sanitize_key', $admin_families ) ) ),
+                        'source_class' => $this->get_offer_audit_source_class( $local_offer, $detected ),
+                        'note' => 'CR payout_type not found in local detected/admin payout families.',
+                    );
+                }
+            }
+        }
+
+        foreach ( $local_by_id as $offer_id => $offer ) {
+            if ( isset( $fixture_rows[ $offer_id ] ) ) {
+                continue;
+            }
+            $detected = array_values( array_unique( array_map( 'sanitize_key', (array) $this->get_offer_type_keys( $offer ) ) ) );
+            $source_class = $this->get_offer_audit_source_class( $offer, $detected );
+            $row = array(
+                'id' => $offer_id,
+                'name' => sanitize_text_field( (string) ( $offer['name'] ?? '' ) ),
+                'local_raw_payout_type' => sanitize_text_field( (string) ( $offer['payout_type'] ?? '' ) ),
+                'local_detected_type_keys' => $detected,
+                'source_class' => $source_class,
+                'note' => 'Local offer ID not present in CR parsed fixture.',
+            );
+            if ( 'smartlink' === $source_class ) {
+                $local_smartlink_missing[] = $row;
+            } elseif ( in_array( $source_class, array( 'group_fallback', 'fallback' ), true ) ) {
+                $local_fallback_missing[] = $row;
+            } else {
+                $local_normal_missing[] = $row;
+            }
+        }
+
+        return array(
+            'fixture_available' => true,
+            'fixture_rows' => count( $fixture_rows ),
+            'fixture_unique_ids' => count( $fixture_rows ),
+            'local_total_synced' => count( $local_by_id ),
+            'local_unique_ids' => count( $local_by_id ),
+            'matched_ids' => count( array_intersect( array_keys( $fixture_rows ), array_keys( $local_by_id ) ) ),
+            'cr_missing_locally' => array_values( $cr_missing_locally ),
+            'local_normal_missing_from_cr' => array_values( $local_normal_missing ),
+            'local_fallback_missing_from_cr' => array_values( $local_fallback_missing ),
+            'local_smartlink_missing_from_cr' => array_values( $local_smartlink_missing ),
+            'payout_label_mismatches' => array_values( $payout_label_mismatches ),
+            'approval_mismatches' => array(),
+            'summary_by_cr_payout_type' => $summary_by_type,
+        );
+    }
+
+    protected function get_offer_audit_source_class( $offer, $detected_keys ) {
+        $name_haystack = strtolower( (string) ( $offer['name'] ?? '' ) );
+        if ( false !== strpos( $name_haystack, 'group fallback' ) ) {
+            return 'group_fallback';
+        }
+        if ( in_array( 'fallback', (array) $detected_keys, true ) || false !== strpos( $name_haystack, 'fallback' ) ) {
+            return 'fallback';
+        }
+        if ( in_array( 'smartlink', (array) $detected_keys, true ) ) {
+            return 'smartlink';
+        }
+        return 'normal_offer';
+    }
+
     protected function get_admin_offer_filter_values( $offer, $offer_meta ) {
         $families = array( 'tag', 'vertical', 'performs_in', 'optimized_for', 'accepted_country', 'niche', 'promotion_method', 'payout_type' );
         $values = array();

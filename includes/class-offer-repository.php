@@ -1345,7 +1345,7 @@ class TMW_CR_Slot_Offer_Repository {
             $detected = array_values( array_unique( array_map( 'sanitize_key', (array) $this->get_offer_type_keys( $local_offer ) ) ) );
             $meta = $this->get_offer_dashboard_metadata( $cr_id, $local_offer );
             $admin_families = (array) ( $this->get_admin_offer_filter_values( $local_offer, $meta )['payout_type'] ?? array() );
-            $normalized_cr = $this->normalize_filter_family_value( 'payout_type', $cr_payout );
+            $normalized_cr = $this->normalize_cr_fixture_payout_label( $cr_payout );
             if ( '' !== $normalized_cr ) {
                 ++$summary_by_type[ $cr_payout ]['local_comparison_count'];
                 if ( ! in_array( $normalized_cr, $detected, true ) && ! in_array( $normalized_cr, $admin_families, true ) ) {
@@ -1417,6 +1417,25 @@ class TMW_CR_Slot_Offer_Repository {
             return 'smartlink';
         }
         return 'normal_offer';
+    }
+
+    protected function normalize_cr_fixture_payout_label( $label ) {
+        $key = strtolower( trim( (string) $label ) );
+        $key = str_replace( array( '_', '-' ), ' ', $key );
+        $key = (string) preg_replace( '/\s+/', ' ', $key );
+        $map = array(
+            'pps' => 'pps',
+            'soi' => 'soi',
+            'doi' => 'doi',
+            'cpc' => 'cpc',
+            'cpi' => 'cpi',
+            'cpm' => 'cpm',
+            'multi cpa' => 'multi_cpa',
+            'revshare' => 'revshare',
+            'revshare lifetime' => 'revshare_lifetime',
+            'smartlink' => 'smartlink',
+        );
+        return isset( $map[ $key ] ) ? $map[ $key ] : '';
     }
 
     protected function get_admin_offer_filter_values( $offer, $offer_meta ) {

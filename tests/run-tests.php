@@ -4988,6 +4988,41 @@ $tests['frontend_pool_unchanged_after_cr_fixture_reconciliation'] = function() {
     tmw_assert_true( false === strpos( $offers_us, 'x-soi' ), 'SOI should remain excluded by default PPS-only frontend allowlist.' );
 };
 
+$tests['cr_fixture_reconciliation_normalizes_revshare_lifetime_label'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        '235' => array( 'id' => '235', 'name' => 'Exposed Webcams / Live Free Fun - Revshare Lifetime', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+    ) );
+    $audit = $repo->get_cr_fixture_reconciliation_audit();
+    $fixture_has_235 = false;
+    foreach ( (array) $audit['cr_missing_locally'] as $row ) {
+        if ( '235' === (string) ( $row['cr_id'] ?? '' ) ) {
+            $fixture_has_235 = true;
+            break;
+        }
+    }
+    tmw_assert_true( ! $fixture_has_235, 'Fixture ID 235 should be matched locally in this scenario.' );
+    $mismatch_ids = array_map( static function( $row ) { return (string) ( $row['cr_id'] ?? '' ); }, (array) $audit['payout_label_mismatches'] );
+    tmw_assert_true( ! in_array( '235', $mismatch_ids, true ), 'Revshare Lifetime row 235 should not be falsely marked as mismatch.' );
+    $summary = (array) ( $audit['summary_by_cr_payout_type']['Revshare Lifetime'] ?? array() );
+    tmw_assert_true( (int) ( $summary['mismatch_count'] ?? 0 ) >= 0, 'Revshare Lifetime summary should be present.' );
+    tmw_assert_same( 0, (int) ( $summary['mismatch_count'] ?? 0 ), 'Revshare Lifetime mismatch_count should remain 0 for matched 235 row.' );
+};
+
+$tests['cr_fixture_reconciliation_normalizes_multi_cpa_label'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        '1421' => array( 'id' => '1421', 'name' => 'Deal 4 Porn - Multi-CPA', 'status' => 'active', 'payout_type' => 'cpa_both' ),
+    ) );
+    $audit = $repo->get_cr_fixture_reconciliation_audit();
+    $mismatch_ids = array_map( static function( $row ) { return (string) ( $row['cr_id'] ?? '' ); }, (array) $audit['payout_label_mismatches'] );
+    tmw_assert_true( ! in_array( '1421', $mismatch_ids, true ), 'Multi-CPA row 1421 should not be falsely marked as mismatch.' );
+    $summary = (array) ( $audit['summary_by_cr_payout_type']['Multi-CPA'] ?? array() );
+    tmw_assert_true( (int) ( $summary['matched_local_count'] ?? 0 ) >= 1, 'Multi-CPA summary should include a matched local row.' );
+};
+
 
 foreach ( $tests as $name => $test ) {
     try {

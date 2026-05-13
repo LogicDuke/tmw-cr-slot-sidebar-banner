@@ -795,6 +795,7 @@ class TMW_CR_Slot_Admin_Page {
             <?php esc_html_e( 'Payout filters use normalized detected type keys from synced offers. Raw payout strings (for example cpa_flat) can still appear in the payout display.', 'tmw-cr-slot-sidebar-banner' ); ?>
         </p>
         <?php $this->render_payout_reconciliation_panel( $reconciliation_counts, $payout_labels ); ?>
+        <?php $this->render_cr_scope_explainer_panel(); ?>
         <?php $this->render_cr_fixture_reconciliation_panel( (array) ( $result['active_filters'] ?? array() ) ); ?>
 
         <table class="widefat striped">
@@ -2267,6 +2268,19 @@ class TMW_CR_Slot_Admin_Page {
         return (int) ( $values[ $family ] ?? 0 );
     }
 
+
+    protected function render_cr_scope_explainer_panel() {
+        ?>
+        <div class="notice notice-info inline">
+            <p><strong><?php esc_html_e( 'CR dashboard scope vs Local API scope', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
+            <p><strong><?php esc_html_e( 'Two scopes, two row counts', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
+            <p class="description"><?php esc_html_e( 'Total synced offers reflects rows ingested from the CrakRevenue affiliate API into local storage. CR fixture rows reflects rows parsed from the CrakRevenue dashboard fixture. These two numbers describe different universes and are not expected to match. Local synced data may include API-visible rows, synthetic fallback/group rows, or smartlink rows that are not represented in the CR dashboard fixture.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+            <p><strong><?php esc_html_e( 'Why CR labels and local labels can diverge', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
+            <p class="description"><?php esc_html_e( 'The API payout_type field is treated as a payout calculation method, while the CrakRevenue dashboard payout labels are editorial UI labels. The CR UI-label comparison is a best-effort local approximation for audit purposes only. Small deltas can be legitimate and should be explained per row in the likely_reason column rather than fixed by changing sync, mapping, filtering, or frontend selection logic.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+        </div>
+        <?php
+    }
+
     protected function render_cr_fixture_reconciliation_panel( $active_filters = array() ) {
         $audit = $this->offer_repository->get_cr_fixture_reconciliation_audit();
         ?>
@@ -2302,10 +2316,10 @@ class TMW_CR_Slot_Admin_Page {
         ?>
         <p><strong><?php echo esc_html( $title ); ?></strong><?php echo count( $rows ) > $limit ? esc_html( ' (showing first 25)' ) : ''; ?></p>
         <table class="widefat striped">
-            <thead><tr><th>ID</th><th>CR name</th><th>Local name</th><th>CR payout_type</th><th>Local raw payout_type</th><th>Detected/admin families</th><th>source_class</th><th>note</th></tr></thead>
+            <thead><tr><th>ID</th><th>CR name</th><th>Local name</th><th>CR payout_type</th><th>Local raw payout_type</th><th>Detected/admin families</th><th>source_class</th><th>note</th><th>Likely reason</th></tr></thead>
             <tbody>
                 <?php if ( empty( $rows ) ) : ?>
-                    <tr><td colspan="8">None</td></tr>
+                    <tr><td colspan="9">None</td></tr>
                 <?php else : foreach ( array_slice( $rows, 0, $limit ) as $row ) : ?>
                     <?php $families = array_merge( (array) ( $row['local_detected_type_keys'] ?? array() ), (array) ( $row['local_admin_filter_families'] ?? array() ), (array) ( $row['comparison_label_keys'] ?? array() ) ); ?>
                     <tr>
@@ -2317,6 +2331,7 @@ class TMW_CR_Slot_Admin_Page {
                         <td><?php echo esc_html( 'detected/admin/comparison: ' . implode( ', ', array_unique( array_filter( array_map( 'sanitize_key', $families ) ) ) ) ); ?></td>
                         <td><?php echo esc_html( (string) ( $row['source_class'] ?? '' ) ); ?></td>
                         <td><?php echo esc_html( (string) ( $row['note'] ?? '' ) ); ?></td>
+                        <td><?php echo esc_html( (string) ( $row['likely_reason'] ?? 'unknown' ) ); ?></td>
                     </tr>
                 <?php endforeach; endif; ?>
             </tbody>

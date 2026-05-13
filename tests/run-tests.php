@@ -4853,6 +4853,66 @@ $tests['slot_setup_cpi_cpm_options_render_unchecked_by_default'] = function() {
 };
 
 
+
+$tests['cr_offers_parsed_fixture_integrity'] = function() {
+    $fixture = __DIR__ . '/fixtures/cr_offers_parsed.csv';
+    tmw_assert_true( file_exists( $fixture ), 'Parsed CR offers fixture should exist.' );
+    tmw_assert_true( is_readable( $fixture ), 'Parsed CR offers fixture should be readable.' );
+
+    $handle = fopen( $fixture, 'r' );
+    tmw_assert_true( false !== $handle, 'Parsed CR offers fixture should open.' );
+
+    $header = fgetcsv( $handle );
+    tmw_assert_true( is_array( $header ) && ! empty( $header ), 'Parsed CR offers fixture should include a header row.' );
+
+    $normalized = array_map( static function( $value ) {
+        return strtolower( trim( (string) $value ) );
+    }, $header );
+
+    $has_id = in_array( 'id', $normalized, true ) || in_array( 'offer_id', $normalized, true );
+    $has_name = in_array( 'name', $normalized, true );
+    $has_payout = in_array( 'payout_type', $normalized, true ) || in_array( 'cr_visible_payout_type', $normalized, true );
+    $has_approval = in_array( 'approval', $normalized, true ) || in_array( 'approval_status', $normalized, true );
+
+    tmw_assert_true( $has_id, 'Header must contain id or offer_id column.' );
+    tmw_assert_true( $has_name, 'Header must contain name column.' );
+    tmw_assert_true( $has_payout, 'Header must contain payout_type or cr_visible_payout_type column.' );
+    tmw_assert_true( $has_approval, 'Header must contain approval or approval_status column.' );
+
+    $index_by_col = array_flip( $normalized );
+    $payout_col = isset( $index_by_col['cr_visible_payout_type'] ) ? $index_by_col['cr_visible_payout_type'] : $index_by_col['payout_type'];
+
+    $rows = 0;
+    $counts = array(
+        'PPS' => 0,
+        'Revshare Lifetime' => 0,
+        'Revshare' => 0,
+        'SOI' => 0,
+        'DOI' => 0,
+        'Multi-CPA' => 0,
+    );
+
+    while ( false !== ( $row = fgetcsv( $handle ) ) ) {
+        if ( array( null ) === $row || array( '' ) === $row ) {
+            continue;
+        }
+        ++$rows;
+        $label = isset( $row[ $payout_col ] ) ? trim( (string) $row[ $payout_col ] ) : '';
+        if ( isset( $counts[ $label ] ) ) {
+            ++$counts[ $label ];
+        }
+    }
+    fclose( $handle );
+
+    tmw_assert_same( 273, $rows, 'Parsed CR offers fixture should contain 273 data rows (known OCR gap vs. 274 CR UI offers).' );
+    tmw_assert_same( 89, $counts['PPS'], 'PPS parsed payout label count should match.' );
+    tmw_assert_same( 77, $counts['Revshare Lifetime'], 'Revshare Lifetime parsed payout label count should match.' );
+    tmw_assert_same( 39, $counts['Revshare'], 'Revshare parsed payout label count should match.' );
+    tmw_assert_same( 27, $counts['SOI'], 'SOI parsed payout label count should match.' );
+    tmw_assert_same( 23, $counts['DOI'], 'DOI parsed payout label count should match.' );
+    tmw_assert_same( 18, $counts['Multi-CPA'], 'Multi-CPA parsed payout label count should match.' );
+};
+
 foreach ( $tests as $name => $test ) {
     try {
         $test();

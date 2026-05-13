@@ -735,6 +735,7 @@ class TMW_CR_Slot_Admin_Page {
             'niche'             => $this->read_multi_query_values( 'niche' ),
             'promotion_method'  => $this->read_multi_query_values( 'promotion_method' ),
             'image_status'      => isset( $_GET['image_status'] ) ? sanitize_key( wp_unslash( $_GET['image_status'] ) ) : '',
+            'logo_status'       => isset( $_GET['logo_status'] ) ? sanitize_key( wp_unslash( $_GET['logo_status'] ) ) : '',
             'sort_by'           => isset( $_GET['sort_by'] ) ? sanitize_key( wp_unslash( $_GET['sort_by'] ) ) : 'name',
             'sort_order'        => isset( $_GET['sort_order'] ) ? sanitize_key( wp_unslash( $_GET['sort_order'] ) ) : 'asc',
             'page'              => isset( $_GET['paged'] ) ? max( 1, (int) $_GET['paged'] ) : 1,
@@ -802,6 +803,7 @@ class TMW_CR_Slot_Admin_Page {
             <?php $this->render_filter_select( 'featured', $args['featured'], array( '' => 'Featured: any', 'yes' => 'Featured: yes', 'no' => 'Featured: no' ) ); ?>
             <?php $this->render_filter_select( 'approval_required', $args['approval_required'], array( '' => 'Approval: any', 'yes' => 'Approval required', 'no' => 'Approval not required' ) ); ?>
             <?php $this->render_filter_select( 'image_status', $args['image_status'], array( '' => 'Image status: any', 'manual_override' => 'Manual override', 'auto_local' => 'Auto local', 'auto_remote' => 'Auto remote', 'placeholder_only' => 'Placeholder' ) ); ?>
+            <?php $this->render_filter_select( 'logo_status', $args['logo_status'], array( '' => 'Logo source: any', 'manual_override' => 'Manual override', 'mapped_local' => 'Mapped local', 'auto_remote' => 'Remote', 'placeholder_only' => 'Placeholder only', 'missing' => 'Missing' ) ); ?>
             <?php submit_button( __( 'Apply', 'tmw-cr-slot-sidebar-banner' ), 'secondary', '', false ); ?>
             <a class="button button-secondary" href="<?php echo esc_url( add_query_arg( array( 'page' => 'tmw-cr-slot-sidebar-banner', 'tab' => 'offers' ), admin_url( 'options-general.php' ) ) ); ?>"><?php esc_html_e( 'Clear all', 'tmw-cr-slot-sidebar-banner' ); ?></a>
         </form>
@@ -816,6 +818,9 @@ class TMW_CR_Slot_Admin_Page {
                     <?php $this->render_sort_link_header( 'featured', __( 'Featured', 'tmw-cr-slot-sidebar-banner' ), $args ); ?>
                     <th><?php esc_html_e( 'Approval', 'tmw-cr-slot-sidebar-banner' ); ?></th>
                     <th><?php esc_html_e( 'Image', 'tmw-cr-slot-sidebar-banner' ); ?></th>
+                    <th><?php esc_html_e( 'Logo source', 'tmw-cr-slot-sidebar-banner' ); ?></th>
+                    <th><?php esc_html_e( 'Frontend eligible', 'tmw-cr-slot-sidebar-banner' ); ?></th>
+                    <th><?php esc_html_e( 'Block reason', 'tmw-cr-slot-sidebar-banner' ); ?></th>
                     <th><?php esc_html_e( 'Slot', 'tmw-cr-slot-sidebar-banner' ); ?></th>
                     <th><?php esc_html_e( 'Effective', 'tmw-cr-slot-sidebar-banner' ); ?></th>
                     <th><?php echo esc_html( sprintf( __( 'Country (%s)', 'tmw-cr-slot-sidebar-banner' ), '' !== $country ? $country : '--' ) ); ?></th>
@@ -823,7 +828,7 @@ class TMW_CR_Slot_Admin_Page {
             </thead>
             <tbody>
                 <?php if ( empty( $items ) ) : ?>
-                    <tr><td colspan="10"><?php esc_html_e( 'No offers match the current filters.', 'tmw-cr-slot-sidebar-banner' ); ?></td></tr>
+                    <tr><td colspan="13"><?php esc_html_e( 'No offers match the current filters.', 'tmw-cr-slot-sidebar-banner' ); ?></td></tr>
                 <?php else : ?>
                     <?php foreach ( $items as $offer ) : ?>
                         <?php
@@ -831,6 +836,10 @@ class TMW_CR_Slot_Admin_Page {
                         $override  = $this->offer_repository->get_offer_override( $offer_id );
                         $allowed   = $this->offer_repository->is_offer_allowed_for_country( $offer_id, $country, $override, $offer, $legacy_catalog );
                         $is_active = empty( $offer['status'] ) || 'active' === strtolower( (string) $offer['status'] );
+                        $is_unavailable = $this->offer_repository->is_offer_unavailable_account_pps( $offer );
+                        $eligibility_summary = $this->offer_repository->get_offer_frontend_eligibility_summary( $offer, $settings, $country, $legacy_catalog );
+                        $block_reason_labels = array( 'valid' => 'Valid', 'not_allowed_type' => 'Not allowed type', 'business_rule_blocked' => 'Business rule blocked', 'unavailable_account_offer' => 'Unavailable for account', 'missing_valid_cta' => 'Missing valid CTA', 'country_not_allowed' => 'Country not allowed', 'missing_logo' => 'Missing logo' );
+                        $logo_status_labels = array( 'manual_override' => 'Manual override', 'mapped_local' => 'Mapped local', 'auto_remote' => 'Remote', 'placeholder_only' => 'Placeholder only', 'missing' => 'Missing' );
                         ?>
                         <tr>
                             <td>
@@ -846,6 +855,9 @@ class TMW_CR_Slot_Admin_Page {
                                         </span>
                                     <?php endif; ?>
                                     <strong><?php echo esc_html( (string) ( $offer['name'] ?? '' ) ); ?></strong>
+                                    <?php if ( $is_unavailable ) : ?>
+                                        <small><?php $this->render_badge( 'Unavailable for account', 'muted' ); ?></small>
+                                    <?php endif; ?>
                                     <?php
                                     $type_keys = $this->offer_repository->get_offer_type_keys( $offer );
                                     if ( ! empty( $type_keys ) ) :
@@ -860,6 +872,9 @@ class TMW_CR_Slot_Admin_Page {
                             <td><?php $this->render_badge( ! empty( $offer['is_featured'] ) ? 'Yes' : 'No', ! empty( $offer['is_featured'] ) ? 'featured' : 'muted' ); ?></td>
                             <td><?php $this->render_badge( '1' === (string) ( $offer['require_approval'] ?? '' ) ? 'Required' : 'No', 'approval' ); ?></td>
                             <td><?php $this->render_image_status_badge( (string) ( $offer['image_status'] ?? '' ) ); ?></td>
+                            <td><?php $this->render_badge( (string) ( $logo_status_labels[ (string) ( $offer['logo_status'] ?? '' ) ] ?? 'Unknown' ), 'status' ); ?></td>
+                            <td><?php $this->render_badge( ! empty( $eligibility_summary['is_eligible'] ) ? 'Eligible' : 'Excluded', ! empty( $eligibility_summary['is_eligible'] ) ? 'selected' : 'muted' ); ?></td>
+                            <td><?php $this->render_badge( (string) ( $block_reason_labels[ (string) ( $eligibility_summary['block_reason'] ?? '' ) ] ?? 'Unknown' ), 'muted' ); ?></td>
                             <td><?php $this->render_badge( ! empty( $offer['is_selected_for_slot'] ) ? 'Selected for slot' : 'Not selected', ! empty( $offer['is_selected_for_slot'] ) ? 'selected' : 'muted' ); ?></td>
                             <td><?php $this->render_badge( ( $is_active && $allowed ) ? 'Eligible' : 'Excluded', ( $is_active && $allowed ) ? 'selected' : 'muted' ); ?></td>
                             <td><?php $this->render_badge( $allowed ? 'Allowed' : 'Blocked', $allowed ? 'featured' : 'muted' ); ?></td>

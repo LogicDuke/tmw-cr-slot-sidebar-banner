@@ -874,6 +874,7 @@ class TMW_CR_Slot_Offer_Repository {
             'niche'             => '',
             'promotion_method'  => '',
             'image_status'      => '',
+            'logo_status'       => '',
             'sort_by'           => 'name',
             'sort_order'        => 'asc',
             'page'              => 1,
@@ -897,6 +898,7 @@ class TMW_CR_Slot_Offer_Repository {
         $niche_values     = $this->normalize_query_values( $query['niche'], 'niche' );
         $promotion_values = $this->normalize_query_values( $query['promotion_method'], 'promotion_method' );
         $image       = strtolower( trim( (string) $query['image_status'] ) );
+        $logo_status = strtolower( trim( (string) $query['logo_status'] ) );
         $offers         = array_values( $this->get_synced_offers() );
         $legacy_catalog = $this->get_default_legacy_catalog();
         $filtered       = array();
@@ -970,10 +972,15 @@ class TMW_CR_Slot_Offer_Repository {
             if ( '' !== $image && $image !== $image_status ) {
                 continue;
             }
+            $offer_logo_status = $this->get_logo_status_for_offer_any( $offer_id, $offer, $settings, $legacy_catalog );
+            if ( '' !== $logo_status && $logo_status !== $offer_logo_status ) {
+                continue;
+            }
 
             $offer['dashboard_metadata']   = $offer_meta;
             $offer['is_selected_for_slot'] = $is_selected;
             $offer['image_status']         = $image_status;
+            $offer['logo_status']          = $offer_logo_status;
             $offer['brand_key']            = $this->get_offer_brand_key( (string) ( $offer['name'] ?? '' ) );
             $offer['logo_filename']        = $this->get_offer_logo_filename( $offer );
             $offer['logo_url']             = $this->get_offer_logo_url( $offer );
@@ -1079,6 +1086,74 @@ class TMW_CR_Slot_Offer_Repository {
         }
 
         return 'placeholder_only';
+    }
+
+    /**
+     * Returns logo source status for any synced offer.
+     *
+     * @param string              $offer_id Offer ID.
+     * @param array<string,mixed> $offer Offer payload.
+     * @param array<string,mixed> $settings Settings payload.
+     * @param array<string,mixed> $legacy_catalog Legacy catalog.
+     *
+     * @return string
+     */
+    public function get_logo_status_for_offer_any( $offer_id, $offer, $settings = array(), $legacy_catalog = array() ) {
+        $offer_id = (string) $offer_id;
+        $override = $this->get_offer_override( $offer_id );
+        if ( ! empty( $override['image_url_override'] ) ) {
+            return 'manual_override';
+        }
+        $overrides = isset( $settings['offer_image_overrides'] ) && is_array( $settings['offer_image_overrides'] ) ? $settings['offer_image_overrides'] : array();
+        if ( ! empty( $overrides[ $offer_id ] ) ) {
+            return 'manual_override';
+        }
+        $filename = (string) $this->get_offer_logo_filename( $offer );
+        if ( '' !== $filename ) {
+            $local_path = rtrim( (string) TMW_CR_SLOT_BANNER_PATH, '/\\' ) . '/assets/logos/' . $filename;
+            return file_exists( $local_path ) ? 'mapped_local' : 'missing';
+        }
+        $offer_name = (string) ( $offer['name'] ?? '' );
+        if ( '' !== $this->resolve_remote_thumbnail_image( $offer_name ) || '' !== $this->resolve_local_catalog_image( $offer_name, $legacy_catalog ) ) {
+            return 'auto_remote';
+        }
+        return 'placeholder_only';
+    }
+
+    /**
+     * Returns frontend eligibility summary for dashboard display.
+     *
+     * @param array<string,mixed> $offer Offer payload.
+     * @param array<string,mixed> $settings Settings payload.
+     * @param string              $country Country.
+     * @param array<string,mixed> $legacy_catalog Legacy catalog.
+     *
+     * @return array<string,mixed>
+     */
+    public function get_offer_frontend_eligibility_summary( $offer, $settings, $country, $legacy_catalog = array() ) {
+        $offer_id = (string) ( $offer['id'] ?? '' );
+        if ( ! $this->is_offer_type_allowed( $offer, $settings ) ) {
+            return array( 'is_eligible' => false, 'block_reason' => 'not_allowed_type' );
+        }
+        if ( $this->is_offer_blocked_for_banner( $offer, $settings ) ) {
+            return array( 'is_eligible' => false, 'block_reason' => 'business_rule_blocked' );
+        }
+        if ( $this->is_unavailable_account_pps_offer( $offer ) ) {
+            return array( 'is_eligible' => false, 'block_reason' => 'unavailable_account_offer' );
+        }
+        $override = $this->get_offer_override( $offer_id );
+        $effective = $this->get_effective_cta_url( $offer_id, $settings, array( 'cta_url' => (string) ( $settings['cta_url'] ?? '' ) ), $offer, $override );
+        if ( ! $this->is_valid_frontend_winner_cta_url( (string) $effective ) ) {
+            return array( 'is_eligible' => false, 'block_reason' => 'missing_valid_cta' );
+        }
+        if ( ! $this->is_offer_allowed_for_country( $offer_id, $country, $override, $offer, $legacy_catalog ) ) {
+            return array( 'is_eligible' => false, 'block_reason' => 'country_not_allowed' );
+        }
+        $logo_status = $this->get_logo_status_for_offer_any( $offer_id, $offer, $settings, $legacy_catalog );
+        if ( 'missing' === $logo_status || 'placeholder_only' === $logo_status ) {
+            return array( 'is_eligible' => false, 'block_reason' => 'missing_logo' );
+        }
+        return array( 'is_eligible' => true, 'block_reason' => 'valid' );
     }
 
     /**
@@ -1603,6 +1678,17 @@ class TMW_CR_Slot_Offer_Repository {
         }
 
         return true;
+    }
+
+    /**
+     * Public wrapper for unavailable-account offer checks.
+     *
+     * @param array<string,mixed> $offer Offer payload.
+     *
+     * @return bool
+     */
+    public function is_offer_unavailable_account_pps( $offer ) {
+        return $this->is_unavailable_account_pps_offer( $offer );
     }
 
     /**

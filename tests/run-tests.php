@@ -3471,6 +3471,69 @@ $tests['audit_pagination_does_not_change_frontend_pool'] = function() {
     tmw_assert_true( false === strpos( wp_json_encode( $be ), '10366' ), '10366 should be excluded for Belgium.' );
     tmw_assert_true( false === strpos( wp_json_encode( $us ), '9647' ) && false === strpos( wp_json_encode( $us ), '9781' ), 'Unavailable offers should remain excluded.' );
 };
+$tests['logo_status_mapped_local_when_file_exists_for_known_brand'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $logo_file = TMW_CR_SLOT_BANNER_PATH . 'assets/logos/sex-messenger-80x80-transparent.png';
+    if ( ! is_dir( dirname( $logo_file ) ) ) {
+        mkdir( dirname( $logo_file ), 0777, true );
+    }
+    file_put_contents( $logo_file, 'fixture' );
+    $offer = array( 'id' => 'x1', 'name' => 'Sex Messenger' );
+    tmw_assert_same( 'mapped_local', $repo->get_logo_status_for_offer_any( 'x1', $offer ), 'Known local brand should resolve mapped local logo.' );
+    @unlink( $logo_file );
+};
+$tests['logo_status_manual_override_when_image_url_override_set'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_offer_overrides( array( 'x2' => array( 'image_url_override' => 'https://cdn.example.test/logo.png' ) ) );
+    tmw_assert_same( 'manual_override', $repo->get_logo_status_for_offer_any( 'x2', array( 'id' => 'x2', 'name' => 'Unknown Name' ) ), 'Manual override should win.' );
+};
+$tests['logo_status_placeholder_only_when_no_brand_match_and_no_override'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    tmw_assert_same( 'placeholder_only', $repo->get_logo_status_for_offer_any( 'x3', array( 'id' => 'x3', 'name' => 'No Brand Fixture' ) ), 'Unknown offer should be placeholder only.' );
+};
+$tests['frontend_eligibility_summary_returns_valid_for_8780_be'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $logo_file = TMW_CR_SLOT_BANNER_PATH . 'assets/logos/jerkmate-80x80-transparent.png';
+    if ( ! is_dir( dirname( $logo_file ) ) ) {
+        mkdir( dirname( $logo_file ), 0777, true );
+    }
+    file_put_contents( $logo_file, 'fixture' );
+    $offer = array( 'id' => '8780', 'name' => 'Jerkmate', 'status' => 'active', 'payout_type' => 'PPS', 'thumbnail' => 'https://cdn.example.test/jerkmate.png' );
+    $repo->save_offer_overrides( array( '8780' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/a', 'allowed_countries' => 'Belgium' ) ) );
+    $summary = $repo->get_offer_frontend_eligibility_summary( $offer, array( 'allowed_offer_types' => array( 'pps' ) ), 'BE', array() );
+    tmw_assert_true( true === $summary['is_eligible'] && 'valid' === $summary['block_reason'], '8780 should be valid for BE.' );
+    @unlink( $logo_file );
+};
+$tests['frontend_eligibility_summary_returns_country_not_allowed_for_10366_be'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $offer = array( 'id' => '10366', 'name' => 'NaughtyCharm', 'status' => 'active', 'payout_type' => 'PPS' );
+    $repo->save_offer_overrides( array( '10366' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/b', 'allowed_countries' => 'United States' ) ) );
+    $summary = $repo->get_offer_frontend_eligibility_summary( $offer, array( 'allowed_offer_types' => array( 'pps' ) ), 'BE', array() );
+    tmw_assert_same( 'country_not_allowed', $summary['block_reason'], '10366 should be blocked for BE.' );
+};
+$tests['offers_tab_renders_logo_source_frontend_eligible_and_block_reason_columns'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Logo source', $html, 'Offers tab should render logo source column.' );
+    tmw_assert_contains( 'Frontend eligible', $html, 'Offers tab should render frontend eligible column.' );
+    tmw_assert_contains( 'Block reason', $html, 'Offers tab should render block reason column.' );
+};
+$tests['offers_tab_logo_status_filter_dropdown_renders_expected_options'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    foreach ( array( 'manual_override', 'mapped_local', 'auto_remote', 'placeholder_only', 'missing' ) as $opt ) {
+        tmw_assert_contains( 'value="' . $opt . '"', $html, 'Missing logo status filter option: ' . $opt );
+    }
+};
 
 $failures = array();
 $passes   = 0;

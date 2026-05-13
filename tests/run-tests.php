@@ -4195,10 +4195,12 @@ $tests['cr_ui_label_comparison_excludes_fallback_and_group_fallback_rows'] = fun
         'n1' => array( 'id' => 'n1', 'name' => 'Normal PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
         'g1' => array( 'id' => 'g1', 'name' => 'Group Fallback - Brand PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
         'f1' => array( 'id' => 'f1', 'name' => 'Group Fallback - Legacy Fallback PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+        'fb1' => array( 'id' => 'fb1', 'name' => 'Fallback PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
     ) );
     $counts = $repo->get_admin_payout_reconciliation_counts();
-    tmw_assert_true( (int) $counts['admin_filter']['pps'] >= 2, 'Admin PPS should keep current behavior for matching rows.' );
+    tmw_assert_true( (int) $counts['admin_filter']['pps'] >= 3, 'Admin PPS should keep current behavior for matching rows.' );
     tmw_assert_same( 1, (int) $counts['cr_ui_label_comparison']['pps'], 'CR UI comparison PPS should count only normal row.' );
+    tmw_assert_same( 1, (int) $counts['source_class']['fallback'], 'Plain fallback fixture should classify as fallback source class.' );
 };
 $tests['cr_ui_label_comparison_excludes_smartlink_rows'] = function() {
     tmw_reset_test_state();

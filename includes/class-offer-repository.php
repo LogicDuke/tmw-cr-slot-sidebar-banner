@@ -1196,19 +1196,21 @@ class TMW_CR_Slot_Offer_Repository {
             $detected_keys = array_values( array_unique( $detected_keys ) );
 
             $name_haystack = strtolower( (string) ( $offer['name'] ?? '' ) );
+            $is_cr_ui_comparison_normal_offer = false;
             if ( false !== strpos( $name_haystack, 'group fallback' ) ) {
                 ++$source_class['group_fallback'];
-            } elseif ( in_array( 'fallback', $detected_keys, true ) ) {
+            } elseif ( in_array( 'fallback', $detected_keys, true ) || false !== strpos( $name_haystack, 'fallback' ) ) {
                 ++$source_class['fallback'];
             } elseif ( in_array( 'smartlink', $detected_keys, true ) ) {
                 ++$source_class['smartlink'];
             } elseif ( ! empty( $offer['id'] ) ) {
                 ++$source_class['normal_offer'];
+                $is_cr_ui_comparison_normal_offer = true;
             } else {
                 ++$source_class['unknown'];
             }
 
-            if ( ! in_array( 'fallback', $detected_keys, true ) && ! in_array( 'smartlink', $detected_keys, true ) && false === strpos( $name_haystack, 'group fallback' ) && ! empty( $offer['id'] ) ) {
+            if ( $is_cr_ui_comparison_normal_offer ) {
                 $comparison_key = '';
                 if ( false !== strpos( $name_haystack, 'revshare lifetime' ) ) {
                     $comparison_key = 'revshare_lifetime';

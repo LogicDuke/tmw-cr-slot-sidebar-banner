@@ -154,12 +154,26 @@ class TMW_CR_Slot_Offer_Repository {
     public function get_skipped_offer_ids_for_frontend() {
         $rows = get_option( $this->skipped_offers_option_key, array() );
         $set = array();
-        foreach ( (array) $rows as $row ) {
+        foreach ( (array) $rows as $key => $row ) {
             if ( ! is_array( $row ) ) {
                 continue;
             }
-            $offer_id = trim( (string) ( $row['offer_id'] ?? '' ) );
+            if ( array_key_exists( 'offer_id', $row ) ) {
+                $resolved_offer_id = (string) $row['offer_id'];
+                if ( '' === trim( $resolved_offer_id ) ) {
+                    continue;
+                }
+            } else {
+                $resolved_offer_id = (string) $key;
+            }
+            $offer_id = trim( sanitize_text_field( $resolved_offer_id ) );
             $decision = sanitize_key( (string) ( $row['decision'] ?? '' ) );
+            if ( ! array_key_exists( 'decision', $row ) ) {
+                $decision = 'skip';
+            }
+            if ( ! in_array( $decision, array( 'skip', 'review_later', 'keep' ), true ) ) {
+                continue;
+            }
             if ( '' === $offer_id || 'skip' !== $decision ) {
                 continue;
             }
@@ -1270,11 +1284,11 @@ class TMW_CR_Slot_Offer_Repository {
             $selected_id = (string) $selected_id;
 
             if ( isset( $synced_offers[ $selected_id ] ) ) {
-                if ( $this->should_exclude_skipped_frontend_offer( $selected_id, $skipped_offer_ids, $excluded_during_pool_build ) ) {
-                    continue;
-                }
                 if ( ! $this->is_offer_type_allowed( $synced_offers[ $selected_id ], $settings ) ) {
                     ++$skipped_type_disallowed_count;
+                    continue;
+                }
+                if ( $this->should_exclude_skipped_frontend_offer( $selected_id, $skipped_offer_ids, $excluded_during_pool_build ) ) {
                     continue;
                 }
                 if ( $this->is_offer_blocked_for_banner( $synced_offers[ $selected_id ], $settings ) ) {

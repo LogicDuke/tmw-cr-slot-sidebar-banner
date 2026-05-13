@@ -3742,6 +3742,285 @@ $tests['offers_dashboard_changes_do_not_change_frontend_pool'] = function() {
     tmw_assert_true( false === strpos( wp_json_encode( $us ), '9647' ) && false === strpos( wp_json_encode( $us ), '9781' ), 'Unavailable offers remain excluded.' );
 };
 
+
+$tests['enforce_skipped_offers_exclusion_default_is_zero'] = function() {
+    tmw_reset_test_state();
+    $settings = TMW_CR_Slot_Sidebar_Banner::get_settings();
+    tmw_assert_same( 0, (int) $settings['enforce_skipped_offers_exclusion'], 'Default should be 0.' );
+};
+$tests['enforce_skipped_offers_exclusion_setting_saves_and_loads'] = function() {
+    tmw_reset_test_state();
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    $a = $page->sanitize_settings( array( 'enforce_skipped_offers_exclusion' => 1 ) );
+    tmw_assert_same( 1, (int) $a['enforce_skipped_offers_exclusion'], 'Enabled should save as 1.' );
+    $b = $page->sanitize_settings( array() );
+    tmw_assert_same( 0, (int) $b['enforce_skipped_offers_exclusion'], 'Missing should save as 0.' );
+};
+
+if ( ! function_exists( 'tmw_capture_error_log' ) ) {
+    function tmw_capture_error_log( $callback ) {
+        $tmp = tempnam( sys_get_temp_dir(), 'tmw-log-' );
+        $prev = ini_get( 'error_log' );
+        ini_set( 'error_log', $tmp );
+
+        try {
+            $callback();
+            return file_exists( $tmp ) ? (string) file_get_contents( $tmp ) : '';
+        } finally {
+            ini_set( 'error_log', (string) $prev );
+            if ( is_string( $tmp ) && file_exists( $tmp ) ) {
+                unlink( $tmp );
+            }
+        }
+    }
+}
+
+$tests['get_skipped_offer_ids_for_frontend_returns_only_skip_decisions'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    update_option( 'tmw_cr_slot_banner_skipped_offers', array(
+        '2492'=>array('offer_id'=>'2492','decision'=>'skip','reason'=>' male-targeted ','notes'=>'x'),
+        '1111'=>array('offer_id'=>'1111','decision'=>'review_later','reason'=>'r','notes'=>'n'),
+        '2222'=>array('offer_id'=>'2222','decision'=>'keep','reason'=>'k','notes'=>'n'),
+        ''=>array('offer_id'=>'','decision'=>'skip','reason'=>'e','notes'=>'n'),
+    ) );
+    $set = $repo->get_skipped_offer_ids_for_frontend();
+    tmw_assert_true( isset( $set['2492'] ) && ! isset( $set['1111'] ) && ! isset( $set['2222'] ) && ! isset( $set[''] ), 'Only explicit skip rows with valid IDs should be included.' );
+    if ( ! isset( $set['2492'] ) ) {
+        throw new Exception( 'Missing expected 2492 row.' );
+    }
+    tmw_assert_same( 'male-targeted', $set['2492']['reason'], 'Reason should be sanitized.' );
+    tmw_assert_true( ! isset( $set['2492']['notes'] ), 'Notes must not be returned.' );
+};
+
+$tests['get_skipped_offer_ids_for_frontend_uses_row_key_for_legacy_rows'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    update_option( 'tmw_cr_slot_banner_skipped_offers', array(
+        'legacy-2492' => array( 'decision' => 'skip', 'reason' => '  legacy reason  ', 'notes' => 'secret' ),
+    ) );
+    $set = $repo->get_skipped_offer_ids_for_frontend();
+    tmw_assert_true( isset( $set['legacy-2492'] ), 'Legacy key-based offer_id should be included.' );
+    tmw_assert_same( 'legacy reason', (string) $set['legacy-2492']['reason'], 'Reason should be sanitized.' );
+    tmw_assert_true( ! isset( $set['legacy-2492']['notes'] ), 'Notes should not be returned.' );
+};
+$tests['get_skipped_offer_ids_for_frontend_does_not_include_non_skip_defaults'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    update_option( 'tmw_cr_slot_banner_skipped_offers', array(
+        'legacy-default' => array( 'reason' => 'default decision row', 'notes' => 'secret-a' ),
+        'legacy-invalid' => array( 'decision' => 'unknown', 'reason' => 'invalid decision row', 'notes' => 'secret-b' ),
+    ) );
+    $normalized = $repo->get_skipped_offers();
+    $set = $repo->get_skipped_offer_ids_for_frontend();
+    tmw_assert_true( isset( $normalized['legacy-default'] ) && 'skip' === (string) $normalized['legacy-default']['decision'], 'Missing decision should normalize to skip.' );
+    tmw_assert_true( isset( $normalized['legacy-invalid'] ) && 'skip' === (string) $normalized['legacy-invalid']['decision'], 'Invalid decision should normalize to skip.' );
+    tmw_assert_true( ! isset( $set['legacy-default'] ) && ! isset( $set['legacy-invalid'] ), 'Frontend helper should exclude missing/invalid non-skip decisions.' );
+};
+$tests['frontend_pool_excludes_skip_decision_when_setting_on_for_synced_offer'] = function() {
+    tmw_reset_test_state(); $repo=new TMW_CR_Slot_Offer_Repository('offers','meta');
+    $repo->save_synced_offers(array('7001'=>array('id'=>'7001','name'=>'Safe PPS','status'=>'active','payout_type'=>'PPS')));
+    $repo->save_offer_overrides(array('7001'=>array('enabled'=>1,'final_url_override'=>'https://trk.example.test/7001','allowed_countries'=>'US')));
+    $repo->save_skipped_offers(array(array('offer_id'=>'7001','offer_name'=>'Safe PPS','decision'=>'skip','reason'=>'test')));
+    $offers=$repo->get_frontend_slot_offers('sidebar',array('allowed_offer_types'=>array('pps'),'slot_offer_ids'=>array('7001'),'enforce_skipped_offers_exclusion'=>1),array('cta_url'=>'','cta_text'=>'CTA'),'US',array());
+    tmw_assert_true(false===strpos(wp_json_encode($offers),'7001'),'7001 should be excluded.');
+};
+$tests['frontend_pool_does_not_exclude_review_later_decision_when_setting_on'] = function() {
+    tmw_reset_test_state(); $repo=new TMW_CR_Slot_Offer_Repository('offers','meta');
+    $repo->save_synced_offers(array('7002'=>array('id'=>'7002','name'=>'Safe PPS2','status'=>'active','payout_type'=>'PPS')));
+    $repo->save_offer_overrides(array('7002'=>array('enabled'=>1,'final_url_override'=>'https://trk.example.test/7002','allowed_countries'=>'US')));
+    $repo->save_skipped_offers(array(array('offer_id'=>'7002','offer_name'=>'Safe PPS2','decision'=>'review_later','reason'=>'test')));
+    $offers=$repo->get_frontend_slot_offers('sidebar',array('allowed_offer_types'=>array('pps'),'slot_offer_ids'=>array('7002'),'enforce_skipped_offers_exclusion'=>1),array('cta_url'=>'','cta_text'=>'CTA'),'US',array());
+    tmw_assert_true(false!==strpos(wp_json_encode($offers),'7002'),'7002 should remain eligible.');
+};
+
+$tests['frontend_pool_ignores_skipped_offers_when_setting_off_default'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '7101' => array( 'id' => '7101', 'name' => 'Fixture PPS', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $repo->save_offer_overrides( array( '7101' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/7101', 'allowed_countries' => 'US' ) ) );
+    $repo->save_skipped_offers( array( array( 'offer_id' => '7101', 'decision' => 'skip', 'reason' => 'test' ) ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '7101' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    tmw_assert_true( false !== strpos( wp_json_encode( $offers ), '7101' ), 'Offer should remain when setting is OFF.' );
+};
+$tests['frontend_pool_excludes_skip_decision_when_setting_on_for_override_only_offer'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_offer_overrides( array( '8780' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/override-8780', 'allowed_countries' => 'Belgium' ) ) );
+    $repo->save_skipped_offers( array( array( 'offer_id' => '8780', 'decision' => 'skip', 'reason' => 'test' ) ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'enforce_skipped_offers_exclusion' => 1 ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    tmw_assert_true( false === strpos( wp_json_encode( $offers ), '8780' ), 'Override-only offer should be excluded when skipped.' );
+};
+$tests['frontend_pool_does_not_exclude_keep_or_empty_decision_when_setting_on'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        '7201' => array( 'id' => '7201', 'name' => 'Keep Decision', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '7202' => array( 'id' => '7202', 'name' => 'Empty Decision', 'status' => 'active', 'payout_type' => 'PPS' ),
+    ) );
+    $repo->save_offer_overrides( array(
+        '7201' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/7201', 'allowed_countries' => 'US' ),
+        '7202' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/7202', 'allowed_countries' => 'US' ),
+    ) );
+    update_option( 'tmw_cr_slot_banner_skipped_offers', array(
+        '7201' => array( 'offer_id' => '7201', 'decision' => 'keep', 'reason' => 'keep' ),
+        '7202' => array( 'offer_id' => '7202', 'decision' => '', 'reason' => 'empty' ),
+    ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '7201','7202' ), 'enforce_skipped_offers_exclusion' => 1 ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    $json = wp_json_encode( $offers );
+    tmw_assert_true( false !== strpos( $json, '7201' ) && false !== strpos( $json, '7202' ), 'Keep/empty decisions should remain eligible.' );
+};
+$tests['frontend_pool_skipped_offer_id_matching_uses_string_normalization'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '7001' => array( 'id' => 7001, 'name' => 'Numeric ID', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    update_option( 'tmw_cr_slot_banner_skipped_offers', array( '7001' => array( 'offer_id' => '7001', 'decision' => 'skip', 'reason' => 'id match' ) ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( 7001 ), 'enforce_skipped_offers_exclusion' => 1 ), array( 'cta_url' => 'https://base.test', 'cta_text' => 'CTA' ), 'US', array() );
+    tmw_assert_true( false === strpos( wp_json_encode( $offers ), '7001' ), 'String-normalized matching should exclude.' );
+};
+$tests['frontend_pool_8780_be_eligible_with_setting_off'] = function() { tmw_reset_test_state(); $r=new TMW_CR_Slot_Offer_Repository('offers','meta','overrides'); $r->save_synced_offers(array('8780'=>array('id'=>'8780','name'=>'Jerkmate','status'=>'active','payout_type'=>'PPS'))); $r->save_offer_overrides(array('8780'=>array('enabled'=>1,'final_url_override'=>'https://trk.example.test/a','allowed_countries'=>'Belgium'))); $o=$r->get_frontend_slot_offers('sidebar',array('allowed_offer_types'=>array('pps'),'slot_offer_ids'=>array('8780')),array('cta_url'=>'','cta_text'=>'CTA'),'Belgium',array()); tmw_assert_true(false!==strpos(wp_json_encode($o),'8780'),'8780 eligible with OFF'); };
+$tests['frontend_pool_8780_be_eligible_with_setting_on_when_not_skipped'] = function() { tmw_reset_test_state(); $r=new TMW_CR_Slot_Offer_Repository('offers','meta','overrides'); $r->save_synced_offers(array('8780'=>array('id'=>'8780','name'=>'Jerkmate','status'=>'active','payout_type'=>'PPS'))); $r->save_offer_overrides(array('8780'=>array('enabled'=>1,'final_url_override'=>'https://trk.example.test/a','allowed_countries'=>'Belgium'))); $o=$r->get_frontend_slot_offers('sidebar',array('allowed_offer_types'=>array('pps'),'slot_offer_ids'=>array('8780'),'enforce_skipped_offers_exclusion'=>1),array('cta_url'=>'','cta_text'=>'CTA'),'Belgium',array()); tmw_assert_true(false!==strpos(wp_json_encode($o),'8780'),'8780 eligible with ON not skipped'); };
+$tests['frontend_pool_10366_us_eligible_with_setting_off'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '10366' => array( 'id' => '10366', 'name' => 'NaughtyCharm', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $repo->save_offer_overrides( array( '10366' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/10366', 'allowed_countries' => 'United States' ) ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '10366' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'United States', array() );
+    tmw_assert_true( false !== strpos( wp_json_encode( $offers ), '10366' ), '10366 should be eligible in US when setting is OFF.' );
+};
+$tests['frontend_pool_10366_us_eligible_with_setting_on_when_not_skipped'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '10366' => array( 'id' => '10366', 'name' => 'NaughtyCharm', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $repo->save_offer_overrides( array( '10366' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/10366', 'allowed_countries' => 'United States' ) ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '10366' ), 'enforce_skipped_offers_exclusion' => 1 ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'United States', array() );
+    tmw_assert_true( false !== strpos( wp_json_encode( $offers ), '10366' ), '10366 should remain eligible in US when ON and not skipped.' );
+};
+$tests['frontend_pool_10366_be_still_excluded_by_country_with_setting_on'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '10366' => array( 'id' => '10366', 'name' => 'NaughtyCharm', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $repo->save_offer_overrides( array( '10366' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/10366', 'allowed_countries' => 'United States' ) ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '10366' ), 'enforce_skipped_offers_exclusion' => 1 ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    tmw_assert_true( false === strpos( wp_json_encode( $offers ), '10366' ), '10366 should remain excluded for Belgium by country targeting.' );
+};
+$tests['frontend_pool_final_url_override_priority_unchanged_with_setting_on'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '7401' => array( 'id' => '7401', 'name' => 'Priority Offer', 'status' => 'active', 'payout_type' => 'PPS', 'tracking_url' => 'https://trk.example.test/tracking' ) ) );
+    $repo->save_offer_overrides( array( '7401' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/final-override', 'allowed_countries' => 'US' ) ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '7401' ), 'enforce_skipped_offers_exclusion' => 1, 'cta_url' => 'https://global.example.test/cta' ), array( 'cta_url' => 'https://global.example.test/cta', 'cta_text' => 'CTA' ), 'US', array() );
+    $offer_json = wp_json_encode( $offers );
+    tmw_assert_true( false !== strpos( $offer_json, 'final-override' ), 'final_url_override should remain the selected frontend CTA target.' );
+};
+$tests['frontend_pool_unavailable_account_9647_9781_still_excluded_with_setting_on'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        '9647' => array( 'id' => '9647', 'name' => 'Group Fallback - Tapyn - PPS - Mobile - Android', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '9781' => array( 'id' => '9781', 'name' => 'Group Fallback - Dating.com PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+    ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '9647', '9781' ), 'enforce_skipped_offers_exclusion' => 1 ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'United States', array() );
+    $json = wp_json_encode( $offers );
+    tmw_assert_true( false === strpos( $json, '9647' ) && false === strpos( $json, '9781' ), 'Unavailable account offers must remain excluded when ON.' );
+};
+$tests['skipped_exclusion_checkbox_renders_on_slot_setup_unchecked_by_default'] = function() {
+    tmw_reset_test_state(); $_GET = array( 'tab' => 'slot-setup' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers','meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'enforce_skipped_offers_exclusion', $html, 'Checkbox should render.' );
+    tmw_assert_true( false === strpos( $html, 'enforce_skipped_offers_exclusion" value="1" checked' ), 'Default should be unchecked.' );
+};
+$tests['skipped_exclusion_checkbox_renders_checked_when_enabled'] = function() {
+    tmw_reset_test_state();
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers','meta' ), 'sidebar' );
+    $saved = $page->sanitize_settings( array( 'enforce_skipped_offers_exclusion' => 1 ) );
+    tmw_assert_same( 1, (int) $saved['enforce_skipped_offers_exclusion'], 'Enabled should sanitize to 1.' );
+};
+$tests['skipped_exclusion_does_not_readd_removed_standalone_import_sections'] = function() { tmw_reset_test_state(); $_GET=array('tab'=>'slot-setup'); $p=new TMW_Test_Admin_Page(TMW_CR_Slot_Sidebar_Banner::OPTION_KEY,new TMW_CR_Slot_Offer_Repository('offers','meta'),'sidebar'); ob_start(); $p->render_page(); $h=(string)ob_get_clean(); tmw_assert_true(false===strpos($h,'<h3>Import Allowed Country Overrides</h3>') && false===strpos($h,'<h3>Import Final URL Overrides</h3>'),'Standalone imports must remain hidden.'); };
+$tests['skipped_exclusion_does_not_break_slot_setup_pagination'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup', 'manual_audit_page' => '2', 'pps_audit_page' => '3' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'manual_audit_page', $html, 'Manual audit pagination controls should still render.' );
+    tmw_assert_contains( 'tab=slot-setup', $html, 'Slot setup pagination links should retain slot-setup tab context.' );
+};
+$tests['skipped_exclusion_does_not_break_offers_dashboard_columns'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Logo source', $html, 'Offers tab should keep Logo source column.' );
+    tmw_assert_contains( 'Frontend eligible', $html, 'Offers tab should keep Frontend eligible column.' );
+    tmw_assert_contains( 'Block reason', $html, 'Offers tab should keep Block reason column.' );
+};
+$tests['skipped_exclusion_dashboard_helper_marks_skipped_when_setting_on'] = function() {
+    tmw_reset_test_state(); $repo=new TMW_CR_Slot_Offer_Repository('offers','meta','overrides');
+    $offer=array('id'=>'7301','name'=>'Dash Skip','status'=>'active','payout_type'=>'PPS');
+    $repo->save_offer_overrides(array('7301'=>array('enabled'=>1,'final_url_override'=>'https://trk.example.test/7301','allowed_countries'=>'US')));
+    $repo->save_skipped_offers(array(array('offer_id'=>'7301','decision'=>'skip','reason'=>'dash')));
+    $summary=$repo->get_offer_frontend_eligibility_summary($offer,array('allowed_offer_types'=>array('pps'),'enforce_skipped_offers_exclusion'=>1),'US',array());
+    tmw_assert_same('skipped_offer',(string)$summary['block_reason'],'Skipped should block when ON.');
+};
+$tests['skipped_exclusion_dashboard_helper_ignores_skipped_when_setting_off'] = function() {
+    tmw_reset_test_state(); $repo=new TMW_CR_Slot_Offer_Repository('offers','meta','overrides');
+    $offer=array('id'=>'7302','name'=>'Dash Keep','status'=>'active','payout_type'=>'PPS');
+    $repo->save_offer_overrides(array('7302'=>array('enabled'=>1,'final_url_override'=>'https://trk.example.test/7302','allowed_countries'=>'US')));
+    $repo->save_skipped_offers(array(array('offer_id'=>'7302','decision'=>'skip','reason'=>'dash')));
+    $summary=$repo->get_offer_frontend_eligibility_summary($offer,array('allowed_offer_types'=>array('pps'),'enforce_skipped_offers_exclusion'=>0),'US',array());
+    tmw_assert_true('skipped_offer' !== (string)$summary['block_reason'],'Skipped should not block when OFF.');
+};
+
+
+$tests['frontend_pool_does_not_exclude_legacy_invalid_decision_when_setting_on'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '7601' => array( 'id' => '7601', 'name' => 'Legacy Invalid Decision', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $repo->save_offer_overrides( array( '7601' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/7601', 'allowed_countries' => 'US' ) ) );
+    update_option( 'tmw_cr_slot_banner_skipped_offers', array(
+        '7601' => array( 'decision' => 'unknown', 'reason' => 'legacy-invalid', 'notes' => 'secret-note' ),
+    ) );
+    $logs = tmw_capture_error_log( static function () use ( $repo ) {
+        $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '7601' ), 'enforce_skipped_offers_exclusion' => 1 ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    } );
+    tmw_assert_true( false === strpos( $logs, '[TMW-BANNER-SKIP] skipped_offer_excluded offer_id=7601' ), 'Invalid legacy decision should not emit skip exclusion log.' );
+    tmw_assert_true( false === strpos( $logs, 'secret-note' ), 'Notes must never appear in logs.' );
+};
+$tests['skipped_exclusion_does_not_log_type_disallowed_selected_offer'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( 'x-soi' => array( 'id' => 'x-soi', 'name' => 'SOI Offer', 'status' => 'active', 'payout_type' => 'SOI' ), 'safe-pps' => array( 'id' => 'safe-pps', 'name' => 'Safe PPS', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    update_option( 'tmw_cr_slot_banner_skipped_offers', array( 'x-soi' => array( 'offer_id' => 'x-soi', 'decision' => 'skip', 'reason' => 'type disallowed', 'notes' => 'do not log' ) ) );
+    $logs = tmw_capture_error_log( static function () use ( $repo ) {
+        $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( 'safe-pps', 'x-soi' ), 'enforce_skipped_offers_exclusion' => 1 ), array( 'cta_url' => 'https://base.test', 'cta_text' => 'CTA' ), 'US', array() );
+    } );
+    tmw_assert_true( false === strpos( $logs, '[TMW-BANNER-SKIP] skipped_offer_excluded offer_id=x-soi' ), 'Type-disallowed selected offer should not emit skipped exclusion log.' );
+};
+$tests['skipped_exclusion_logs_every_candidate_path'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        's1' => array( 'id' => 's1', 'name' => 'S1', 'status' => 'active', 'payout_type' => 'PPS' ),
+        's2' => array( 'id' => 's2', 'name' => 'S2', 'status' => 'active', 'payout_type' => 'PPS' ),
+    ) );
+    $repo->save_offer_overrides( array( '8780' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/8780', 'allowed_countries' => 'US' ) ) );
+    update_option( 'tmw_cr_slot_banner_skipped_offers', array(
+        's1' => array( 'offer_id' => 's1', 'decision' => 'skip', 'reason' => 'selected', 'notes' => 'secret-a' ),
+        's2' => array( 'offer_id' => 's2', 'decision' => 'skip', 'reason' => 'fallback', 'notes' => 'secret-b' ),
+        '8780' => array( 'offer_id' => '8780', 'decision' => 'skip', 'reason' => 'override', 'notes' => 'secret-c' ),
+        'legacy-1' => array( 'offer_id' => 'legacy-1', 'decision' => 'skip', 'reason' => 'legacy', 'notes' => 'secret-d' ),
+    ) );
+    $legacy = array( array( 'id' => 'legacy-1', 'name' => 'Legacy One', 'cta_url' => 'https://trk.example.test/legacy', 'image_url' => 'https://img.test/legacy.jpg' ) );
+    $logs = tmw_capture_error_log( static function () use ( $repo, $legacy ) {
+        $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps', 'fallback' ), 'slot_offer_ids' => array( 's1' ), 'enforce_skipped_offers_exclusion' => 1 ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', $legacy );
+    } );
+    foreach ( array( 'offer_id=s1', 'offer_id=s2', 'offer_id=8780', 'offer_id=legacy-1' ) as $needle ) {
+        tmw_assert_true( false !== strpos( $logs, $needle ), 'Missing skipped log for ' . $needle );
+    }
+    tmw_assert_true( false !== strpos( $logs, '[TMW-BANNER-SKIP] frontend_pool_summary' ), 'Expected frontend_pool_summary log when enforcement is ON.' );
+    tmw_assert_true( false === strpos( $logs, 'secret-' ), 'Notes must never be logged.' );
+};
 $failures = array();
 $passes   = 0;
 

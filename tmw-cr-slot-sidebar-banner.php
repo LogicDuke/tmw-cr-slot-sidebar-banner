@@ -3,7 +3,7 @@
  * Plugin Name: TMW CR Slot Sidebar Banner
  * Plugin URI: https://themilisofialtd.com/
  * Description: Displays a geo-targeted CrackRevenue slot banner with a 3-reel interface in sidebar areas via shortcode or template tag.
- * Version: 1.8.7
+ * Version: 1.8.8
  * Author: The Milisofia LTD
  * Author URI: https://themilisofialtd.com/
  * License: GPL2
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'TMW_CR_SLOT_BANNER_VERSION', '1.8.7' );
+define( 'TMW_CR_SLOT_BANNER_VERSION', '1.8.8' );
 define( 'TMW_CR_SLOT_BANNER_PATH', plugin_dir_path( __FILE__ ) );
 define( 'TMW_CR_SLOT_BANNER_URL', plugin_dir_url( __FILE__ ) );
 
@@ -192,6 +192,7 @@ class TMW_CR_Slot_Sidebar_Banner {
             'stats_sync_range'       => '30d',
             'optimization_notes'    => '',
             'allowed_offer_types'   => array( 'pps' ),
+            'enforce_skipped_offers_exclusion' => 0,
         );
 
         $settings = get_option( self::OPTION_KEY, array() );
@@ -230,6 +231,7 @@ class TMW_CR_Slot_Sidebar_Banner {
             $settings['stats_sync_range'] = '30d';
         }
         $settings['optimization_notes'] = sanitize_textarea_field( (string) $settings['optimization_notes'] );
+        $settings['enforce_skipped_offers_exclusion'] = ! empty( $settings['enforce_skipped_offers_exclusion'] ) ? 1 : 0;
         $settings['allowed_offer_types'] = TMW_CR_Slot_Offer_Repository::sanitize_allowed_offer_types(
             isset( $settings['allowed_offer_types'] ) ? $settings['allowed_offer_types'] : array()
         );

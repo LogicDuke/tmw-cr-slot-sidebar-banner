@@ -4094,6 +4094,110 @@ $tests['skipped_exclusion_logs_every_candidate_path'] = function() {
 $failures = array();
 $passes   = 0;
 
+$tests['frontend_pool_8780_be_eligible_after_regex_extension'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '8780' => array( 'id' => '8780', 'name' => 'Jerkmate - PPS', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $repo->save_offer_overrides( array( '8780' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/8780', 'allowed_countries' => 'Belgium' ) ) );
+
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array(), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    tmw_assert_true( false !== strpos( wp_json_encode( $offers ), '8780' ), '8780 must remain eligible for Belgium under default PPS allowlist.' );
+};
+
+$tests['frontend_pool_10366_us_eligible_after_regex_extension'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '10366' => array( 'id' => '10366', 'name' => 'NaughtyCharm - PPS', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $repo->save_offer_overrides( array( '10366' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/10366', 'allowed_countries' => 'United States' ) ) );
+
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array(), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'United States', array() );
+    tmw_assert_true( false !== strpos( wp_json_encode( $offers ), '10366' ), '10366 must remain eligible for United States under default PPS allowlist.' );
+};
+
+$tests['frontend_pool_10366_be_still_excluded_after_regex_extension'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '10366' => array( 'id' => '10366', 'name' => 'NaughtyCharm - PPS', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $repo->save_offer_overrides( array( '10366' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/10366', 'allowed_countries' => 'United States' ) ) );
+
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array(), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    tmw_assert_true( false === strpos( wp_json_encode( $offers ), '10366' ), '10366 must remain excluded for Belgium.' );
+};
+
+$tests['unavailable_account_9647_9781_still_excluded_after_regex_extension'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        '9647' => array( 'id' => '9647', 'name' => 'Group Fallback - Tapyn - PPS - Mobile - Android', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '9781' => array( 'id' => '9781', 'name' => 'Group Fallback - Dating.com PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+    ) );
+    $repo->save_offer_overrides( array(
+        '9647' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/9647', 'allowed_countries' => 'United States' ),
+        '9781' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/9781', 'allowed_countries' => 'United States' ),
+    ) );
+
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array(), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'United States', array() );
+    $json = wp_json_encode( $offers );
+    tmw_assert_true( false === strpos( $json, '9647' ) && false === strpos( $json, '9781' ), 'Unavailable account offers 9647/9781 must remain excluded.' );
+};
+
+$tests['skipped_exclusion_contract_unchanged_after_type_metadata_extension'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        's-skip' => array( 'id' => 's-skip', 'name' => 'Skip Decision - PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+        's-review' => array( 'id' => 's-review', 'name' => 'Review Decision - PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+        's-keep' => array( 'id' => 's-keep', 'name' => 'Keep Decision - PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+        's-empty' => array( 'id' => 's-empty', 'name' => 'Empty Decision - PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+        's-unknown' => array( 'id' => 's-unknown', 'name' => 'Unknown Decision - PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+    ) );
+    $repo->save_offer_overrides( array(
+        's-skip' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/s-skip', 'allowed_countries' => 'US' ),
+        's-review' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/s-review', 'allowed_countries' => 'US' ),
+        's-keep' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/s-keep', 'allowed_countries' => 'US' ),
+        's-empty' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/s-empty', 'allowed_countries' => 'US' ),
+        's-unknown' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/s-unknown', 'allowed_countries' => 'US' ),
+    ) );
+    update_option( 'tmw_cr_slot_banner_skipped_offers', array(
+        's-skip' => array( 'offer_id' => 's-skip', 'decision' => 'skip', 'reason' => 'skip', 'notes' => 'secret-note' ),
+        's-review' => array( 'offer_id' => 's-review', 'decision' => 'review_later', 'reason' => 'review', 'notes' => 'secret-note' ),
+        's-keep' => array( 'offer_id' => 's-keep', 'decision' => 'keep', 'reason' => 'keep', 'notes' => 'secret-note' ),
+        's-empty' => array( 'offer_id' => 's-empty', 'decision' => '', 'reason' => 'empty', 'notes' => 'secret-note' ),
+        's-unknown' => array( 'offer_id' => 's-unknown', 'decision' => 'unknown', 'reason' => 'unknown', 'notes' => 'secret-note' ),
+    ) );
+
+    $off_offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'enforce_skipped_offers_exclusion' => 0 ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    $off_json = wp_json_encode( $off_offers );
+    tmw_assert_true( false !== strpos( $off_json, 's-skip' ), 'With OFF, skipped store should not affect frontend eligibility.' );
+
+    $logs = tmw_capture_error_log( static function () use ( $repo ) {
+        $on_offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'enforce_skipped_offers_exclusion' => 1 ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+        $json = wp_json_encode( $on_offers );
+        tmw_assert_true( false === strpos( $json, 's-skip' ), 'With ON, decision=skip must hard-exclude.' );
+        tmw_assert_true( false !== strpos( $json, 's-review' ), 'With ON, review_later must not hard-exclude.' );
+        tmw_assert_true( false !== strpos( $json, 's-keep' ), 'With ON, keep must not hard-exclude.' );
+        tmw_assert_true( false !== strpos( $json, 's-empty' ), 'With ON, empty decision must not hard-exclude.' );
+        tmw_assert_true( false !== strpos( $json, 's-unknown' ), 'With ON, unknown decision must not hard-exclude.' );
+    } );
+    tmw_assert_true( false === strpos( $logs, 'secret-note' ), 'Notes must never be logged.' );
+};
+
+$tests['slot_setup_cpi_cpm_options_render_unchecked_by_default'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start();
+    $page->render_page();
+    $html = (string) ob_get_clean();
+
+    tmw_assert_contains( 'value="cpi"', $html, 'CPI option should render in Slot Setup.' );
+    tmw_assert_contains( 'value="cpm"', $html, 'CPM option should render in Slot Setup.' );
+    tmw_assert_true( false === strpos( $html, 'value="cpi" checked' ), 'CPI should be unchecked by default.' );
+    tmw_assert_true( false === strpos( $html, 'value="cpm" checked' ), 'CPM should be unchecked by default.' );
+    tmw_assert_true( false !== strpos( $html, 'value="pps" checked' ), 'PPS should remain checked by default.' );
+};
+
+
 foreach ( $tests as $name => $test ) {
     try {
         $test();
@@ -4110,3 +4214,4 @@ echo "\nTotal: {$passes} passed, " . count( $failures ) . " failed\n";
 if ( ! empty( $failures ) ) {
     exit( 1 );
 }
+

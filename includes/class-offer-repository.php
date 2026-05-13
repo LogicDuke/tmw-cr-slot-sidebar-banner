@@ -1163,10 +1163,7 @@ class TMW_CR_Slot_Offer_Repository {
             $raw_values = array_merge( $raw_values, $this->normalize_query_values( $raw_source, $family ) );
         }
         if ( 'payout_type' === $family ) {
-            $has_direct_payout = '' !== trim( (string) ( $offer['payout_type'] ?? '' ) );
-            if ( ! $has_direct_payout ) {
-                $raw_values = array_merge( $raw_values, $this->normalize_query_values( $this->get_offer_type_keys( $offer ), 'payout_type' ) );
-            }
+            $raw_values = array_merge( $raw_values, $this->normalize_query_values( $this->get_offer_type_keys( $offer ), 'payout_type' ) );
             $name = strtolower( (string) ( $offer['name'] ?? '' ) );
             if ( false !== strpos( $name, 'cpa' ) ) { $raw_values[] = 'multi_cpa'; }
             if ( 'cpa_flat' === strtolower( trim( (string) ( $offer['payout_type'] ?? '' ) ) ) ) { $raw_values[] = 'multi_cpa'; }
@@ -3333,6 +3330,10 @@ class TMW_CR_Slot_Offer_Repository {
                 'promotion_method' => $this->merge_preferred_values(
                     $this->sanitize_list_values( isset( $offer['promotion_method'] ) ? $offer['promotion_method'] : array() ),
                     $this->sanitize_list_values( isset( $previous['promotion_method'] ) ? $previous['promotion_method'] : array() )
+                ),
+                'payout_type' => $this->merge_preferred_values(
+                    $this->extract_admin_raw_filter_values( $offer, 'payout_type' ),
+                    $this->normalize_query_values( (array) ( $previous['payout_type'] ?? array() ), 'payout_type' )
                 ),
             );
         }

@@ -740,17 +740,6 @@ class TMW_CR_Slot_Admin_Page {
         $country        = strtoupper( TMW_CR_Slot_Geo_Helper::get_country_code() );
         $tag_options = $this->build_filter_option_map( (array) ( $filter_model['supported']['tag'] ?? array() ) );
         $vertical_options = $this->build_filter_option_map( (array) ( $filter_model['supported']['vertical'] ?? array() ) );
-        $known_payout_types = array(
-            'pps',
-            'soi',
-            'doi',
-            'cpi',
-            'cpm',
-            'cpc',
-            'multi_cpa',
-            'revshare',
-            'revshare_lifetime',
-        );
         $payout_labels = array(
             'pps' => 'PPS',
             'soi' => 'SOI',
@@ -763,12 +752,7 @@ class TMW_CR_Slot_Admin_Page {
             'revshare_lifetime' => 'Revshare Lifetime',
         );
         $payout_options = $this->build_filter_option_map(
-            array_unique(
-                array_merge(
-                    $known_payout_types,
-                    (array) ( $filter_model['supported']['payout_type'] ?? array() )
-                )
-            ),
+            (array) ( $filter_model['supported']['payout_type'] ?? array() ),
             $payout_labels
         );
         $performs_in_options = $country_options;
@@ -1509,17 +1493,6 @@ class TMW_CR_Slot_Admin_Page {
                 $status_options[ $status_option ] = strtoupper( $status_option );
             }
             $payout_options = array( '' => 'Payout type: any' );
-            $known_payout_types = array(
-                'pps',
-                'soi',
-                'doi',
-                'cpi',
-                'cpm',
-                'cpc',
-                'multi_cpa',
-                'revshare',
-                'revshare_lifetime',
-            );
             $payout_labels = array(
                 'pps' => 'PPS',
                 'soi' => 'SOI',
@@ -1531,12 +1504,7 @@ class TMW_CR_Slot_Admin_Page {
                 'revshare' => 'Revshare',
                 'revshare_lifetime' => 'Revshare Lifetime',
             );
-            $available_payout_types = array_unique(
-                array_merge(
-                    $known_payout_types,
-                    (array) ( $filter_model['supported']['payout_type'] ?? array() )
-                )
-            );
+            $available_payout_types = (array) ( $filter_model['supported']['payout_type'] ?? array() );
             foreach ( $available_payout_types as $type_option ) {
                 $type_option = sanitize_key( (string) $type_option );
                 if ( '' === $type_option ) {

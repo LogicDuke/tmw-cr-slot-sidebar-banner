@@ -152,15 +152,21 @@ class TMW_CR_Slot_Offer_Repository {
      * @return array<string,array<string,string>>
      */
     public function get_skipped_offer_ids_for_frontend() {
-        $set = array();
+        $rows = get_option( $this->skipped_offers_option_key, array() );
+        $set  = array();
 
-        foreach ( $this->get_skipped_offers() as $offer_id => $row ) {
-            $offer_id = trim( sanitize_text_field( (string) $offer_id ) );
-            if ( '' === $offer_id || ! is_array( $row ) ) {
+        foreach ( (array) $rows as $key => $row ) {
+            if ( ! is_array( $row ) ) {
                 continue;
             }
 
-            $decision = sanitize_key( (string) ( $row['decision'] ?? 'skip' ) );
+            $raw_offer_id = array_key_exists( 'offer_id', $row ) ? (string) $row['offer_id'] : (string) $key;
+            $offer_id     = trim( sanitize_text_field( $raw_offer_id ) );
+            if ( '' === $offer_id ) {
+                continue;
+            }
+
+            $decision = sanitize_key( (string) ( $row['decision'] ?? '' ) );
             if ( 'skip' !== $decision ) {
                 continue;
             }

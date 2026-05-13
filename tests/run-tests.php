@@ -3804,7 +3804,7 @@ $tests['get_skipped_offer_ids_for_frontend_uses_row_key_for_legacy_rows'] = func
     tmw_assert_same( 'legacy reason', (string) $set['legacy-2492']['reason'], 'Reason should be sanitized.' );
     tmw_assert_true( ! isset( $set['legacy-2492']['notes'] ), 'Notes should not be returned.' );
 };
-$tests['get_skipped_offer_ids_for_frontend_matches_get_skipped_offers_defaults'] = function() {
+$tests['get_skipped_offer_ids_for_frontend_does_not_include_non_skip_defaults'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
     update_option( 'tmw_cr_slot_banner_skipped_offers', array(
@@ -3815,8 +3815,7 @@ $tests['get_skipped_offer_ids_for_frontend_matches_get_skipped_offers_defaults']
     $set = $repo->get_skipped_offer_ids_for_frontend();
     tmw_assert_true( isset( $normalized['legacy-default'] ) && 'skip' === (string) $normalized['legacy-default']['decision'], 'Missing decision should normalize to skip.' );
     tmw_assert_true( isset( $normalized['legacy-invalid'] ) && 'skip' === (string) $normalized['legacy-invalid']['decision'], 'Invalid decision should normalize to skip.' );
-    tmw_assert_true( isset( $set['legacy-default'] ) && isset( $set['legacy-invalid'] ), 'Frontend helper should include rows normalized to skip.' );
-    tmw_assert_true( ! isset( $set['legacy-default']['notes'] ) && ! isset( $set['legacy-invalid']['notes'] ), 'Frontend helper must not return notes.' );
+    tmw_assert_true( ! isset( $set['legacy-default'] ) && ! isset( $set['legacy-invalid'] ), 'Frontend helper should exclude missing/invalid non-skip decisions.' );
 };
 $tests['frontend_pool_excludes_skip_decision_when_setting_on_for_synced_offer'] = function() {
     tmw_reset_test_state(); $repo=new TMW_CR_Slot_Offer_Repository('offers','meta');
@@ -3974,7 +3973,7 @@ $tests['skipped_exclusion_dashboard_helper_ignores_skipped_when_setting_off'] = 
 };
 
 
-$tests['frontend_pool_excludes_legacy_invalid_decision_normalized_to_skip_when_setting_on'] = function() {
+$tests['frontend_pool_does_not_exclude_legacy_invalid_decision_when_setting_on'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
     $repo->save_synced_offers( array( '7601' => array( 'id' => '7601', 'name' => 'Legacy Invalid Decision', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
@@ -3985,7 +3984,7 @@ $tests['frontend_pool_excludes_legacy_invalid_decision_normalized_to_skip_when_s
     $logs = tmw_capture_error_log( static function () use ( $repo ) {
         $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '7601' ), 'enforce_skipped_offers_exclusion' => 1 ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
     } );
-    tmw_assert_true( false !== strpos( $logs, '[TMW-BANNER-SKIP] skipped_offer_excluded offer_id=7601' ), 'Invalid legacy decision normalized to skip should emit exclusion log.' );
+    tmw_assert_true( false === strpos( $logs, '[TMW-BANNER-SKIP] skipped_offer_excluded offer_id=7601' ), 'Invalid legacy decision should not emit skip exclusion log.' );
     tmw_assert_true( false === strpos( $logs, 'secret-note' ), 'Notes must never appear in logs.' );
 };
 $tests['skipped_exclusion_does_not_log_type_disallowed_selected_offer'] = function() {

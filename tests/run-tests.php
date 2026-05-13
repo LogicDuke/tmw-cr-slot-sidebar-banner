@@ -4170,6 +4170,21 @@ $tests['offers_tab_summary_normalizes_legacy_payout_alias_labels'] = function() 
     tmw_assert_contains( 'Payout Type: Revshare Lifetime', $html, 'Legacy alias label should render with canonical payout family label.' );
     tmw_assert_true( false === strpos( $html, 'Payout Type: CPA_FLAT' ), 'Legacy alias should not be rendered as raw CPA_FLAT label.' );
 };
+$tests['payout_reconciliation_counts_source_classes'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array(
+        'n1' => array( 'id' => 'n1', 'name' => 'Normal PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+        'g1' => array( 'id' => 'g1', 'name' => 'Group Fallback - Brand PPS', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+        's1' => array( 'id' => 's1', 'name' => 'CR Smartlink - Global', 'status' => 'active', 'payout_type' => 'unknown_type' ),
+        'u1' => array( 'id' => 'u1', 'name' => 'Mystery Offer', 'status' => 'active', 'payout_type' => '' ),
+    ) );
+    $counts = $repo->get_admin_payout_reconciliation_counts();
+    tmw_assert_same( 4, (int) $counts['source_total'], 'Source total should count all synced rows.' );
+    tmw_assert_same( 2, (int) $counts['source_class']['normal_offer'], 'Normal offers should include standard + unknown-non-group rows.' );
+    tmw_assert_same( 1, (int) $counts['source_class']['group_fallback'], 'Group fallback rows should be counted.' );
+    tmw_assert_same( 1, (int) $counts['source_class']['smartlink'], 'Smartlink rows should be counted.' );
+};
 $tests['payout_reconciliation_counts_separate_raw_detected_and_admin_filter'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
@@ -4753,18 +4768,3 @@ echo "\nTotal: {$passes} passed, " . count( $failures ) . " failed\n";
 if ( ! empty( $failures ) ) {
     exit( 1 );
 }
-$tests['payout_reconciliation_counts_source_classes'] = function() {
-    tmw_reset_test_state();
-    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
-    $repo->save_synced_offers( array(
-        'n1' => array( 'id' => 'n1', 'name' => 'Normal PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
-        'g1' => array( 'id' => 'g1', 'name' => 'Group Fallback - Brand PPS', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
-        's1' => array( 'id' => 's1', 'name' => 'CR Smartlink - Global', 'status' => 'active', 'payout_type' => 'unknown_type' ),
-        'u1' => array( 'id' => 'u1', 'name' => 'Mystery Offer', 'status' => 'active', 'payout_type' => '' ),
-    ) );
-    $counts = $repo->get_admin_payout_reconciliation_counts();
-    tmw_assert_same( 4, (int) $counts['source_total'], 'Source total should count all synced rows.' );
-    tmw_assert_same( 2, (int) $counts['source_class']['normal_offer'], 'Normal offers should include standard + unknown-non-group rows.' );
-    tmw_assert_same( 1, (int) $counts['source_class']['group_fallback'], 'Group fallback rows should be counted.' );
-    tmw_assert_same( 1, (int) $counts['source_class']['smartlink'], 'Smartlink rows should be counted.' );
-};

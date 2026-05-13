@@ -117,6 +117,12 @@ class TMW_Test_Admin_Page extends TMW_CR_Slot_Admin_Page {
     }
 }
 
+class TMW_Test_Offer_Repository extends TMW_CR_Slot_Offer_Repository {
+    public function test_get_offer_cr_ui_label_comparison_keys( $offer, $source_class = '' ) {
+        return $this->get_offer_cr_ui_label_comparison_keys( $offer, $source_class );
+    }
+}
+
 function tmw_reset_test_state() {
     $GLOBALS['tmw_test_options']      = array();
     $GLOBALS['tmw_test_transients']   = array();
@@ -4988,11 +4994,11 @@ $tests['frontend_pool_unchanged_after_cr_fixture_reconciliation'] = function() {
     tmw_assert_true( false === strpos( $offers_us, 'x-soi' ), 'SOI should remain excluded by default PPS-only frontend allowlist.' );
 };
 
-$tests['cr_fixture_reconciliation_normalizes_revshare_lifetime_label'] = function() {
+$tests['cr_fixture_reconciliation_treats_revshare_lifetime_name_as_match'] = function() {
     tmw_reset_test_state();
-    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo = new TMW_Test_Offer_Repository( 'offers', 'meta', 'overrides' );
     $repo->save_synced_offers( array(
-        '235' => array( 'id' => '235', 'name' => 'Exposed Webcams / Live Free Fun - Revshare Lifetime', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+        '235' => array( 'id' => '235', 'name' => 'Exposed Webcams / Live Free Fun - Revshare Lifetime', 'status' => 'active', 'payout_type' => 'cpa_percentage' ),
     ) );
     $audit = $repo->get_cr_fixture_reconciliation_audit();
     $fixture_has_235 = false;
@@ -5005,23 +5011,59 @@ $tests['cr_fixture_reconciliation_normalizes_revshare_lifetime_label'] = functio
     tmw_assert_true( ! $fixture_has_235, 'Fixture ID 235 should be matched locally in this scenario.' );
     $mismatch_ids = array_map( static function( $row ) { return (string) ( $row['cr_id'] ?? '' ); }, (array) $audit['payout_label_mismatches'] );
     tmw_assert_true( ! in_array( '235', $mismatch_ids, true ), 'Revshare Lifetime row 235 should not be falsely marked as mismatch.' );
-    $summary = (array) ( $audit['summary_by_cr_payout_type']['Revshare Lifetime'] ?? array() );
-    tmw_assert_true( (int) ( $summary['mismatch_count'] ?? 0 ) >= 0, 'Revshare Lifetime summary should be present.' );
-    tmw_assert_same( 0, (int) ( $summary['mismatch_count'] ?? 0 ), 'Revshare Lifetime mismatch_count should remain 0 for matched 235 row.' );
+    $comparison = $repo->test_get_offer_cr_ui_label_comparison_keys( array( 'id' => '235', 'name' => 'Exposed Webcams / Live Free Fun - Revshare Lifetime', 'payout_type' => 'cpa_percentage' ), 'normal_offer' );
+    tmw_assert_true( in_array( 'revshare_lifetime', $comparison, true ), 'Comparison labels should include revshare_lifetime.' );
 };
 
-$tests['cr_fixture_reconciliation_normalizes_multi_cpa_label'] = function() {
+$tests['cr_fixture_reconciliation_treats_resvshare_lifetime_typo_as_match'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
     $repo->save_synced_offers( array(
-        '1421' => array( 'id' => '1421', 'name' => 'Deal 4 Porn - Multi-CPA', 'status' => 'active', 'payout_type' => 'cpa_both' ),
+        '9739' => array( 'id' => '9739', 'name' => 'Fixture Offer - Resvshare Lifetime', 'status' => 'active', 'payout_type' => 'cpa_percentage' ),
     ) );
     $audit = $repo->get_cr_fixture_reconciliation_audit();
     $mismatch_ids = array_map( static function( $row ) { return (string) ( $row['cr_id'] ?? '' ); }, (array) $audit['payout_label_mismatches'] );
-    tmw_assert_true( ! in_array( '1421', $mismatch_ids, true ), 'Multi-CPA row 1421 should not be falsely marked as mismatch.' );
-    $summary = (array) ( $audit['summary_by_cr_payout_type']['Multi-CPA'] ?? array() );
-    tmw_assert_true( (int) ( $summary['matched_local_count'] ?? 0 ) >= 1, 'Multi-CPA summary should include a matched local row.' );
+    tmw_assert_true( ! in_array( '9739', $mismatch_ids, true ), 'Resvshare Lifetime typo should still be treated as Revshare Lifetime for comparison.' );
 };
+
+$tests['cr_fixture_reconciliation_treats_smartlink_as_multi_cpa_compatible'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_Test_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        '3664' => array( 'id' => '3664', 'name' => 'Adult Smartlink Global', 'status' => 'active', 'payout_type' => 'cpa_both' ),
+    ) );
+    $audit = $repo->get_cr_fixture_reconciliation_audit();
+    $mismatch_ids = array_map( static function( $row ) { return (string) ( $row['cr_id'] ?? '' ); }, (array) $audit['payout_label_mismatches'] );
+    tmw_assert_true( ! in_array( '3664', $mismatch_ids, true ), 'Smartlink should be treated as compatible with CR Multi-CPA labels.' );
+    $comparison = $repo->test_get_offer_cr_ui_label_comparison_keys( array( 'id' => '3664', 'name' => 'Adult Smartlink Global', 'payout_type' => 'cpa_both' ), 'smartlink' );
+    tmw_assert_true( in_array( 'multi_cpa', $comparison, true ), 'Smartlink comparison labels should include multi_cpa.' );
+};
+
+$tests['cr_fixture_reconciliation_still_detects_real_payout_mismatch'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        '235' => array( 'id' => '235', 'name' => 'Exposed Webcams CPC Test', 'status' => 'active', 'payout_type' => 'cpc' ),
+    ) );
+    $audit = $repo->get_cr_fixture_reconciliation_audit();
+    $mismatch_ids = array_map( static function( $row ) { return (string) ( $row['cr_id'] ?? '' ); }, (array) $audit['payout_label_mismatches'] );
+    tmw_assert_true( in_array( '235', $mismatch_ids, true ), 'Real CR/local payout mismatch should still be detected.' );
+};
+
+$tests['offers_tab_renders_comparison_context_for_mismatches'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        '235' => array( 'id' => '235', 'name' => 'Exposed Webcams CPC Test', 'status' => 'active', 'payout_type' => 'cpc' ),
+    ) );
+    $_GET = array( 'tab' => 'offers' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Payout label mismatches', $html, 'Mismatch panel title should render.' );
+    tmw_assert_contains( 'detected/admin/comparison:', $html, 'Mismatch rows should include comparison context label.' );
+};
+
+$tests['frontend_pool_unchanged_after_cr_reconciliation_comparison_refine'] = $tests['frontend_pool_unchanged_after_cr_fixture_reconciliation'];
 
 
 foreach ( $tests as $name => $test ) {

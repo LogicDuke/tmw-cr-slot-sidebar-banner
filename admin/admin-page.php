@@ -2307,14 +2307,14 @@ class TMW_CR_Slot_Admin_Page {
                 <?php if ( empty( $rows ) ) : ?>
                     <tr><td colspan="8">None</td></tr>
                 <?php else : foreach ( array_slice( $rows, 0, $limit ) as $row ) : ?>
-                    <?php $families = array_merge( (array) ( $row['local_detected_type_keys'] ?? array() ), (array) ( $row['local_admin_filter_families'] ?? array() ) ); ?>
+                    <?php $families = array_merge( (array) ( $row['local_detected_type_keys'] ?? array() ), (array) ( $row['local_admin_filter_families'] ?? array() ), (array) ( $row['comparison_label_keys'] ?? array() ) ); ?>
                     <tr>
                         <td><code><?php echo esc_html( (string) ( $row['cr_id'] ?? $row['id'] ?? '' ) ); ?></code></td>
                         <td><?php echo esc_html( (string) ( $row['cr_name'] ?? $row['name'] ?? '' ) ); ?></td>
                         <td><?php echo esc_html( (string) ( $row['local_name'] ?? $row['name'] ?? '' ) ); ?></td>
                         <td><?php echo esc_html( (string) ( $row['cr_payout_type'] ?? $row['payout_type'] ?? '' ) ); ?></td>
                         <td><?php echo esc_html( (string) ( $row['local_raw_payout_type'] ?? '' ) ); ?></td>
-                        <td><?php echo esc_html( implode( ', ', array_unique( array_filter( array_map( 'sanitize_key', $families ) ) ) ) ); ?></td>
+                        <td><?php echo esc_html( 'detected/admin/comparison: ' . implode( ', ', array_unique( array_filter( array_map( 'sanitize_key', $families ) ) ) ) ); ?></td>
                         <td><?php echo esc_html( (string) ( $row['source_class'] ?? '' ) ); ?></td>
                         <td><?php echo esc_html( (string) ( $row['note'] ?? '' ) ); ?></td>
                     </tr>

@@ -1345,10 +1345,12 @@ class TMW_CR_Slot_Offer_Repository {
             $detected = array_values( array_unique( array_map( 'sanitize_key', (array) $this->get_offer_type_keys( $local_offer ) ) ) );
             $meta = $this->get_offer_dashboard_metadata( $cr_id, $local_offer );
             $admin_families = (array) ( $this->get_admin_offer_filter_values( $local_offer, $meta )['payout_type'] ?? array() );
+            $source_class = $this->get_offer_audit_source_class( $local_offer, $detected );
+            $comparison_label_keys = $this->get_offer_cr_ui_label_comparison_keys( $local_offer, $source_class );
             $normalized_cr = $this->normalize_cr_fixture_payout_label( $cr_payout );
             if ( '' !== $normalized_cr ) {
                 ++$summary_by_type[ $cr_payout ]['local_comparison_count'];
-                if ( ! in_array( $normalized_cr, $detected, true ) && ! in_array( $normalized_cr, $admin_families, true ) ) {
+                if ( ! in_array( $normalized_cr, $detected, true ) && ! in_array( $normalized_cr, $admin_families, true ) && ! in_array( $normalized_cr, $comparison_label_keys, true ) ) {
                     ++$summary_by_type[ $cr_payout ]['mismatch_count'];
                     $payout_label_mismatches[] = array(
                         'cr_id' => $cr_id,
@@ -1358,8 +1360,9 @@ class TMW_CR_Slot_Offer_Repository {
                         'local_raw_payout_type' => sanitize_text_field( (string) ( $local_offer['payout_type'] ?? '' ) ),
                         'local_detected_type_keys' => $detected,
                         'local_admin_filter_families' => array_values( array_unique( array_map( 'sanitize_key', $admin_families ) ) ),
-                        'source_class' => $this->get_offer_audit_source_class( $local_offer, $detected ),
-                        'note' => 'CR payout_type not found in local detected/admin payout families.',
+                        'comparison_label_keys' => $comparison_label_keys,
+                        'source_class' => $source_class,
+                        'note' => 'CR payout_type not found in local detected/admin/comparison payout families.',
                     );
                 }
             }
@@ -1417,6 +1420,43 @@ class TMW_CR_Slot_Offer_Repository {
             return 'smartlink';
         }
         return 'normal_offer';
+    }
+
+    protected function get_offer_cr_ui_label_comparison_keys( $offer, $source_class = '' ) {
+        $name = (string) ( $offer['name'] ?? '' );
+        $name_haystack = strtolower( $name );
+        $source_class = sanitize_key( (string) $source_class );
+
+        $keys = array_values( array_unique( array_map( 'sanitize_key', (array) $this->get_offer_type_keys( $offer ) ) ) );
+
+        if ( false !== strpos( $name_haystack, 'revshare lifetime' ) || false !== strpos( $name_haystack, 'resvshare lifetime' ) ) {
+            $keys[] = 'revshare_lifetime';
+        } elseif ( false !== strpos( $name_haystack, 'revshare' ) ) {
+            $keys[] = 'revshare';
+        }
+
+        if ( false !== strpos( $name_haystack, 'multi-cpa' ) || false !== strpos( $name_haystack, 'multi cpa' ) ) {
+            $keys[] = 'multi_cpa';
+        }
+        if ( 'smartlink' === $source_class ) {
+            $keys[] = 'multi_cpa';
+        }
+
+        $name_label_map = array(
+            'pps' => 'pps',
+            'soi' => 'soi',
+            'doi' => 'doi',
+            'cpc' => 'cpc',
+            'cpi' => 'cpi',
+            'cpm' => 'cpm',
+        );
+        foreach ( $name_label_map as $needle => $mapped ) {
+            if ( false !== strpos( $name_haystack, $needle ) ) {
+                $keys[] = $mapped;
+            }
+        }
+
+        return array_values( array_unique( array_filter( array_map( 'sanitize_key', $keys ) ) ) );
     }
 
     protected function normalize_cr_fixture_payout_label( $label ) {

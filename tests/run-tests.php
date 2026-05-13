@@ -3130,14 +3130,36 @@ class TMW_Test_Audit_Repo extends TMW_CR_Slot_Offer_Repository {
     public $manual_rows = array();
     public $pps_rows = array();
 
+    /**
+     * Return injected manual audit rows for Slot Setup rendering tests.
+     *
+     * @param array<string,mixed> $settings Unused in test double.
+     * @param array<string,mixed> $banner_data Unused in test double.
+     * @param string $country Unused in test double.
+     * @param array<string,mixed> $legacy_catalog Unused in test double.
+     * @return array<int,array<string,mixed>>
+     */
     public function get_manual_winner_eligibility_audit_rows( $settings, $banner_data = array(), $country = '', $legacy_catalog = array() ) {
         return $this->manual_rows;
     }
 
+    /**
+     * Return injected PPS expansion rows for Slot Setup rendering tests.
+     *
+     * @param array<string,mixed> $settings Unused in test double.
+     * @param array<string,mixed> $banner_data Unused in test double.
+     * @return array<int,array<string,mixed>>
+     */
     public function get_pps_expansion_readiness_audit_rows( $settings, $banner_data = array() ) {
         return $this->pps_rows;
     }
 
+    /**
+     * Return deterministic summary values derived from provided PPS rows.
+     *
+     * @param array<int,array<string,mixed>> $rows PPS rows.
+     * @return array<string,int>
+     */
     public function get_pps_expansion_readiness_audit_summary( $rows ) {
         return array(
             'total_pps_candidates' => count( $rows ),
@@ -3310,17 +3332,125 @@ $tests['pps_audit_filter_missing_cta_keeps_only_missing_cta_block_reason'] = fun
     ob_start(); $page->render_page(); $html = (string) ob_get_clean();
     tmw_assert_contains( 'Missing CTA', $html, 'Missing CTA row should be present.' ); tmw_assert_true( false === strpos( $html, 'Missing Country' ), 'Other reasons excluded.' );
 };
-$tests['pps_audit_filter_missing_country_override_keeps_only_matching_rows'] = function() { tmw_reset_test_state(); $_GET = array( 'tab' => 'slot-setup', 'pps_audit_filter' => 'missing_country_override' ); $repo = new TMW_Test_Audit_Repo( 'o', 'm' ); $repo->pps_rows = tmw_make_pps_filter_rows(); $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); ob_start(); $page->render_page(); $html = (string) ob_get_clean(); tmw_assert_contains( 'Missing Country', $html, 'Country override row present.' ); tmw_assert_true( false === strpos( $html, 'Missing Logo' ), 'Other rows excluded.' ); };
-$tests['pps_audit_filter_missing_logo_keeps_only_matching_rows'] = function() { tmw_reset_test_state(); $_GET = array( 'tab' => 'slot-setup', 'pps_audit_filter' => 'missing_logo' ); $repo = new TMW_Test_Audit_Repo( 'o', 'm' ); $repo->pps_rows = tmw_make_pps_filter_rows(); $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); ob_start(); $page->render_page(); $html = (string) ob_get_clean(); tmw_assert_contains( 'Missing Logo', $html, 'Missing logo row present.' ); tmw_assert_true( false === strpos( $html, 'Missing CTA' ), 'Other rows excluded.' ); };
-$tests['pps_audit_filter_blocked_by_business_rule_keeps_business_and_unavailable_rows'] = function() { tmw_reset_test_state(); $_GET = array( 'tab' => 'slot-setup', 'pps_audit_filter' => 'blocked_by_business_rule' ); $repo = new TMW_Test_Audit_Repo( 'o', 'm' ); $repo->pps_rows = tmw_make_pps_filter_rows(); $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); ob_start(); $page->render_page(); $html = (string) ob_get_clean(); tmw_assert_contains( 'Business Rule', $html, 'Business blocked row present.' ); tmw_assert_contains( 'Unavailable Account', $html, 'Unavailable row present.' ); tmw_assert_true( false === strpos( $html, 'Missing CTA' ), 'Non-business block excluded.' ); };
-$tests['pps_audit_filter_override_only_and_synced_sources'] = function() { tmw_reset_test_state(); $_GET = array( 'tab' => 'slot-setup', 'pps_audit_filter' => 'override_only' ); $repo = new TMW_Test_Audit_Repo( 'o', 'm' ); $repo->pps_rows = tmw_make_pps_filter_rows(); $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); ob_start(); $page->render_page(); $html = (string) ob_get_clean(); tmw_assert_contains( 'Override Only', $html, 'Override source present.' ); tmw_assert_true( false === strpos( $html, 'Missing CTA' ), 'Synced source excluded for override filter.' ); tmw_reset_test_state(); $_GET = array( 'tab' => 'slot-setup', 'pps_audit_filter' => 'synced' ); ob_start(); $page->render_page(); $html = (string) ob_get_clean(); tmw_assert_contains( 'Missing CTA', $html, 'Synced row present.' ); tmw_assert_true( false === strpos( $html, 'Override Only' ), 'Override row excluded in synced filter.' ); };
-$tests['pps_audit_search_matches_offer_id_substring'] = function() { tmw_reset_test_state(); $_GET = array( 'tab' => 'slot-setup', 'pps_audit_search' => '8780' ); $repo = new TMW_Test_Audit_Repo( 'o', 'm' ); $repo->pps_rows = tmw_make_pps_filter_rows(); $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); ob_start(); $page->render_page(); $html = (string) ob_get_clean(); tmw_assert_contains( 'JerkMate MixedCase', $html, 'ID match row present.' ); tmw_assert_true( false === strpos( $html, 'Missing CTA' ), 'Unrelated row excluded.' ); };
-$tests['pps_audit_search_matches_offer_name_case_insensitive'] = function() { tmw_reset_test_state(); $_GET = array( 'tab' => 'slot-setup', 'pps_audit_search' => 'jerkmate' ); $repo = new TMW_Test_Audit_Repo( 'o', 'm' ); $repo->pps_rows = tmw_make_pps_filter_rows(); $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); ob_start(); $page->render_page(); $html = (string) ob_get_clean(); tmw_assert_contains( 'JerkMate MixedCase', $html, 'Case-insensitive match should pass.' ); tmw_assert_true( false === strpos( $html, 'Unavailable Account' ), 'Unrelated row excluded.' ); };
-$tests['audit_pagination_summary_counts_unchanged_by_filter'] = function() { tmw_reset_test_state(); $_GET = array( 'tab' => 'slot-setup', 'pps_audit_filter' => 'missing_logo' ); $repo = new TMW_Test_Audit_Repo( 'o', 'm' ); $repo->pps_rows = tmw_make_audit_rows( 60, 'PPS' ); $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); ob_start(); $page->render_page(); $html = (string) ob_get_clean(); tmw_assert_contains( 'Total PPS candidates: 60', $html, 'Summary must use unfiltered count.' ); tmw_assert_contains( 'Filtered rows:', $html, 'Filtered row count should render separately.' ); };
-$tests['audit_pagination_links_preserve_slot_setup_tab'] = function() { tmw_reset_test_state(); $_GET = array( 'tab' => 'slot-setup', 'manual_audit_page' => '2', 'pps_audit_page' => '2' ); $repo = new TMW_Test_Audit_Repo( 'o', 'm' ); $repo->manual_rows = tmw_make_audit_rows( 60, 'MAN' ); $repo->pps_rows = tmw_make_audit_rows( 60, 'PPS' ); $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); ob_start(); $page->render_page(); $html = (string) ob_get_clean(); tmw_assert_contains( 'page=tmw-cr-slot-sidebar-banner', $html, 'Pagination links should preserve page slug.' ); tmw_assert_contains( 'tab=slot-setup', $html, 'Pagination links should preserve slot-setup tab.' ); };
-$tests['audit_pagination_links_preserve_independent_report_query_args'] = function() { tmw_reset_test_state(); $_GET = array( 'tab' => 'slot-setup', 'manual_audit_page' => '3', 'pps_audit_page' => '2', 'pps_audit_filter' => 'missing_cta', 'pps_audit_search' => '8780' ); $repo = new TMW_Test_Audit_Repo( 'o', 'm' ); $repo->manual_rows = tmw_make_audit_rows( 60, 'MAN' ); $repo->pps_rows = tmw_make_audit_rows( 60, 'PPS' ); $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); ob_start(); $page->render_page(); $html = (string) ob_get_clean(); tmw_assert_contains( 'manual_audit_page=3', $html, 'PPS links should preserve manual page.' ); tmw_assert_contains( 'pps_audit_page=2', $html, 'Manual links should preserve PPS page.' ); tmw_assert_contains( 'pps_audit_filter=missing_cta', $html, 'Manual links should preserve PPS filter.' ); tmw_assert_contains( 'pps_audit_search=8780', $html, 'Manual links should preserve PPS search.' ); };
-$tests['audit_pagination_does_not_break_combined_override_import_form_post'] = function() { tmw_reset_test_state(); $_GET = array( 'tab' => 'slot-setup' ); $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' ); ob_start(); $page->render_page(); $html = (string) ob_get_clean(); tmw_assert_contains( 'action" value="tmw_cr_slot_banner_import_both_overrides"', $html, 'Combined import action remains.' ); tmw_assert_contains( 'name="allowed_country_override_csv"', $html, 'Combined import allowed-country field remains.' ); tmw_assert_contains( 'name="final_url_override_csv"', $html, 'Combined import final URL field remains.' ); };
-$tests['audit_pagination_does_not_readd_removed_standalone_import_sections'] = function() { tmw_reset_test_state(); $_GET = array( 'tab' => 'slot-setup' ); $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' ); ob_start(); $page->render_page(); $html = (string) ob_get_clean(); tmw_assert_true( false === strpos( $html, '<h3>Import Allowed Country Overrides</h3>' ), 'Standalone allowed-country section should remain removed.' ); tmw_assert_true( false === strpos( $html, '<h3>Import Final URL Overrides</h3>' ), 'Standalone final-url section should remain removed.' ); tmw_assert_contains( '<h3>Import Both Override CSVs</h3>', $html, 'Combined import section should remain visible.' ); };
+$tests['pps_audit_filter_missing_country_override_keeps_only_matching_rows'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup', 'pps_audit_filter' => 'missing_country_override' );
+    $repo = new TMW_Test_Audit_Repo( 'o', 'm' );
+    $repo->pps_rows = tmw_make_pps_filter_rows();
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Missing Country', $html, 'Country override row present.' );
+    tmw_assert_true( false === strpos( $html, 'Missing Logo' ), 'Other rows excluded.' );
+};
+$tests['pps_audit_filter_missing_logo_keeps_only_matching_rows'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup', 'pps_audit_filter' => 'missing_logo' );
+    $repo = new TMW_Test_Audit_Repo( 'o', 'm' );
+    $repo->pps_rows = tmw_make_pps_filter_rows();
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Missing Logo', $html, 'Missing logo row present.' );
+    tmw_assert_true( false === strpos( $html, 'Missing CTA' ), 'Other rows excluded.' );
+};
+$tests['pps_audit_filter_blocked_by_business_rule_keeps_business_and_unavailable_rows'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup', 'pps_audit_filter' => 'blocked_by_business_rule' );
+    $repo = new TMW_Test_Audit_Repo( 'o', 'm' );
+    $repo->pps_rows = tmw_make_pps_filter_rows();
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Business Rule', $html, 'Business blocked row present.' );
+    tmw_assert_contains( 'Unavailable Account', $html, 'Unavailable row present.' );
+    tmw_assert_true( false === strpos( $html, 'Missing CTA' ), 'Non-business block excluded.' );
+};
+$tests['pps_audit_filter_override_only_and_synced_sources'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup', 'pps_audit_filter' => 'override_only' );
+    $repo = new TMW_Test_Audit_Repo( 'o', 'm' );
+    $repo->pps_rows = tmw_make_pps_filter_rows();
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Override Only', $html, 'Override source present.' );
+    tmw_assert_true( false === strpos( $html, 'Missing CTA' ), 'Synced source excluded for override filter.' );
+
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup', 'pps_audit_filter' => 'synced' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Missing CTA', $html, 'Synced row present.' );
+    tmw_assert_true( false === strpos( $html, 'Override Only' ), 'Override row excluded in synced filter.' );
+};
+$tests['pps_audit_search_matches_offer_id_substring'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup', 'pps_audit_search' => '8780' );
+    $repo = new TMW_Test_Audit_Repo( 'o', 'm' );
+    $repo->pps_rows = tmw_make_pps_filter_rows();
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'JerkMate MixedCase', $html, 'ID match row present.' );
+    tmw_assert_true( false === strpos( $html, 'Missing CTA' ), 'Unrelated row excluded.' );
+};
+$tests['pps_audit_search_matches_offer_name_case_insensitive'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup', 'pps_audit_search' => 'jerkmate' );
+    $repo = new TMW_Test_Audit_Repo( 'o', 'm' );
+    $repo->pps_rows = tmw_make_pps_filter_rows();
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'JerkMate MixedCase', $html, 'Case-insensitive match should pass.' );
+    tmw_assert_true( false === strpos( $html, 'Unavailable Account' ), 'Unrelated row excluded.' );
+};
+$tests['audit_pagination_summary_counts_unchanged_by_filter'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup', 'pps_audit_filter' => 'missing_logo' );
+    $repo = new TMW_Test_Audit_Repo( 'o', 'm' );
+    $repo->pps_rows = tmw_make_audit_rows( 60, 'PPS' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Total PPS candidates: 60', $html, 'Summary must use unfiltered count.' );
+    tmw_assert_contains( 'Filtered rows:', $html, 'Filtered row count should render separately.' );
+};
+$tests['audit_pagination_links_preserve_slot_setup_tab'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup', 'manual_audit_page' => '2', 'pps_audit_page' => '2' );
+    $repo = new TMW_Test_Audit_Repo( 'o', 'm' );
+    $repo->manual_rows = tmw_make_audit_rows( 60, 'MAN' );
+    $repo->pps_rows = tmw_make_audit_rows( 60, 'PPS' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'page=tmw-cr-slot-sidebar-banner', $html, 'Pagination links should preserve page slug.' );
+    tmw_assert_contains( 'tab=slot-setup', $html, 'Pagination links should preserve slot-setup tab.' );
+};
+$tests['audit_pagination_links_preserve_independent_report_query_args'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup', 'manual_audit_page' => '3', 'pps_audit_page' => '2', 'pps_audit_filter' => 'missing_cta', 'pps_audit_search' => '8780' );
+    $repo = new TMW_Test_Audit_Repo( 'o', 'm' );
+    $repo->manual_rows = tmw_make_audit_rows( 60, 'MAN' );
+    $repo->pps_rows = tmw_make_audit_rows( 60, 'PPS' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'manual_audit_page=3', $html, 'PPS links should preserve manual page.' );
+    tmw_assert_contains( 'pps_audit_page=2', $html, 'Manual links should preserve PPS page.' );
+    tmw_assert_contains( 'pps_audit_filter=missing_cta', $html, 'Manual links should preserve PPS filter.' );
+    tmw_assert_contains( 'pps_audit_search=8780', $html, 'Manual links should preserve PPS search.' );
+};
+$tests['audit_pagination_does_not_break_combined_override_import_form_post'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'action" value="tmw_cr_slot_banner_import_both_overrides"', $html, 'Combined import action remains.' );
+    tmw_assert_contains( 'name="allowed_country_override_csv"', $html, 'Combined import allowed-country field remains.' );
+    tmw_assert_contains( 'name="final_url_override_csv"', $html, 'Combined import final URL field remains.' );
+};
+$tests['audit_pagination_does_not_readd_removed_standalone_import_sections'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_true( false === strpos( $html, '<h3>Import Allowed Country Overrides</h3>' ), 'Standalone allowed-country section should remain removed.' );
+    tmw_assert_true( false === strpos( $html, '<h3>Import Final URL Overrides</h3>' ), 'Standalone final-url section should remain removed.' );
+    tmw_assert_contains( '<h3>Import Both Override CSVs</h3>', $html, 'Combined import section should remain visible.' );
+};
 $tests['audit_pagination_does_not_change_frontend_pool'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );

@@ -1108,9 +1108,11 @@ class TMW_CR_Slot_Offer_Repository {
         if ( ! empty( $overrides[ $offer_id ] ) ) {
             return 'manual_override';
         }
-        $filename = (string) $this->get_offer_logo_filename( $offer );
-        if ( '' !== $filename ) {
-            $local_path = rtrim( (string) TMW_CR_SLOT_BANNER_PATH, '/\\' ) . '/assets/logos/' . $filename;
+        $brand_key = $this->get_offer_brand_key( (string) ( $offer['name'] ?? '' ) );
+        $filename_map = $this->get_offer_logo_filename_map();
+        if ( '' !== $brand_key && isset( $filename_map[ $brand_key ] ) ) {
+            $expected_filename = (string) $filename_map[ $brand_key ];
+            $local_path        = rtrim( (string) TMW_CR_SLOT_BANNER_PATH, '/\\' ) . '/assets/logos/' . $expected_filename;
             return file_exists( $local_path ) ? 'mapped_local' : 'missing';
         }
         $offer_name = (string) ( $offer['name'] ?? '' );

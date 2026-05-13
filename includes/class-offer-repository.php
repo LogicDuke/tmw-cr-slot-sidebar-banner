@@ -2591,7 +2591,7 @@ class TMW_CR_Slot_Offer_Repository {
                     'clicks'       => 0,
                     'conversions'  => 0.0,
                     'payout'       => 0.0,
-                    'payout_type'  => (string) ( $row['payout_type'] ?? ( $offer['payout_type'] ?? '' ) ),
+                    'payout_type'  => $this->normalize_filter_family_value( 'payout_type', (string) ( $row['payout_type'] ?? ( $offer['payout_type'] ?? '' ) ) ),
                     'status'       => (string) ( $offer['status'] ?? '' ),
                 );
             }
@@ -2602,7 +2602,7 @@ class TMW_CR_Slot_Offer_Repository {
         }
 
         foreach ( $grouped as $offer_id => $row ) {
-            if ( '' !== $payout_type_filter && $payout_type_filter !== sanitize_key( (string) ( $row['payout_type'] ?? '' ) ) ) {
+            if ( '' !== $payout_type_filter && $payout_type_filter !== $this->normalize_filter_family_value( 'payout_type', (string) ( $row['payout_type'] ?? '' ) ) ) {
                 unset( $grouped[ $offer_id ] );
                 continue;
             }

@@ -748,13 +748,36 @@ class TMW_CR_Slot_Admin_Page {
         $country        = strtoupper( TMW_CR_Slot_Geo_Helper::get_country_code() );
         $tag_options = $this->build_filter_option_map( (array) ( $filter_model['supported']['tag'] ?? array() ) );
         $vertical_options = $this->build_filter_option_map( (array) ( $filter_model['supported']['vertical'] ?? array() ) );
+        $known_payout_types = array(
+            'pps',
+            'soi',
+            'doi',
+            'cpi',
+            'cpm',
+            'cpc',
+            'multi_cpa',
+            'revshare',
+            'revshare_lifetime',
+        );
+        $payout_labels = array(
+            'pps' => 'PPS',
+            'soi' => 'SOI',
+            'doi' => 'DOI',
+            'cpi' => 'CPI',
+            'cpm' => 'CPM',
+            'cpc' => 'CPC',
+            'multi_cpa' => 'Multi-CPA',
+            'revshare' => 'Revshare',
+            'revshare_lifetime' => 'Revshare Lifetime',
+        );
         $payout_options = $this->build_filter_option_map(
-            (array) ( $filter_model['supported']['payout_type'] ?? array() ),
-            array(
-                'revshare' => 'Revshare',
-                'revshare_lifetime' => 'Revshare Lifetime',
-                'multi_cpa' => 'Multi-CPA',
-            )
+            array_unique(
+                array_merge(
+                    $known_payout_types,
+                    (array) ( $filter_model['supported']['payout_type'] ?? array() )
+                )
+            ),
+            $payout_labels
         );
         $performs_in_options = $country_options;
         $optimized_for_options = $this->build_filter_option_map( (array) ( $filter_model['supported']['optimized_for'] ?? array() ) );

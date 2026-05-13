@@ -1127,11 +1127,14 @@ class TMW_CR_Slot_Admin_Page {
                 <p class="description"><code><?php echo esc_html( implode( '; ', $manual_country_rows ) ); ?></code></p>
             <?php endif; ?>
             <?php $eligibility_rows = $this->offer_repository->get_manual_winner_eligibility_audit_rows( $settings, array( 'cta_url' => (string) ( $settings['cta_url'] ?? '' ), 'cta_text' => (string) ( $settings['cta_text'] ?? '' ) ), $country, $legacy_catalog ); ?>
+            <?php $manual_audit_page = $this->get_positive_query_int( 'manual_audit_page', 1 ); ?>
+            <?php $manual_audit_pagination = $this->paginate_rows( $eligibility_rows, $manual_audit_page, 25 ); ?>
             <h3><?php esc_html_e( 'Manual winner eligibility audit', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
+            <?php $this->render_audit_pagination( (int) $manual_audit_pagination['current_page'], (int) $manual_audit_pagination['total_pages'], 'manual_audit_page', array( 'pps_audit_page', 'pps_audit_filter', 'pps_audit_search' ) ); ?>
             <table class="widefat striped">
                 <thead><tr><th>Offer ID</th><th>Offer name</th><th>Has final URL override</th><th>Final URL host</th><th>Has allowed country override</th><th>Allowed countries count</th><th>Detected visitor country raw</th><th>Detected visitor country normalized</th><th>Eligibility result</th><th>Exclusion reason</th></tr></thead>
                 <tbody>
-                <?php foreach ( $eligibility_rows as $row ) : ?>
+                <?php foreach ( $manual_audit_pagination['rows'] as $row ) : ?>
                     <tr>
                         <td><?php echo esc_html( (string) $row['offer_id'] ); ?></td>
                         <td><?php echo esc_html( (string) $row['offer_name'] ); ?></td>
@@ -1147,8 +1150,14 @@ class TMW_CR_Slot_Admin_Page {
                 <?php endforeach; ?>
                 </tbody>
             </table>
+            <?php $this->render_audit_pagination( (int) $manual_audit_pagination['current_page'], (int) $manual_audit_pagination['total_pages'], 'manual_audit_page', array( 'pps_audit_page', 'pps_audit_filter', 'pps_audit_search' ) ); ?>
             <?php $pps_expansion_rows = $this->offer_repository->get_pps_expansion_readiness_audit_rows( $settings, array( 'cta_url' => (string) ( $settings['cta_url'] ?? '' ), 'cta_text' => (string) ( $settings['cta_text'] ?? '' ) ) ); ?>
             <?php $pps_expansion_summary = $this->offer_repository->get_pps_expansion_readiness_audit_summary( $pps_expansion_rows ); ?>
+            <?php $pps_audit_filter = isset( $_GET['pps_audit_filter'] ) ? sanitize_key( wp_unslash( $_GET['pps_audit_filter'] ) ) : 'all'; ?>
+            <?php $pps_audit_search = isset( $_GET['pps_audit_search'] ) ? sanitize_text_field( wp_unslash( $_GET['pps_audit_search'] ) ) : ''; ?>
+            <?php $pps_filtered_rows = $this->apply_pps_audit_filter( $pps_expansion_rows, $pps_audit_filter, $pps_audit_search ); ?>
+            <?php $pps_audit_page = $this->get_positive_query_int( 'pps_audit_page', 1 ); ?>
+            <?php $pps_audit_pagination = $this->paginate_rows( $pps_filtered_rows, $pps_audit_page, 25 ); ?>
             <h3><?php esc_html_e( 'PPS expansion readiness audit', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
             <ul>
                 <li><?php echo esc_html( sprintf( 'Total PPS candidates: %d', (int) ( $pps_expansion_summary['total_pps_candidates'] ?? 0 ) ) ); ?></li>
@@ -1160,10 +1169,29 @@ class TMW_CR_Slot_Admin_Page {
                 <li><?php echo esc_html( sprintf( 'Override-only candidates: %d', (int) ( $pps_expansion_summary['override_only_candidates'] ?? 0 ) ) ); ?></li>
                 <li><?php echo esc_html( sprintf( 'Synced candidates: %d', (int) ( $pps_expansion_summary['synced_candidates'] ?? 0 ) ) ); ?></li>
             </ul>
+            <form method="get" style="margin:12px 0;">
+                <input type="hidden" name="page" value="tmw-cr-slot-sidebar-banner" />
+                <input type="hidden" name="tab" value="slot-setup" />
+                <input type="hidden" name="manual_audit_page" value="<?php echo esc_attr( (string) $manual_audit_pagination['current_page'] ); ?>" />
+                <label for="pps_audit_filter"><strong><?php esc_html_e( 'Filter', 'tmw-cr-slot-sidebar-banner' ); ?></strong></label>
+                <select id="pps_audit_filter" name="pps_audit_filter">
+                    <?php $allowed_filters = array( 'all', 'frontend_ready_only', 'missing_cta', 'missing_country_override', 'missing_logo', 'blocked_by_business_rule', 'override_only', 'synced' ); ?>
+                    <?php foreach ( $allowed_filters as $filter_key ) : ?>
+                        <option value="<?php echo esc_attr( $filter_key ); ?>" <?php selected( $pps_audit_filter, $filter_key ); ?>><?php echo esc_html( $filter_key ); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <label for="pps_audit_search"><strong><?php esc_html_e( 'Search', 'tmw-cr-slot-sidebar-banner' ); ?></strong></label>
+                <input type="text" id="pps_audit_search" name="pps_audit_search" value="<?php echo esc_attr( $pps_audit_search ); ?>" />
+                <button type="submit" class="button"><?php esc_html_e( 'Apply', 'tmw-cr-slot-sidebar-banner' ); ?></button>
+            </form>
+            <?php if ( 'all' !== $pps_audit_filter || '' !== $pps_audit_search ) : ?>
+                <p class="description"><?php echo esc_html( sprintf( 'Filtered rows: %1$d of %2$d', count( $pps_filtered_rows ), count( $pps_expansion_rows ) ) ); ?></p>
+            <?php endif; ?>
+            <?php $this->render_audit_pagination( (int) $pps_audit_pagination['current_page'], (int) $pps_audit_pagination['total_pages'], 'pps_audit_page', array( 'manual_audit_page', 'pps_audit_filter', 'pps_audit_search' ) ); ?>
             <table class="widefat striped">
                 <thead><tr><th>Offer ID</th><th>Offer name</th><th>Source</th><th>PPS detected?</th><th>Blocked by business rule?</th><th>Block reason</th><th>Final CTA source</th><th>Final CTA host only</th><th>Has allowed-country override?</th><th>Allowed countries count</th><th>Example BE result</th><th>Example US result</th><th>Logo resolved?</th><th>Logo filename</th><th>Frontend-ready?</th></tr></thead>
                 <tbody>
-                <?php foreach ( $pps_expansion_rows as $row ) : ?>
+                <?php foreach ( $pps_audit_pagination['rows'] as $row ) : ?>
                     <tr>
                         <td><?php echo esc_html( (string) $row['offer_id'] ); ?></td>
                         <td><?php echo esc_html( (string) $row['offer_name'] ); ?></td>
@@ -1184,6 +1212,7 @@ class TMW_CR_Slot_Admin_Page {
                 <?php endforeach; ?>
                 </tbody>
             </table>
+            <?php $this->render_audit_pagination( (int) $pps_audit_pagination['current_page'], (int) $pps_audit_pagination['total_pages'], 'pps_audit_page', array( 'manual_audit_page', 'pps_audit_filter', 'pps_audit_search' ) ); ?>
             <?php if ( 0 === count( $eligible_winner_offers ) ) : ?>
                 <p class="description" style="color:#b32d2e;"><strong><?php esc_html_e( 'No eligible winner offers. Add valid final URL overrides or sync real tracking URLs.', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
             <?php endif; ?>
@@ -1887,6 +1916,143 @@ class TMW_CR_Slot_Admin_Page {
             echo '<a class="' . esc_attr( $class ) . '" href="' . esc_url( $url ) . '">' . esc_html( (string) $page ) . '</a> ';
         }
         echo '</div></div>';
+    }
+
+    /**
+     * Read a positive integer page value from the query string.
+     *
+     * @param string $key Query parameter key.
+     * @param int    $default Fallback page number.
+     * @return int
+     */
+    protected function get_positive_query_int( $key, $default = 1 ) {
+        if ( ! isset( $_GET[ $key ] ) ) {
+            return max( 1, (int) $default );
+        }
+
+        $raw_value = sanitize_text_field( wp_unslash( $_GET[ $key ] ) );
+        if ( '' === $raw_value || ! ctype_digit( $raw_value ) ) {
+            return max( 1, (int) $default );
+        }
+
+        $value = (int) $raw_value;
+        return $value > 0 ? $value : max( 1, (int) $default );
+    }
+
+    /**
+     * Paginate an in-memory audit row array for admin rendering.
+     *
+     * @param array<int,array<string,mixed>> $rows Rows to slice.
+     * @param int $page Requested page.
+     * @param int $per_page Rows per page.
+     * @return array<string,mixed>
+     */
+    protected function paginate_rows( array $rows, $page, $per_page = 25 ) {
+        $total_rows  = count( $rows );
+        $per_page    = max( 1, (int) $per_page );
+        $total_pages = max( 1, (int) ceil( $total_rows / $per_page ) );
+        $page        = max( 1, (int) $page );
+        if ( $page > $total_pages ) {
+            $page = $total_pages;
+        }
+
+        return array(
+            'rows'         => array_slice( $rows, ( $page - 1 ) * $per_page, $per_page ),
+            'current_page' => $page,
+            'total_pages'  => $total_pages,
+        );
+    }
+
+    /**
+     * Render Slot Setup audit pagination controls with preserved query args.
+     *
+     * @param int $current_page Current page number.
+     * @param int $total_pages Total available pages.
+     * @param string $page_arg Query key for the paged audit.
+     * @param array<int,string> $preserve_args Extra query args to preserve.
+     * @return void
+     */
+    protected function render_audit_pagination( $current_page, $total_pages, $page_arg, $preserve_args = array() ) {
+        if ( $total_pages <= 1 ) {
+            return;
+        }
+        $base_args = array(
+            'page' => 'tmw-cr-slot-sidebar-banner',
+            'tab'  => 'slot-setup',
+        );
+        foreach ( $preserve_args as $arg ) {
+            if ( isset( $_GET[ $arg ] ) ) {
+                $base_args[ $arg ] = sanitize_text_field( wp_unslash( $_GET[ $arg ] ) );
+            }
+        }
+        echo '<div class="tablenav"><div class="tablenav-pages">';
+        if ( $current_page > 1 ) {
+            $prev_url = add_query_arg( array_merge( $base_args, array( $page_arg => $current_page - 1 ) ), admin_url( 'options-general.php' ) );
+            echo '<a class="button" href="' . esc_url( $prev_url ) . '">Previous</a> ';
+        } else {
+            echo '<span class="button disabled">Previous</span> ';
+        }
+        for ( $p = max( 1, $current_page - 2 ); $p <= min( $total_pages, $current_page + 2 ); $p++ ) {
+            $page_url = add_query_arg( array_merge( $base_args, array( $page_arg => $p ) ), admin_url( 'options-general.php' ) );
+            $class = $p === $current_page ? 'button button-primary' : 'button';
+            echo '<a class="' . esc_attr( $class ) . '" href="' . esc_url( $page_url ) . '">' . esc_html( (string) $p ) . '</a> ';
+        }
+        if ( $current_page < $total_pages ) {
+            $next_url = add_query_arg( array_merge( $base_args, array( $page_arg => $current_page + 1 ) ), admin_url( 'options-general.php' ) );
+            echo '<a class="button" href="' . esc_url( $next_url ) . '">Next</a>';
+        } else {
+            echo '<span class="button disabled">Next</span>';
+        }
+        echo '</div></div>';
+    }
+
+    /**
+     * Apply PPS audit filter/search for admin-only reporting rows.
+     *
+     * @param array<int,array<string,mixed>> $rows Full PPS audit rows.
+     * @param string $filter Filter slug.
+     * @param string $search Case-insensitive search token.
+     * @return array<int,array<string,mixed>>
+     */
+    protected function apply_pps_audit_filter( array $rows, $filter, $search ) {
+        $allowed_filters = array( 'all', 'frontend_ready_only', 'missing_cta', 'missing_country_override', 'missing_logo', 'blocked_by_business_rule', 'override_only', 'synced' );
+        if ( ! in_array( $filter, $allowed_filters, true ) ) {
+            $filter = 'all';
+        }
+        $search = strtolower( (string) $search );
+        $filtered = array_filter(
+            $rows,
+            function( $row ) use ( $filter, $search ) {
+                $source = (string) ( $row['source'] ?? '' );
+                $block_reason = (string) ( $row['block_reason'] ?? '' );
+                $frontend_ready = strtolower( (string) ( $row['frontend_ready'] ?? '' ) );
+                $matches_filter = true;
+                if ( 'frontend_ready_only' === $filter ) {
+                    $matches_filter = in_array( $frontend_ready, array( 'yes', 'true', '1' ), true );
+                } elseif ( 'missing_cta' === $filter ) {
+                    $matches_filter = 'missing_valid_cta' === $block_reason;
+                } elseif ( 'missing_country_override' === $filter ) {
+                    $matches_filter = 'missing_allowed_country_override' === $block_reason;
+                } elseif ( 'missing_logo' === $filter ) {
+                    $matches_filter = 'missing_logo' === $block_reason;
+                } elseif ( 'blocked_by_business_rule' === $filter ) {
+                    $matches_filter = in_array( $block_reason, array( 'business_rule_blocked', 'unavailable_account_offer' ), true );
+                } elseif ( 'override_only' === $filter ) {
+                    $matches_filter = in_array( $source, array( 'manual_override_only', 'override_only' ), true );
+                } elseif ( 'synced' === $filter ) {
+                    $matches_filter = 'synced' === $source;
+                }
+                if ( ! $matches_filter ) {
+                    return false;
+                }
+                if ( '' === $search ) {
+                    return true;
+                }
+                $haystack = strtolower( (string) ( $row['offer_id'] ?? '' ) . ' ' . (string) ( $row['offer_name'] ?? '' ) );
+                return false !== strpos( $haystack, $search );
+            }
+        );
+        return array_values( $filtered );
     }
 
     /**

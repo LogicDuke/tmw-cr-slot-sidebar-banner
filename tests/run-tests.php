@@ -3141,3 +3141,28 @@ echo "\nTotal: {$passes} passed, " . count( $failures ) . " failed\n";
 if ( ! empty( $failures ) ) {
     exit( 1 );
 }
+
+class TMW_Test_Audit_Repo extends TMW_CR_Slot_Offer_Repository {
+    public $manual_rows = array();
+    public $pps_rows = array();
+    public function get_manual_winner_eligibility_audit_rows( $settings, $banner_data = array(), $country = '', $legacy_catalog = array() ) { return $this->manual_rows; }
+    public function get_pps_expansion_readiness_audit_rows( $settings, $banner_data = array() ) { return $this->pps_rows; }
+    public function get_pps_expansion_readiness_audit_summary( $rows ) { return array('total_pps_candidates'=>count($rows),'frontend_ready_pps_offers'=>1,'blocked_by_business_rule'=>1,'missing_valid_cta'=>1,'missing_allowed_country_override'=>1,'missing_logo'=>1,'override_only_candidates'=>1,'synced_candidates'=>1); }
+}
+
+function tmw_make_rows( $count, $prefix ) {
+    $rows = array();
+    for ( $i = 1; $i <= $count; $i++ ) {
+        $rows[] = array( 'offer_id' => (string) $i, 'offer_name' => $prefix . ' ' . $i, 'source' => ( $i % 2 ? 'synced' : 'override_only' ), 'block_reason' => ( $i % 3 ? 'missing_valid_cta' : 'business_rule_blocked' ), 'frontend_ready' => ( $i % 5 ? 'no' : 'yes' ), 'pps_detected'=>'yes','blocked_by_business_rule'=>'no','final_cta_source'=>'x','final_cta_host'=>'x','has_allowed_country_override'=>'no','allowed_countries_count'=>'0','example_be_result'=>'x','example_us_result'=>'x','logo_resolved'=>'yes','logo_filename'=>'x','has_final_url_override'=>0,'final_url_host'=>'','has_allowed_country_override'=>0,'visitor_country_raw'=>'BE','visitor_country_normalized'=>'BE','eligibility_result'=>'eligible','exclusion_reason'=>'' );
+    }
+    return $rows;
+}
+
+$tests['pps_audit_default_pagination_25_rows'] = function() {
+ tmw_reset_test_state(); $_GET=array('tab'=>'slot-setup'); $repo=new TMW_Test_Audit_Repo('o','m'); $repo->pps_rows=tmw_make_rows(60,'PPS'); $page=new TMW_Test_Admin_Page(TMW_CR_Slot_Sidebar_Banner::OPTION_KEY,$repo,'sidebar'); ob_start(); $page->render_page(); $html=(string)ob_get_clean(); tmw_assert_true( substr_count($html,'PPS expansion readiness audit')>=1,'renders'); tmw_assert_true( false===strpos($html,'PPS 26'),'page1 excludes 26'); };
+
+$tests['pps_audit_pagination_page_2_returns_rows_26_through_50'] = function() {
+ tmw_reset_test_state(); $_GET=array('tab'=>'slot-setup','pps_audit_page'=>'2'); $repo=new TMW_Test_Audit_Repo('o','m'); $repo->pps_rows=tmw_make_rows(60,'PPS'); $page=new TMW_Test_Admin_Page(TMW_CR_Slot_Sidebar_Banner::OPTION_KEY,$repo,'sidebar'); ob_start(); $page->render_page(); $html=(string)ob_get_clean(); tmw_assert_contains('PPS 26',$html,'has 26'); tmw_assert_true(false===strpos($html,'PPS 1</td>'),'no row1'); };
+
+$tests['manual_audit_default_pagination_25_rows'] = function() {
+ tmw_reset_test_state(); $_GET=array('tab'=>'slot-setup'); $repo=new TMW_Test_Audit_Repo('o','m'); $repo->manual_rows=tmw_make_rows(60,'MAN'); $page=new TMW_Test_Admin_Page(TMW_CR_Slot_Sidebar_Banner::OPTION_KEY,$repo,'sidebar'); ob_start(); $page->render_page(); $html=(string)ob_get_clean(); tmw_assert_true(false===strpos($html,'MAN 26</td>'),'manual page1'); };

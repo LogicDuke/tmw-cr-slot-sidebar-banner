@@ -8,7 +8,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 class TMW_CR_Slot_Offer_Repository {
-    const ALLOWED_OFFER_TYPES = array( 'pps', 'revshare', 'soi', 'doi', 'cpa', 'cpl', 'cpc', 'smartlink', 'fallback' );
+    const ALLOWED_OFFER_TYPES = array( 'pps', 'revshare', 'soi', 'doi', 'cpa', 'cpl', 'cpc', 'cpi', 'cpm', 'smartlink', 'fallback' );
     const UNAVAILABLE_ACCOUNT_PPS_OFFER_IDS = array( '9647', '9781' );
     const ELIGIBILITY_REASON_MISSING_FINAL_URL = 'missing_final_url';
     const ELIGIBILITY_REASON_INVALID_FINAL_URL = 'invalid_final_url';
@@ -95,6 +95,7 @@ class TMW_CR_Slot_Offer_Repository {
                 'accepted_country' => $this->sanitize_country_codes( isset( $families['accepted_country'] ) ? $families['accepted_country'] : array() ),
                 'niche' => $this->sanitize_list_values( isset( $families['niche'] ) ? $families['niche'] : array() ),
                 'promotion_method' => $this->sanitize_list_values( isset( $families['promotion_method'] ) ? $families['promotion_method'] : array() ),
+                'payout_type' => $this->normalize_query_values( isset( $families['payout_type'] ) ? $families['payout_type'] : array(), 'payout_type' ),
             );
         }
         return $clean;
@@ -144,6 +145,71 @@ class TMW_CR_Slot_Offer_Repository {
         }
 
         return $clean;
+    }
+    
+    /**
+     * Returns normalized skipped offer IDs used for frontend exclusion.
+     *
+     * @return array<string,array<string,string>>
+     */
+    public function get_skipped_offer_ids_for_frontend() {
+        $rows = get_option( $this->skipped_offers_option_key, array() );
+        $set  = array();
+
+        foreach ( (array) $rows as $key => $row ) {
+            if ( ! is_array( $row ) ) {
+                continue;
+            }
+
+            $raw_offer_id = array_key_exists( 'offer_id', $row ) ? (string) $row['offer_id'] : (string) $key;
+            $offer_id     = trim( sanitize_text_field( $raw_offer_id ) );
+            if ( '' === $offer_id ) {
+                continue;
+            }
+
+            $decision = sanitize_key( (string) ( $row['decision'] ?? '' ) );
+            if ( 'skip' !== $decision ) {
+                continue;
+            }
+
+            $set[ $offer_id ] = array(
+                'reason'   => sanitize_text_field( (string) ( $row['reason'] ?? '' ) ),
+                'decision' => 'skip',
+            );
+        }
+
+        return $set;
+    }
+
+    /**
+     * @param string                               $offer_id Offer id.
+     * @param array<string,array<string,string>>   $skipped_offer_ids Skipped set.
+     *
+     * @return bool
+     */
+    protected function is_offer_skipped_for_frontend( $offer_id, $skipped_offer_ids ) {
+        $offer_id = trim( (string) $offer_id );
+        return '' !== $offer_id && isset( $skipped_offer_ids[ $offer_id ] );
+    }
+
+    /**
+     * @param string                               $offer_id Offer id.
+     * @param array<string,array<string,string>>   $skipped_offer_ids Skipped set.
+     * @param int                                  $excluded_during_pool_build Excluded counter.
+     *
+     * @return bool
+     */
+    protected function should_exclude_skipped_frontend_offer( $offer_id, $skipped_offer_ids, &$excluded_during_pool_build ) {
+        $offer_id = trim( (string) $offer_id );
+        if ( '' === $offer_id || ! isset( $skipped_offer_ids[ $offer_id ] ) ) {
+            return false;
+        }
+        ++$excluded_during_pool_build;
+        if ( function_exists( 'error_log' ) ) {
+            $skip = $skipped_offer_ids[ $offer_id ];
+            error_log( sprintf( '[TMW-BANNER-SKIP] skipped_offer_excluded offer_id=%s decision=%s reason="%s"', sanitize_text_field( $offer_id ), sanitize_key( (string) ( $skip['decision'] ?? 'skip' ) ), sanitize_text_field( (string) ( $skip['reason'] ?? '' ) ) ) );
+        }
+        return true;
     }
     public function get_skipped_offer( $offer_id ) {
         $offer_id = sanitize_text_field( (string) $offer_id );
@@ -388,6 +454,8 @@ class TMW_CR_Slot_Offer_Repository {
             'cpa'       => '/\b(multi[\s-]*cpa|cpa)\b/i',
             'cpl'       => '/\b(ppl|cpl)\b/i',
             'cpc'       => '/\b(ppc|cpc)\b/i',
+            'cpi'       => '/\bcpi\b/i',
+            'cpm'       => '/\bcpm\b/i',
             'pps'       => '/\bpps\b/i',
         );
 
@@ -824,9 +892,10 @@ class TMW_CR_Slot_Offer_Repository {
 
         foreach ( $offers as $offer_id => $offer ) {
             $meta = $this->get_offer_dashboard_metadata( (string) $offer_id, $offer );
+            $combined = $this->get_admin_offer_filter_values( $offer, $meta );
 
             foreach ( $supported as $field_key => $values ) {
-                $field_values = isset( $meta[ $field_key ] ) ? (array) $meta[ $field_key ] : array();
+                $field_values = isset( $combined[ $field_key ] ) ? (array) $combined[ $field_key ] : array();
                 foreach ( $field_values as $value ) {
                     $value = $this->normalize_filter_family_value( $field_key, $value );
                     if ( '' === $value ) {
@@ -874,6 +943,7 @@ class TMW_CR_Slot_Offer_Repository {
             'niche'             => '',
             'promotion_method'  => '',
             'image_status'      => '',
+            'logo_status'       => '',
             'sort_by'           => 'name',
             'sort_order'        => 'asc',
             'page'              => 1,
@@ -897,6 +967,8 @@ class TMW_CR_Slot_Offer_Repository {
         $niche_values     = $this->normalize_query_values( $query['niche'], 'niche' );
         $promotion_values = $this->normalize_query_values( $query['promotion_method'], 'promotion_method' );
         $image       = strtolower( trim( (string) $query['image_status'] ) );
+        $logo_status = strtolower( trim( (string) $query['logo_status'] ) );
+        $active_filters = array();
         $offers         = array_values( $this->get_synced_offers() );
         $legacy_catalog = $this->get_default_legacy_catalog();
         $filtered       = array();
@@ -919,17 +991,18 @@ class TMW_CR_Slot_Offer_Repository {
                 }
             }
 
-            $offer_status = strtolower( (string) ( $offer['status'] ?? '' ) );
+            $offer_status = strtolower( trim( (string) ( $offer['status'] ?? '' ) ) );
             if ( ! empty( $status_values ) && ! in_array( $offer_status, $status_values, true ) ) {
                 continue;
             }
             $offer_meta = $this->get_offer_dashboard_metadata( $offer_id, $offer );
+            $filter_values = $this->get_admin_offer_filter_values( $offer, $offer_meta );
 
-            if ( ! empty( $tag_values ) && ! $this->values_intersect_filter_set( $tag_values, (array) ( $offer_meta['tag'] ?? array() ) ) ) {
+            if ( ! empty( $tag_values ) && ! $this->values_intersect_filter_set( $tag_values, (array) ( $filter_values['tag'] ?? array() ) ) ) {
                 continue;
             }
 
-            if ( ! empty( $vertical_values ) && ! $this->values_intersect_filter_set( $vertical_values, (array) ( $offer_meta['vertical'] ?? array() ) ) ) {
+            if ( ! empty( $vertical_values ) && ! $this->values_intersect_filter_set( $vertical_values, (array) ( $filter_values['vertical'] ?? array() ) ) ) {
                 continue;
             }
 
@@ -947,22 +1020,22 @@ class TMW_CR_Slot_Offer_Repository {
                 }
             }
 
-            if ( ! empty( $payout_values ) && ! $this->values_intersect_filter_set( $payout_values, (array) ( $offer_meta['payout_type'] ?? array() ) ) ) {
+            if ( ! empty( $payout_values ) && ! $this->values_intersect_filter_set( $payout_values, (array) ( $filter_values['payout_type'] ?? array() ) ) ) {
                 continue;
             }
-            if ( ! empty( $performs_values ) && ! $this->values_intersect_filter_set( $performs_values, (array) ( $offer_meta['performs_in'] ?? array() ), true ) ) {
+            if ( ! empty( $performs_values ) && ! $this->values_intersect_filter_set( $performs_values, (array) ( $filter_values['performs_in'] ?? array() ), true ) ) {
                 continue;
             }
-            if ( ! empty( $optimized_values ) && ! $this->values_intersect_filter_set( $optimized_values, (array) ( $offer_meta['optimized_for'] ?? array() ) ) ) {
+            if ( ! empty( $optimized_values ) && ! $this->values_intersect_filter_set( $optimized_values, (array) ( $filter_values['optimized_for'] ?? array() ) ) ) {
                 continue;
             }
-            if ( ! empty( $accepted_values ) && ! $this->values_intersect_filter_set( $accepted_values, (array) ( $offer_meta['accepted_country'] ?? array() ), true ) ) {
+            if ( ! empty( $accepted_values ) && ! $this->values_intersect_filter_set( $accepted_values, (array) ( $filter_values['accepted_country'] ?? array() ), true ) ) {
                 continue;
             }
-            if ( ! empty( $niche_values ) && ! $this->values_intersect_filter_set( $niche_values, (array) ( $offer_meta['niche'] ?? array() ) ) ) {
+            if ( ! empty( $niche_values ) && ! $this->values_intersect_filter_set( $niche_values, (array) ( $filter_values['niche'] ?? array() ) ) ) {
                 continue;
             }
-            if ( ! empty( $promotion_values ) && ! $this->values_intersect_filter_set( $promotion_values, (array) ( $offer_meta['promotion_method'] ?? array() ) ) ) {
+            if ( ! empty( $promotion_values ) && ! $this->values_intersect_filter_set( $promotion_values, (array) ( $filter_values['promotion_method'] ?? array() ) ) ) {
                 continue;
             }
 
@@ -970,10 +1043,15 @@ class TMW_CR_Slot_Offer_Repository {
             if ( '' !== $image && $image !== $image_status ) {
                 continue;
             }
+            $offer_logo_status = $this->get_logo_status_for_offer_any( $offer_id, $offer, $settings, $legacy_catalog );
+            if ( '' !== $logo_status && $logo_status !== $offer_logo_status ) {
+                continue;
+            }
 
             $offer['dashboard_metadata']   = $offer_meta;
             $offer['is_selected_for_slot'] = $is_selected;
             $offer['image_status']         = $image_status;
+            $offer['logo_status']          = $offer_logo_status;
             $offer['brand_key']            = $this->get_offer_brand_key( (string) ( $offer['name'] ?? '' ) );
             $offer['logo_filename']        = $this->get_offer_logo_filename( $offer );
             $offer['logo_url']             = $this->get_offer_logo_url( $offer );
@@ -1030,6 +1108,23 @@ class TMW_CR_Slot_Offer_Repository {
 
         $offset = ( $page - 1 ) * $per_page;
 
+        $family_filters = array(
+            'payout_type' => $payout_values, 'tag' => $tag_values, 'vertical' => $vertical_values, 'performs_in' => $performs_values,
+            'optimized_for' => $optimized_values, 'accepted_country' => $accepted_values, 'niche' => $niche_values, 'promotion_method' => $promotion_values,
+        );
+        foreach ( array( 'search' => $search, 'status' => $status_values, 'featured' => $featured, 'approval_required' => $approval, 'image_status' => $image, 'logo_status' => $logo_status ) as $k => $v ) {
+            if ( ! empty( $v ) ) { $active_filters[] = sanitize_key( $k ); }
+        }
+        foreach ( $family_filters as $family => $requested_values ) {
+            if ( empty( $requested_values ) ) { continue; }
+            $active_filters[] = sanitize_key( $family );
+        }
+        $active_filters = array_values( array_unique( $active_filters ) );
+        if ( ! empty( $active_filters ) ) {
+            $zero_reason = 0 === $total ? 'no_matches' : 'n/a';
+            error_log( sprintf( '[TMW-BANNER-OFFERS-FILTER] active=%s total=%d matched=%d zero_reason=%s', implode( ',', $active_filters ), count( $offers ), $total, sanitize_key( $zero_reason ) ) );
+        }
+
         return array(
             'items'    => array_slice( $filtered, $offset, $per_page ),
             'total'    => $total,
@@ -1038,7 +1133,161 @@ class TMW_CR_Slot_Offer_Repository {
             'pages'    => $pages,
             'sort_by'  => $sort_by,
             'order'    => $sort_order,
+            'active_filters' => $active_filters,
+            'source_total' => count( $offers ),
         );
+    }
+
+    /**
+     * Admin observability helper for payout-type reconciliation.
+     * Raw = normalized raw payout_type field only.
+     * Detected = get_offer_type_keys output.
+     * Admin filter = merged payout_type values used by admin filters.
+     * Frontend eligible intentionally stays zero-filled in this PR to avoid
+     * changing/duplicating frontend pool behavior in an admin diagnostics path.
+     *
+     * @return array<string,mixed>
+     */
+    public function get_admin_payout_reconciliation_counts() {
+        $offers = array_values( $this->get_synced_offers() );
+        $source_total = 0;
+        $families = array( 'pps', 'soi', 'doi', 'cpc', 'cpi', 'cpm', 'multi_cpa', 'revshare', 'revshare_lifetime', 'fallback', 'smartlink' );
+
+        $raw = array(
+            'pps' => 0, 'soi' => 0, 'doi' => 0, 'cpc' => 0, 'cpi' => 0, 'cpm' => 0, 'cpa_flat' => 0,
+            'cpa_percentage' => 0, 'revshare' => 0, 'revshare_lifetime' => 0, 'multi_cpa' => 0, 'empty' => 0, 'unknown' => 0,
+        );
+        $source_class = array(
+            'normal_offer' => 0,
+            'group_fallback' => 0,
+            'fallback' => 0,
+            'smartlink' => 0,
+            'unknown' => 0,
+        );
+        $detected = array_fill_keys( $families, 0 );
+        $admin_filter = array_fill_keys( $families, 0 );
+        $group_admin_filter = array_fill_keys( $families, 0 );
+        $frontend_eligible = array_fill_keys( $families, 0 );
+        $cr_ui_label_comparison = array_fill_keys( $families, 0 );
+
+        foreach ( $offers as $offer ) {
+            if ( ! is_array( $offer ) ) {
+                continue;
+            }
+            ++$source_total;
+
+            $raw_key = sanitize_key( strtolower( trim( (string) ( $offer['payout_type'] ?? '' ) ) ) );
+            if ( '' === $raw_key ) {
+                ++$raw['empty'];
+            } elseif ( isset( $raw[ $raw_key ] ) ) {
+                ++$raw[ $raw_key ];
+            } else {
+                ++$raw['unknown'];
+            }
+
+            $detected_keys = array();
+            foreach ( (array) $this->get_offer_type_keys( $offer ) as $type_key ) {
+                $normalized = $this->normalize_filter_family_value( 'payout_type', (string) $type_key );
+                if ( isset( $detected[ $normalized ] ) ) {
+                    ++$detected[ $normalized ];
+                }
+                $detected_keys[] = $normalized;
+            }
+            $detected_keys = array_values( array_unique( $detected_keys ) );
+
+            $name_haystack = strtolower( (string) ( $offer['name'] ?? '' ) );
+            $is_cr_ui_comparison_normal_offer = false;
+            if ( false !== strpos( $name_haystack, 'group fallback' ) ) {
+                ++$source_class['group_fallback'];
+            } elseif ( in_array( 'fallback', $detected_keys, true ) || false !== strpos( $name_haystack, 'fallback' ) ) {
+                ++$source_class['fallback'];
+            } elseif ( in_array( 'smartlink', $detected_keys, true ) ) {
+                ++$source_class['smartlink'];
+            } elseif ( ! empty( $offer['id'] ) ) {
+                ++$source_class['normal_offer'];
+                $is_cr_ui_comparison_normal_offer = true;
+            } else {
+                ++$source_class['unknown'];
+            }
+
+            if ( $is_cr_ui_comparison_normal_offer ) {
+                $comparison_key = '';
+                if ( false !== strpos( $name_haystack, 'revshare lifetime' ) ) {
+                    $comparison_key = 'revshare_lifetime';
+                } elseif ( false !== strpos( $name_haystack, 'revshare' ) ) {
+                    $comparison_key = 'revshare';
+                } else {
+                    foreach ( $detected_keys as $detected_key ) {
+                        if ( in_array( $detected_key, array( 'pps', 'soi', 'doi', 'cpc', 'cpi', 'cpm', 'multi_cpa', 'revshare', 'revshare_lifetime' ), true ) ) {
+                            $comparison_key = $detected_key;
+                            break;
+                        }
+                    }
+                }
+                if ( '' !== $comparison_key && isset( $cr_ui_label_comparison[ $comparison_key ] ) ) {
+                    ++$cr_ui_label_comparison[ $comparison_key ];
+                }
+            }
+
+            $offer_id = (string) ( $offer['id'] ?? '' );
+            $meta = '' !== $offer_id ? $this->get_offer_dashboard_metadata( $offer_id, $offer ) : array();
+            $admin_values = (array) ( $this->get_admin_offer_filter_values( $offer, $meta )['payout_type'] ?? array() );
+            $is_group_like = ( false !== strpos( $name_haystack, 'group fallback' ) ) || in_array( 'fallback', $detected_keys, true );
+            foreach ( $admin_values as $type_key ) {
+                $normalized = $this->normalize_filter_family_value( 'payout_type', (string) $type_key );
+                if ( isset( $admin_filter[ $normalized ] ) ) {
+                    ++$admin_filter[ $normalized ];
+                    if ( $is_group_like ) {
+                        ++$group_admin_filter[ $normalized ];
+                    }
+                }
+            }
+        }
+
+        return array(
+            'source_total' => $source_total,
+            'source_class' => $source_class,
+            'raw' => $raw,
+            'detected' => $detected,
+            'admin_filter' => $admin_filter,
+            'group_admin_filter' => $group_admin_filter,
+            'cr_ui_label_comparison' => $cr_ui_label_comparison,
+            'frontend_eligible' => $frontend_eligible, // TODO(PR#61): add safe precomputed frontend-eligible counters if needed.
+        );
+    }
+
+    protected function get_admin_offer_filter_values( $offer, $offer_meta ) {
+        $families = array( 'tag', 'vertical', 'performs_in', 'optimized_for', 'accepted_country', 'niche', 'promotion_method', 'payout_type' );
+        $values = array();
+        foreach ( $families as $family ) {
+            $meta_values = $this->normalize_query_values( (array) ( $offer_meta[ $family ] ?? array() ), $family );
+            $raw_values  = $this->extract_admin_raw_filter_values( $offer, $family );
+            $values[ $family ] = array_values( array_unique( array_merge( $meta_values, $raw_values ) ) );
+        }
+        return $values;
+    }
+
+    protected function extract_admin_raw_filter_values( $offer, $family ) {
+        $raw_map = array(
+            'tag' => array( 'tag', 'tags' ), 'vertical' => array( 'vertical', 'verticals' ), 'performs_in' => array( 'performs_in', 'countries_performs_in' ),
+            'optimized_for' => array( 'optimized_for' ), 'accepted_country' => array( 'accepted_country', 'accepted_countries', 'countries' ),
+            'niche' => array( 'niche' ), 'promotion_method' => array( 'promotion_method' ), 'payout_type' => array( 'payout_type' ),
+        );
+        $raw_values = array();
+        foreach ( (array) ( $raw_map[ $family ] ?? array() ) as $key ) {
+            $raw_source = $offer[ $key ] ?? array();
+            if ( is_string( $raw_source ) && ( false !== strpos( $raw_source, '|' ) || false !== strpos( $raw_source, ',' ) ) ) {
+                $raw_source = preg_split( '/[|,]/', $raw_source );
+            }
+            $raw_values = array_merge( $raw_values, $this->normalize_query_values( $raw_source, $family ) );
+        }
+        if ( 'payout_type' === $family ) {
+            $raw_values = array_merge( $raw_values, $this->normalize_query_values( $this->get_offer_type_keys( $offer ), 'payout_type' ) );
+            $name = strtolower( (string) ( $offer['name'] ?? '' ) );
+            if ( false !== strpos( $name, 'cpa' ) ) { $raw_values[] = 'multi_cpa'; }
+            if ( 'cpa_flat' === strtolower( trim( (string) ( $offer['payout_type'] ?? '' ) ) ) ) { $raw_values[] = 'multi_cpa'; }
+        }
+        return array_values( array_unique( $raw_values ) );
     }
 
     /**
@@ -1079,6 +1328,79 @@ class TMW_CR_Slot_Offer_Repository {
         }
 
         return 'placeholder_only';
+    }
+
+    /**
+     * Returns logo source status for any synced offer.
+     *
+     * @param string              $offer_id Offer ID.
+     * @param array<string,mixed> $offer Offer payload.
+     * @param array<string,mixed> $settings Settings payload.
+     * @param array<string,mixed> $legacy_catalog Legacy catalog.
+     *
+     * @return string
+     */
+    public function get_logo_status_for_offer_any( $offer_id, $offer, $settings = array(), $legacy_catalog = array() ) {
+        $offer_id = (string) $offer_id;
+        $override = $this->get_offer_override( $offer_id );
+        if ( ! empty( $override['image_url_override'] ) ) {
+            return 'manual_override';
+        }
+        $overrides = isset( $settings['offer_image_overrides'] ) && is_array( $settings['offer_image_overrides'] ) ? $settings['offer_image_overrides'] : array();
+        if ( ! empty( $overrides[ $offer_id ] ) ) {
+            return 'manual_override';
+        }
+        $brand_key = $this->get_offer_brand_key( (string) ( $offer['name'] ?? '' ) );
+        $filename_map = $this->get_offer_logo_filename_map();
+        if ( '' !== $brand_key && isset( $filename_map[ $brand_key ] ) ) {
+            $expected_filename = (string) $filename_map[ $brand_key ];
+            $local_path        = rtrim( (string) TMW_CR_SLOT_BANNER_PATH, '/\\' ) . '/assets/logos/' . $expected_filename;
+            return file_exists( $local_path ) ? 'mapped_local' : 'missing';
+        }
+        $offer_name = (string) ( $offer['name'] ?? '' );
+        if ( '' !== $this->resolve_remote_thumbnail_image( $offer_name ) || '' !== $this->resolve_local_catalog_image( $offer_name, $legacy_catalog ) ) {
+            return 'auto_remote';
+        }
+        return 'placeholder_only';
+    }
+
+    /**
+     * Returns frontend eligibility summary for dashboard display.
+     *
+     * @param array<string,mixed> $offer Offer payload.
+     * @param array<string,mixed> $settings Settings payload.
+     * @param string              $country Country.
+     * @param array<string,mixed> $legacy_catalog Legacy catalog.
+     *
+     * @return array<string,mixed>
+     */
+    public function get_offer_frontend_eligibility_summary( $offer, $settings, $country, $legacy_catalog = array() ) {
+        $offer_id = (string) ( $offer['id'] ?? '' );
+        if ( ! $this->is_offer_type_allowed( $offer, $settings ) ) {
+            return array( 'is_eligible' => false, 'block_reason' => 'not_allowed_type' );
+        }
+        if ( $this->is_offer_blocked_for_banner( $offer, $settings ) ) {
+            return array( 'is_eligible' => false, 'block_reason' => 'business_rule_blocked' );
+        }
+        if ( $this->is_unavailable_account_pps_offer( $offer ) ) {
+            return array( 'is_eligible' => false, 'block_reason' => 'unavailable_account_offer' );
+        }
+        if ( ! empty( $settings['enforce_skipped_offers_exclusion'] ) && $this->is_offer_skipped_for_frontend( $offer_id, $this->get_skipped_offer_ids_for_frontend() ) ) {
+            return array( 'is_eligible' => false, 'block_reason' => 'skipped_offer' );
+        }
+        $override = $this->get_offer_override( $offer_id );
+        $effective = $this->get_effective_cta_url( $offer_id, $settings, array( 'cta_url' => (string) ( $settings['cta_url'] ?? '' ) ), $offer, $override );
+        if ( ! $this->is_valid_frontend_winner_cta_url( (string) $effective ) ) {
+            return array( 'is_eligible' => false, 'block_reason' => 'missing_valid_cta' );
+        }
+        if ( ! $this->is_offer_allowed_for_country( $offer_id, $country, $override, $offer, $legacy_catalog ) ) {
+            return array( 'is_eligible' => false, 'block_reason' => 'country_not_allowed' );
+        }
+        $logo_status = $this->get_logo_status_for_offer_any( $offer_id, $offer, $settings, $legacy_catalog );
+        if ( 'missing' === $logo_status || 'placeholder_only' === $logo_status ) {
+            return array( 'is_eligible' => false, 'block_reason' => 'missing_logo' );
+        }
+        return array( 'is_eligible' => true, 'block_reason' => 'valid' );
     }
 
     /**
@@ -1124,6 +1446,9 @@ class TMW_CR_Slot_Offer_Repository {
 
         $offers = array();
 
+        $skipped_offer_ids = ! empty( $settings['enforce_skipped_offers_exclusion'] ) ? $this->get_skipped_offer_ids_for_frontend() : array();
+        $excluded_during_pool_build = 0;
+
         $type_allowed_count = 0;
         $skipped_type_disallowed_count = 0;
 
@@ -1133,6 +1458,9 @@ class TMW_CR_Slot_Offer_Repository {
             if ( isset( $synced_offers[ $selected_id ] ) ) {
                 if ( ! $this->is_offer_type_allowed( $synced_offers[ $selected_id ], $settings ) ) {
                     ++$skipped_type_disallowed_count;
+                    continue;
+                }
+                if ( $this->should_exclude_skipped_frontend_offer( $selected_id, $skipped_offer_ids, $excluded_during_pool_build ) ) {
                     continue;
                 }
                 if ( $this->is_offer_blocked_for_banner( $synced_offers[ $selected_id ], $settings ) ) {
@@ -1179,6 +1507,7 @@ class TMW_CR_Slot_Offer_Repository {
                     continue;
                 }
 
+                if ( $this->should_exclude_skipped_frontend_offer( $offer_id, $skipped_offer_ids, $excluded_during_pool_build ) ) { continue; }
                 $override = isset( $overrides_map[ $offer_id ] ) ? $overrides_map[ $offer_id ] : array();
                 if ( ! $this->is_offer_allowed_for_country( $offer_id, $country, $override, $synced_offer, $legacy_catalog ) ) {
                     continue;
@@ -1215,6 +1544,7 @@ class TMW_CR_Slot_Offer_Repository {
                     continue;
                 }
 
+                if ( $this->should_exclude_skipped_frontend_offer( $offer_id, $skipped_offer_ids, $excluded_during_pool_build ) ) { continue; }
                 $effective = $this->get_override_only_effective_offer_record( $offer_id, $override, $settings, $banner_data, $country, $legacy_catalog );
                 if ( empty( $effective ) ) {
                     continue;
@@ -1241,6 +1571,7 @@ class TMW_CR_Slot_Offer_Repository {
                     continue;
                 }
 
+                if ( $this->should_exclude_skipped_frontend_offer( $legacy_id, $skipped_offer_ids, $excluded_during_pool_build ) ) { continue; }
                 if ( ! $this->is_offer_allowed_for_country( $legacy_id, $country, array(), array(), $legacy_catalog ) ) {
                     continue;
                 }
@@ -1279,6 +1610,7 @@ class TMW_CR_Slot_Offer_Repository {
 
         $offers = array_values( array_filter( $offers ) );
 
+
         if ( function_exists( 'error_log' ) ) {
             error_log(
                 sprintf(
@@ -1289,6 +1621,9 @@ class TMW_CR_Slot_Offer_Repository {
                     (int) $skipped_type_disallowed_count
                 )
             );
+        }
+        if ( ! empty( $settings['enforce_skipped_offers_exclusion'] ) && function_exists( 'error_log' ) ) {
+            error_log( sprintf( '[TMW-BANNER-SKIP] frontend_pool_summary enforce_enabled=1 total_skipped_in_store=%d excluded_during_pool_build=%d', count( $skipped_offer_ids ), (int) $excluded_during_pool_build ) );
         }
         if ( empty( $offers ) && function_exists( 'error_log' ) ) {
             error_log( '[TMW-BANNER-TYPE] frontend_pool_empty safe_empty_state=1' );
@@ -1303,11 +1638,27 @@ class TMW_CR_Slot_Offer_Repository {
      * @return array<string,mixed>
      */
     public function get_pps_logo_coverage_report( $settings ) {
-        $synced = $this->get_synced_offers();
-        $report = array(
+        return $this->get_logo_coverage_report_for_type( 'pps', $settings );
+    }
+
+    /**
+     * @param string              $type     Offer type key.
+     * @param array<string,mixed> $settings Settings payload.
+     *
+     * @return array<string,mixed>
+     */
+    public function get_logo_coverage_report_for_type( $type, $settings ) {
+        $report_type = sanitize_key( (string) $type );
+        if ( ! in_array( $report_type, self::ALLOWED_OFFER_TYPES, true ) ) {
+            $report_type = 'pps';
+        }
+        $synced      = $this->get_synced_offers();
+        $report      = array(
             'pps_candidates_total' => 0,
             'pps_with_logo' => 0,
             'pps_missing_logo' => 0,
+            'pps_missing_logo_offers' => array(),
+            'pps_with_logo_offers' => array(),
             'blocked_pps_offers_excluded' => 0,
             'unavailable_account_pps_offers_excluded' => 0,
             'unavailable_account_offer_ids' => array(),
@@ -1318,11 +1669,10 @@ class TMW_CR_Slot_Offer_Repository {
         );
 
         foreach ( $synced as $offer ) {
-            if ( ! is_array( $offer ) || ! $this->is_offer_type_allowed( $offer, $settings ) ) {
+            if ( ! is_array( $offer ) ) {
                 continue;
             }
-            $types = $this->get_offer_type_keys( $offer );
-            if ( ! in_array( 'pps', $types, true ) ) {
+            if ( ! $this->is_offer_type_allowed( $offer, array( 'allowed_offer_types' => array( $report_type ) ) ) ) {
                 continue;
             }
             if ( $this->is_offer_blocked_for_banner( $offer, $settings ) ) {
@@ -1343,6 +1693,7 @@ class TMW_CR_Slot_Offer_Repository {
             $logo_url = $this->get_offer_logo_url( $offer );
             if ( '' !== $logo_url ) {
                 ++$report['pps_with_logo'];
+                $report['pps_with_logo_offers'][] = sanitize_text_field( (string) ( $offer['id'] ?? '' ) );
                 continue;
             }
             ++$report['pps_missing_logo'];
@@ -1350,14 +1701,24 @@ class TMW_CR_Slot_Offer_Repository {
             $offer_name = sanitize_text_field( (string) ( $offer['name'] ?? '' ) );
             $brand_key = $this->get_offer_brand_key( $offer_name );
             $report['missing_logo_offer_ids'][] = $offer_id;
+            $report['pps_missing_logo_offers'][] = $offer_id;
             $report['missing_logo_offer_names'][] = $offer_name;
             $report['missing_logo_expected_brand_keys'][] = $brand_key;
         }
 
+
+        $report[ $report_type . '_candidates_total' ] = (int) $report['pps_candidates_total'];
+        $report[ $report_type . '_with_logo' ] = (int) $report['pps_with_logo'];
+        $report[ $report_type . '_missing_logo' ] = (int) $report['pps_missing_logo'];
+        $report[ $report_type . '_missing_logo_offers' ] = (array) $report['pps_missing_logo_offers'];
+        $report[ $report_type . '_with_logo_offers' ] = (array) $report['pps_with_logo_offers'];
+
+
         if ( function_exists( 'error_log' ) ) {
             error_log(
                 sprintf(
-                    '[TMW-BANNER-LOGO-COVERAGE] pps_candidates_total=%d pps_with_logo=%d pps_missing_logo=%d',
+                    '[TMW-BANNER-LOGO-COVERAGE] type=%s candidates_total=%d with_logo=%d missing_logo=%d',
+                    $report_type,
                     (int) $report['pps_candidates_total'],
                     (int) $report['pps_with_logo'],
                     (int) $report['pps_missing_logo']
@@ -1603,6 +1964,17 @@ class TMW_CR_Slot_Offer_Repository {
         }
 
         return true;
+    }
+
+    /**
+     * Public wrapper for unavailable-account offer checks.
+     *
+     * @param array<string,mixed> $offer Offer payload.
+     *
+     * @return bool
+     */
+    public function is_offer_unavailable_account_pps( $offer ) {
+        return $this->is_unavailable_account_pps_offer( $offer );
     }
 
     /**
@@ -2591,7 +2963,7 @@ class TMW_CR_Slot_Offer_Repository {
                     'clicks'       => 0,
                     'conversions'  => 0.0,
                     'payout'       => 0.0,
-                    'payout_type'  => (string) ( $row['payout_type'] ?? ( $offer['payout_type'] ?? '' ) ),
+                    'payout_type'  => $this->normalize_filter_family_value( 'payout_type', (string) ( $row['payout_type'] ?? ( $offer['payout_type'] ?? '' ) ) ),
                     'status'       => (string) ( $offer['status'] ?? '' ),
                 );
             }
@@ -2602,7 +2974,7 @@ class TMW_CR_Slot_Offer_Repository {
         }
 
         foreach ( $grouped as $offer_id => $row ) {
-            if ( '' !== $payout_type_filter && $payout_type_filter !== sanitize_key( (string) ( $row['payout_type'] ?? '' ) ) ) {
+            if ( '' !== $payout_type_filter && $payout_type_filter !== $this->normalize_filter_family_value( 'payout_type', (string) ( $row['payout_type'] ?? '' ) ) ) {
                 unset( $grouped[ $offer_id ] );
                 continue;
             }
@@ -3078,6 +3450,10 @@ class TMW_CR_Slot_Offer_Repository {
                     $this->sanitize_list_values( isset( $offer['promotion_method'] ) ? $offer['promotion_method'] : array() ),
                     $this->sanitize_list_values( isset( $previous['promotion_method'] ) ? $previous['promotion_method'] : array() )
                 ),
+                'payout_type' => $this->merge_preferred_values(
+                    $this->extract_admin_raw_filter_values( $offer, 'payout_type' ),
+                    $this->normalize_query_values( (array) ( $previous['payout_type'] ?? array() ), 'payout_type' )
+                ),
             );
         }
 
@@ -3098,7 +3474,7 @@ class TMW_CR_Slot_Offer_Repository {
         }
 
         if ( in_array( $family, array( 'performs_in', 'accepted_country' ), true ) ) {
-            return strtoupper( $value );
+            return $this->normalize_country_filter_value( $value );
         }
 
         $normalized_key = str_replace( '-', '_', sanitize_key( $value ) );
@@ -3108,20 +3484,55 @@ class TMW_CR_Slot_Offer_Repository {
                 'cpa_percentage' => 'revshare',
                 'revshare' => 'revshare',
                 'revenue_share' => 'revshare',
+                'cpa' => 'multi_cpa',
                 'cpa_flat' => 'revshare_lifetime',
                 'revshare_lifetime' => 'revshare_lifetime',
-                'pps' => 'revshare_lifetime',
+                'pps' => 'pps',
                 'cpa_both' => 'multi_cpa',
                 'multi_cpa' => 'multi_cpa',
+                'multi-cpa' => 'multi_cpa',
+                'multicpa' => 'multi_cpa',
                 'hybrid' => 'multi_cpa',
+                'soi' => 'soi',
+                'doi' => 'doi',
+                'cpi' => 'cpi',
+                'cpm' => 'cpm',
+                'cpc' => 'cpc',
+                'ppc' => 'cpc',
             );
 
             if ( isset( $aliases[ $normalized_key ] ) ) {
                 return $aliases[ $normalized_key ];
             }
+
+            error_log(
+                sprintf(
+                    '[TMW-BANNER-PAYOUT-NORM] unknown_payout_type raw="%s" normalized="%s"',
+                    sanitize_text_field( (string) $value ),
+                    $normalized_key
+                )
+            );
         }
 
         return strtolower( $value );
+    }
+
+    protected function normalize_country_filter_value( $value ) {
+        $value = strtolower( trim( (string) $value ) );
+        $map = array(
+            'be' => 'BE', 'belgium' => 'BE',
+            'us' => 'US', 'usa' => 'US', 'united states' => 'US', 'united_states' => 'US',
+            'united kingdom' => 'GB', 'uk' => 'GB', 'great britain' => 'GB',
+            'germany' => 'DE', 'france' => 'FR', 'canada' => 'CA', 'australia' => 'AU',
+            'netherlands' => 'NL', 'spain' => 'ES', 'italy' => 'IT', 'austria' => 'AT',
+            'switzerland' => 'CH', 'sweden' => 'SE', 'norway' => 'NO', 'denmark' => 'DK',
+            'finland' => 'FI', 'ireland' => 'IE', 'portugal' => 'PT', 'poland' => 'PL',
+            'brazil' => 'BR', 'mexico' => 'MX',
+        );
+        if ( isset( $map[ $value ] ) ) {
+            return $map[ $value ];
+        }
+        return strtoupper( sanitize_text_field( (string) $value ) );
     }
 
     /**

@@ -94,8 +94,26 @@ class TMW_Test_Admin_Page extends TMW_CR_Slot_Admin_Page {
         );
     }
 
-    protected function assert_admin_action( $nonce_action ) {
+    protected function assert_admin_action( $nonce_action, $custom_nonce_field = '' ) {
         unset( $nonce_action );
+
+        if ( '' === $custom_nonce_field ) {
+            return;
+        }
+
+        if ( isset( $_POST['_wpnonce'] ) ) {
+            return;
+        }
+
+        if ( isset( $_POST[ $custom_nonce_field ] ) && '' !== (string) $_POST[ $custom_nonce_field ] ) {
+            return;
+        }
+
+        throw new RuntimeException( 'Missing nonce payload for admin action test.' );
+    }
+
+    public function test_build_offers_count_summary( $result, $args, $payout_labels ) {
+        return $this->build_offers_count_summary( $result, $args, $payout_labels );
     }
 }
 
@@ -109,6 +127,62 @@ function tmw_reset_test_state() {
     $GLOBALS['tmw_test_added_options_pages'] = array();
     $_GET  = array();
     $_POST = array();
+}
+
+/**
+ * Temporarily writes a logo fixture file, runs a callback, then restores original file state.
+ *
+ * @param string   $relative_filename Relative filename under assets/logos.
+ * @param string   $temporary_contents Temporary file contents.
+ * @param callable $callback Callback executed while temp file state is active.
+ *
+ * @return mixed
+ */
+function tmw_with_temp_logo_file( $relative_filename, $temporary_contents, $callback ) {
+    $logo_path = TMW_CR_SLOT_BANNER_PATH . 'assets/logos/' . ltrim( (string) $relative_filename, '/\\' );
+    $logo_dir  = dirname( $logo_path );
+    if ( ! is_dir( $logo_dir ) ) {
+        mkdir( $logo_dir, 0777, true );
+    }
+    $existed_before  = file_exists( $logo_path );
+    $original_binary = $existed_before ? file_get_contents( $logo_path ) : null;
+    file_put_contents( $logo_path, (string) $temporary_contents );
+
+    try {
+        return $callback( $logo_path );
+    } finally {
+        if ( $existed_before ) {
+            file_put_contents( $logo_path, (string) $original_binary );
+        } elseif ( file_exists( $logo_path ) ) {
+            unlink( $logo_path );
+        }
+    }
+}
+
+/**
+ * Temporarily removes a logo fixture file, runs a callback, then restores original file state.
+ *
+ * @param string   $relative_filename Relative filename under assets/logos.
+ * @param callable $callback Callback executed while file is removed.
+ *
+ * @return mixed
+ */
+function tmw_without_logo_file( $relative_filename, $callback ) {
+    $logo_path = TMW_CR_SLOT_BANNER_PATH . 'assets/logos/' . ltrim( (string) $relative_filename, '/\\' );
+    $existed_before  = file_exists( $logo_path );
+    $original_binary = $existed_before ? file_get_contents( $logo_path ) : null;
+    if ( $existed_before ) {
+        unlink( $logo_path );
+    }
+    try {
+        return $callback( $logo_path );
+    } finally {
+        if ( $existed_before ) {
+            file_put_contents( $logo_path, (string) $original_binary );
+        } elseif ( file_exists( $logo_path ) ) {
+            unlink( $logo_path );
+        }
+    }
 }
 
 $tests = array();
@@ -154,7 +228,7 @@ $tests['slot_setup_url_uses_correct_menu_slug'] = function() {
     tmw_assert_contains( 'options-general.php?page=tmw-cr-slot-sidebar-banner&tab=slot-setup', $html, 'Slot Setup tab links should use the stable options-general.php menu slug URL.' );
 };
 
-$tests['slot_setup_renders_override_import_sections'] = function() {
+$tests['slot_setup_renders_only_combined_import_section'] = function() {
     tmw_reset_test_state();
     $_GET = array( 'tab' => 'slot-setup' );
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
@@ -163,13 +237,20 @@ $tests['slot_setup_renders_override_import_sections'] = function() {
     $page->render_page();
     $html = (string) ob_get_clean();
 
-    tmw_assert_contains( 'Import Allowed Country Overrides', $html, 'Slot Setup should render allowed country import section.' );
-    tmw_assert_contains( 'Import Final URL Overrides', $html, 'Slot Setup should render final URL import section.' );
-    tmw_assert_contains( 'Import Both Override CSVs', $html, 'Slot Setup should render combined override import action.' );
+    tmw_assert_contains( '<h3>Import Both Override CSVs</h3>', $html, 'Slot Setup should render combined override import heading.' );
+    tmw_assert_true( false === strpos( $html, '<h3>Import Allowed Country Overrides</h3>' ), 'Slot Setup should not render standalone allowed country heading.' );
+    tmw_assert_true( false === strpos( $html, '<h3>Import Final URL Overrides</h3>' ), 'Slot Setup should not render standalone final URL heading.' );
+    tmw_assert_contains( 'name="allowed_country_override_csv"', $html, 'Slot Setup should keep allowed country textarea in combined form.' );
+    tmw_assert_contains( 'name="final_url_override_csv"', $html, 'Slot Setup should keep final URL textarea in combined form.' );
+    tmw_assert_contains( 'action" value="tmw_cr_slot_banner_import_both_overrides"', $html, 'Slot Setup should keep combined import form action.' );
+    tmw_assert_contains( 'data-legacy-allowed-country-action="tmw_cr_slot_banner_import_allowed_country_overrides"', $html, 'Slot Setup should include hidden compatibility nonce source for legacy allowed-country importer.' );
+    tmw_assert_contains( 'data-legacy-final-url-action="tmw_cr_slot_banner_import_final_url_overrides"', $html, 'Slot Setup should include hidden compatibility nonce source for legacy final-url importer.' );
+    tmw_assert_true( false === strpos( $html, 'name="action" value="tmw_cr_slot_banner_import_allowed_country_overrides"' ), 'Slot Setup should not restore legacy standalone allowed-country form action.' );
+    tmw_assert_true( false === strpos( $html, 'name="action" value="tmw_cr_slot_banner_import_final_url_overrides"' ), 'Slot Setup should not restore legacy standalone final-url form action.' );
 };
 
 
-$tests['admin_page_runtime_file_contains_no_skipped_offers_slot_setup_render'] = function() {
+$tests['legacy_import_nonce_compatibility_markup_is_hidden'] = function() {
     tmw_reset_test_state();
     $_GET = array( 'tab' => 'slot-setup' );
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
@@ -178,7 +259,24 @@ $tests['admin_page_runtime_file_contains_no_skipped_offers_slot_setup_render'] =
     $page->render_page();
     $html = (string) ob_get_clean();
 
-    tmw_assert_same( false, strpos( $html, 'Skipped PPS Offers' ), 'Slot Setup should not render skipped-offers UI in the runtime hotfix.' );
+    tmw_assert_contains( 'class="screen-reader-text"', $html, 'Slot Setup should render hidden legacy nonce compatibility container.' );
+    tmw_assert_true( false === strpos( $html, '<h3>Import Allowed Country Overrides</h3>' ), 'Hidden compatibility should not restore legacy allowed-country heading.' );
+    tmw_assert_true( false === strpos( $html, '<h3>Import Final URL Overrides</h3>' ), 'Hidden compatibility should not restore legacy final-url heading.' );
+    tmw_assert_contains( '<h3>Import Both Override CSVs</h3>', $html, 'Hidden compatibility should preserve combined UI visibility.' );
+};
+
+$tests['slot_setup_renders_safe_skipped_offers_import_section'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+
+    ob_start();
+    $page->render_page();
+    $html = (string) ob_get_clean();
+
+    tmw_assert_contains( 'Import Skipped / Rejected Offers', $html, 'Slot Setup should render skipped offers import section.' );
+    tmw_assert_contains( 'Import Skipped Offers', $html, 'Slot Setup should render skipped offers import submit button.' );
+    tmw_assert_contains( 'Current skipped / rejected offers (latest 50)', $html, 'Slot Setup should render skipped offers summary table.' );
 };
 
 $tests['sanitize_settings_preserves_blank_api_key'] = function() {
@@ -300,6 +398,112 @@ $tests['offer_type_allowlist_behavior_cases'] = function() {
     tmw_assert_true( ! $repository->is_offer_type_allowed( array( 'name' => 'Unknown Campaign Name' ), array( 'allowed_offer_types' => array( 'pps' ) ) ), 'Unknown type should return false when no supported type is detected.' );
     tmw_assert_true( $repository->is_offer_type_allowed( array( 'name' => 'Custom Fallback - Unknown Campaign Name' ), array( 'allowed_offer_types' => array( 'fallback' ) ) ), 'Fallback offers should be allowed when fallback is selected.' );
 };
+
+
+$tests['get_offer_type_keys_detects_cpi_from_offer_name'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $types = $repository->get_offer_type_keys( array( 'name' => 'Brand X - CPI - T1' ) );
+    tmw_assert_true( in_array( 'cpi', $types, true ), 'CPI should be detected from offer name.' );
+};
+
+$tests['get_offer_type_keys_detects_cpm_from_payout_type_field'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $types = $repository->get_offer_type_keys( array( 'name' => 'Brand Y', 'payout_type' => 'CPM' ) );
+    tmw_assert_true( in_array( 'cpm', $types, true ), 'CPM should be detected from payout_type.' );
+};
+
+$tests['get_offer_type_keys_pps_still_detected_after_regex_extension'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $types = $repository->get_offer_type_keys( array( 'name' => 'Jerkmate - PPS' ) );
+    tmw_assert_true( in_array( 'pps', $types, true ), 'PPS should still be detected.' );
+};
+
+$tests['logo_coverage_report_for_type_pps_matches_legacy_pps_report'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repository->save_synced_offers( array(
+        'a' => array( 'id' => 'a', 'name' => 'Jerkmate - PPS', 'status' => 'active' ),
+        'b' => array( 'id' => 'b', 'name' => 'Unknown Brand - PPS', 'status' => 'active' ),
+    ) );
+    $settings = array( 'allowed_offer_types' => array( 'pps' ) );
+    $generic = $repository->get_logo_coverage_report_for_type( 'pps', $settings );
+    $legacy = $repository->get_pps_logo_coverage_report( $settings );
+    tmw_assert_same( array_keys( $legacy ), array_keys( $generic ), 'Generic PPS report should match legacy shape.' );
+    tmw_assert_same( $legacy['pps_candidates_total'], $generic['pps_candidates_total'], 'PPS candidate counts should match.' );
+    tmw_assert_same( $legacy['pps_with_logo'], $generic['pps_with_logo'], 'PPS with-logo counts should match.' );
+    tmw_assert_same( $legacy['pps_missing_logo'], $generic['pps_missing_logo'], 'PPS missing-logo counts should match.' );
+};
+
+$tests['logo_coverage_report_for_type_returns_zero_counts_for_empty_type'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repository->save_synced_offers( array(
+        'a' => array( 'id' => 'a', 'name' => 'Jerkmate - PPS', 'status' => 'active' ),
+    ) );
+    $report = $repository->get_logo_coverage_report_for_type( 'cpi', array( 'allowed_offer_types' => array( 'pps' ) ) );
+    tmw_assert_same( 0, (int) $report['cpi_candidates_total'], 'No CPI candidates should result in zero CPI candidates.' );
+    tmw_assert_same( 0, (int) $report['cpi_with_logo'], 'No CPI candidates should result in zero CPI with-logo count.' );
+    tmw_assert_same( 0, (int) $report['cpi_missing_logo'], 'No CPI candidates should result in zero CPI missing-logo count.' );
+    tmw_assert_true( isset( $report['pps_candidates_total'] ), 'Legacy pps_candidates_total key should remain available for compatibility.' );
+};
+
+
+$tests['logo_coverage_report_for_type_cpi_uses_type_specific_keys'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repository->save_synced_offers( array(
+        'cpi-has-logo' => array( 'id' => 'cpi-has-logo', 'name' => 'Jerkmate - CPI', 'status' => 'active' ),
+        'cpi-missing-logo' => array( 'id' => 'cpi-missing-logo', 'name' => 'Unknown Brand - CPI', 'status' => 'active' ),
+    ) );
+    $report = $repository->get_logo_coverage_report_for_type( 'cpi', array( 'allowed_offer_types' => array( 'cpi' ) ) );
+
+    tmw_assert_same( 2, (int) $report['cpi_candidates_total'], 'CPI report should use type-specific candidates key.' );
+    tmw_assert_same( 1, (int) $report['cpi_with_logo'], 'CPI report should use type-specific with-logo key.' );
+    tmw_assert_same( 1, (int) $report['cpi_missing_logo'], 'CPI report should use type-specific missing-logo key.' );
+    tmw_assert_true( isset( $report['pps_candidates_total'] ), 'Legacy PPS keys should remain present for compatibility.' );
+};
+
+
+$tests['logo_coverage_report_for_type_invalid_type_falls_back_to_pps'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repository->save_synced_offers( array(
+        'a' => array( 'id' => 'a', 'name' => 'Jerkmate - PPS', 'status' => 'active' ),
+    ) );
+    $settings = array( 'allowed_offer_types' => array( 'pps' ) );
+
+    $empty_report = $repository->get_logo_coverage_report_for_type( '', $settings );
+    tmw_assert_true( ! isset( $empty_report['_candidates_total'] ), 'Empty type should not produce malformed _candidates_total key.' );
+    tmw_assert_true( isset( $empty_report['pps_candidates_total'] ), 'Empty type should fall back to pps report keys.' );
+
+    $bad_report = $repository->get_logo_coverage_report_for_type( 'bad-type', $settings );
+    tmw_assert_true( ! isset( $bad_report['bad-type_candidates_total'] ), 'Invalid type should not produce bad-type_candidates_total key.' );
+    tmw_assert_true( ! isset( $bad_report['_candidates_total'] ), 'Invalid type should not produce malformed _candidates_total key.' );
+    tmw_assert_true( isset( $bad_report['pps_candidates_total'] ), 'Invalid type should fall back to pps report keys.' );
+};
+
+$tests['sanitize_allowed_offer_types_accepts_cpi_and_cpm'] = function() {
+    tmw_reset_test_state();
+    tmw_assert_same( array( 'cpi', 'cpm' ), TMW_CR_Slot_Offer_Repository::sanitize_allowed_offer_types( array( 'cpi', 'cpm' ) ), 'CPI and CPM should be accepted by sanitizer.' );
+};
+
+$tests['sanitize_allowed_offer_types_default_remains_pps_only_when_input_empty'] = function() {
+    tmw_reset_test_state();
+    tmw_assert_same( array( 'pps' ), TMW_CR_Slot_Offer_Repository::sanitize_allowed_offer_types( array() ), 'Empty type input should default to PPS only.' );
+};
+
+$tests['frontend_pool_allowlist_remains_pps_only_after_regex_extension'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( 'cpi1' => array( 'id' => 'cpi1', 'name' => 'Brand X - CPI - T1', 'status' => 'active', 'payout_type' => 'CPI', 'tracking_url' => 'https://trk.example.test/cpi1' ) ) );
+    $repo->save_offer_overrides( array( 'cpi1' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/cpi1-final', 'allowed_countries' => 'United States' ) ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array(), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'United States', array() );
+    tmw_assert_same( 0, count( $offers ), 'Default PPS-only allowlist must exclude CPI offers from frontend pool.' );
+};
+
 
 $tests['optimization_excludes_zero_clicks_and_zero_conversions'] = function() {
     tmw_reset_test_state();
@@ -707,7 +911,72 @@ $tests['skipped_offers_table_not_rendered_in_settings_runtime_hotfix'] = functio
     tmw_assert_same( false, strpos( $html, '8757' ), 'Settings tab should not render skipped offers rows during runtime hotfix.' );
 };
 
-$tests['skipped_offers_tracker_does_not_change_frontend_pool'] = function() {
+$tests['skipped_offers_import_handler_preserves_existing_rows'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_skipped_offers( array( '1111' => array( 'offer_id' => '1111', 'offer_name' => 'Old Offer', 'decision' => 'skip', 'reason' => 'legacy', 'notes' => '', 'updated_at' => '2026-01-01 00:00:00' ) ) );
+    $_POST['skipped_offers_csv'] = "offer_id,offer_name,decision,reason,notes
+2222,New Offer,skip,policy,No fit";
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $page->handle_import_skipped_offers();
+    $rows = $repo->get_skipped_offers();
+    tmw_assert_true( isset( $rows['1111'] ), 'Skipped offers import should preserve existing rows not present in new CSV.' );
+    tmw_assert_true( isset( $rows['2222'] ), 'Skipped offers import should add new rows.' );
+};
+
+$tests['skipped_offers_import_handler_redirects_to_slot_setup'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $_POST['skipped_offers_csv'] = "offer_id,offer_name,decision,reason,notes
+2222,New Offer,skip,policy,No fit";
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $page->handle_import_skipped_offers();
+    tmw_assert_same( 'slot-setup', (string) $page->notice['tab'], 'Skipped offers import should redirect back to slot-setup tab.' );
+};
+
+$tests['skipped_offers_import_handler_requires_reason_and_offer_id'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $_POST['skipped_offers_csv'] = "offer_id,offer_name,decision,reason,notes
+,Missing ID,skip,policy,No fit
+3333,Missing Reason,skip,,No fit
+4444,Valid,skip,policy,Keep";
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $page->handle_import_skipped_offers();
+    $rows = $repo->get_skipped_offers();
+    tmw_assert_true( ! isset( $rows['3333'] ), 'Rows without reason should be skipped.' );
+    tmw_assert_true( isset( $rows['4444'] ), 'Rows with required fields should be imported.' );
+};
+
+$tests['skipped_offers_import_notes_strip_urls'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $_POST['skipped_offers_csv'] = "offer_id,offer_name,decision,reason,notes
+5555,URL Notes,skip,policy,Reject https://evil.test and www.bad.test";
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $page->handle_import_skipped_offers();
+    $row = $repo->get_skipped_offer( '5555' );
+    tmw_assert_true( false === strpos( (string) $row['notes'], 'https://' ), 'Skipped-offers handler should strip URL-like notes.' );
+    tmw_assert_true( false === strpos( (string) $row['notes'], 'www.' ), 'Skipped-offers handler should strip www notes.' );
+};
+
+$tests['skipped_offers_ui_does_not_change_frontend_pool'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        '8757' => array( 'id' => '8757', 'name' => 'Offer A - PPS', 'status' => 'active' ),
+        '9770' => array( 'id' => '9770', 'name' => 'Offer B - PPS', 'status' => 'active' ),
+    ) );
+    $before = $repo->get_frontend_slot_offers( 'sidebar', TMW_CR_Slot_Sidebar_Banner::get_settings(), array(), 'US', array() );
+    $_POST['skipped_offers_csv'] = "offer_id,offer_name,decision,reason,notes
+8757,Offer A - PPS,skip,internal,No use";
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $page->handle_import_skipped_offers();
+    $after = $repo->get_frontend_slot_offers( 'sidebar', TMW_CR_Slot_Sidebar_Banner::get_settings(), array(), 'US', array() );
+    tmw_assert_same( count( $before ), count( $after ), 'Skipped offers UI/storage should not change frontend pool eligibility.' );
+};
+
+$tests['skipped_offers_tracker_does_not_change_frontend_pool_legacy'] = function() {
     tmw_reset_test_state();
     $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
     $offers = array(
@@ -2390,6 +2659,7 @@ $tests['manual_final_url_override_importer_accepts_and_preserves'] = function() 
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
     $repo->save_offer_overrides( array( '999' => array( 'custom_cta_text' => 'keep me' ) ) );
+    $_POST['_wpnonce'] = 'legacy-standard';
     $_POST['final_url_override_csv'] = "offer_id,final_url_override\n1234,https://trk.example.com/?tid=abc\n";
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
     $page->handle_import_final_url_overrides();
@@ -2401,6 +2671,7 @@ $tests['manual_final_url_override_importer_accepts_and_preserves'] = function() 
 $tests['manual_final_url_override_importer_rejects_invalid_patterns'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $_POST['_wpnonce'] = 'legacy-standard';
     $_POST['final_url_override_csv'] = "offer_id,final_url_override\n1,https://preview.example.com/path\n2,https://ads.advertisingpolicies.com/path\n3,https://trk.example.com/?transaction_id=preview\n4,https://trk.example.com/?affiliate_id=affiliate_id\n";
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
     $page->handle_import_final_url_overrides();
@@ -2424,6 +2695,7 @@ $tests['manual_allowed_country_override_importer_accepts_pipe_separated'] = func
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $_POST['_wpnonce'] = 'legacy-standard';
     $_POST['allowed_country_override_csv'] = "offer_id,allowed_countries\n8780,\"Belgium|United States|Belgium\"\n";
     $page->handle_import_allowed_country_overrides();
     $saved = $repo->get_offer_overrides();
@@ -2435,6 +2707,7 @@ $tests['allowed_country_override_preserves_existing_final_url_override'] = funct
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
     $repo->save_offer_overrides( array( '8780' => array( 'final_url_override' => 'https://trk.example.com/x' ) ) );
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $_POST['_wpnonce'] = 'legacy-standard';
     $_POST['allowed_country_override_csv'] = "offer_id,allowed_countries\n8780,\"Belgium|United States\"\n";
     $page->handle_import_allowed_country_overrides();
     $saved = $repo->get_offer_overrides();
@@ -2444,6 +2717,7 @@ $tests['allowed_country_override_preserves_existing_final_url_override'] = funct
 $tests['individual_final_url_import_redirects_to_slot_setup'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $_POST['_wpnonce'] = 'legacy-standard';
     $_POST['final_url_override_csv'] = "offer_id,final_url_override\n1234,https://trk.example.com/?tid=abc\n";
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
     $page->handle_import_final_url_overrides();
@@ -2453,6 +2727,7 @@ $tests['individual_final_url_import_redirects_to_slot_setup'] = function() {
 $tests['individual_allowed_country_import_redirects_to_slot_setup'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $_POST['_wpnonce'] = 'legacy-standard';
     $_POST['allowed_country_override_csv'] = "offer_id,allowed_countries\n8780,\"Belgium|United States\"\n";
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
     $page->handle_import_allowed_country_overrides();
@@ -2462,6 +2737,7 @@ $tests['individual_allowed_country_import_redirects_to_slot_setup'] = function()
 $tests['combined_override_import_processes_both_payloads'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $_POST['_wpnonce'] = 'legacy-standard';
     $_POST['allowed_country_override_csv'] = "offer_id,allowed_countries\n8780,\"Belgium|United States\"\n";
     $_POST['final_url_override_csv'] = "offer_id,final_url_override\n8873,https://trk.example.com/?tid=combo\n";
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
@@ -2472,7 +2748,22 @@ $tests['combined_override_import_processes_both_payloads'] = function() {
     tmw_assert_same( 'slot-setup', (string) $page->notice['tab'], 'Combined import should redirect back to slot-setup tab.' );
 };
 
-$tests['combined_override_import_allows_one_empty_textarea'] = function() {
+
+$tests['slot_setup_combined_import_accepts_one_empty_textarea_country_only'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $_POST['_wpnonce'] = 'legacy-standard';
+    $_POST['allowed_country_override_csv'] = "offer_id,allowed_countries\n8780,\"Belgium|United States\"\n";
+    $_POST['final_url_override_csv'] = '';
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $page->handle_import_both_overrides();
+    $saved = $repo->get_offer_overrides();
+    tmw_assert_same( 'slot-setup', (string) $page->notice['tab'], 'Combined import should redirect back to slot-setup tab for country-only payloads.' );
+    tmw_assert_true( isset( $saved['8780'] ), 'Combined import should create country override row when country textarea is provided.' );
+    tmw_assert_same( array( 'Belgium', 'United States' ), array_values( (array) ( $saved['8780']['allowed_countries'] ?? array() ) ), 'Combined import should save country overrides when final URL textarea is empty.' );
+};
+
+$tests['slot_setup_combined_import_accepts_one_empty_textarea_final_url_only'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
     $_POST['allowed_country_override_csv'] = '';
@@ -2480,10 +2771,11 @@ $tests['combined_override_import_allows_one_empty_textarea'] = function() {
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
     $page->handle_import_both_overrides();
     $saved = $repo->get_offer_overrides();
-    tmw_assert_same( 'https://trk.example.com/?tid=solo', (string) $saved['8873']['final_url_override'], 'Combined import should process the non-empty textarea only.' );
+    tmw_assert_true( isset( $saved['8873'] ), 'Combined import should create final URL override row when final URL textarea is provided.' );
+    tmw_assert_same( 'https://trk.example.com/?tid=solo', (string) ( $saved['8873']['final_url_override'] ?? '' ), 'Combined import should process the non-empty textarea only.' );
 };
 
-$tests['combined_override_import_with_both_empty_shows_notice'] = function() {
+$tests['slot_setup_combined_import_rejects_both_empty'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
     $_POST['allowed_country_override_csv'] = '';
@@ -2492,6 +2784,57 @@ $tests['combined_override_import_with_both_empty_shows_notice'] = function() {
     $page->handle_import_both_overrides();
     tmw_assert_same( 'No override rows were submitted.', (string) $page->notice['message'], 'Combined import should show a safe notice when both textareas are empty.' );
 };
+
+
+$tests['legacy_final_url_import_accepts_custom_hidden_nonce_field'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $_POST['tmw_legacy_final_url_nonce'] = 'legacy-custom';
+    $_POST['final_url_override_csv'] = "offer_id,final_url_override\n1234,https://trk.example.com/?tid=abc\n";
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $page->handle_import_final_url_overrides();
+    $saved = $repo->get_offer_overrides();
+    tmw_assert_true( isset( $saved['1234'] ), 'Legacy final URL importer should create override row when custom hidden nonce field is used.' );
+    tmw_assert_same( 'https://trk.example.com/?tid=abc', (string) ( $saved['1234']['final_url_override'] ?? '' ), 'Legacy final URL importer should save data when custom hidden nonce field is used.' );
+    tmw_assert_same( 'slot-setup', (string) $page->notice['tab'], 'Legacy final URL importer should redirect to slot-setup when custom hidden nonce field is used.' );
+};
+
+$tests['legacy_allowed_country_import_accepts_custom_hidden_nonce_field'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $_POST['tmw_legacy_allowed_country_nonce'] = 'legacy-custom';
+    $_POST['allowed_country_override_csv'] = "offer_id,allowed_countries\n8780,\"Belgium|United States\"\n";
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $page->handle_import_allowed_country_overrides();
+    $saved = $repo->get_offer_overrides();
+    tmw_assert_true( isset( $saved['8780'] ), 'Legacy allowed-country importer should create override row when custom hidden nonce field is used.' );
+    tmw_assert_same( array( 'Belgium', 'United States' ), array_values( (array) ( $saved['8780']['allowed_countries'] ?? array() ) ), 'Legacy allowed-country importer should save data when custom hidden nonce field is used.' );
+    tmw_assert_same( 'slot-setup', (string) $page->notice['tab'], 'Legacy allowed-country importer should redirect to slot-setup when custom hidden nonce field is used.' );
+};
+
+$tests['legacy_import_handlers_still_accept_standard_wpnonce_for_compat'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+
+    $_POST['_wpnonce'] = 'legacy-standard';
+    $_POST['final_url_override_csv'] = "offer_id,final_url_override\n1234,https://trk.example.com/?tid=abc\n";
+    $final_url_page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $final_url_page->handle_import_final_url_overrides();
+    tmw_assert_same( 'slot-setup', (string) $final_url_page->notice['tab'], 'Legacy final URL importer should redirect to slot-setup.' );
+
+    $_POST['_wpnonce'] = 'legacy-standard';
+    $_POST['allowed_country_override_csv'] = "offer_id,allowed_countries\n8780,\"Belgium|United States\"\n";
+    $country_page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $country_page->handle_import_allowed_country_overrides();
+    tmw_assert_same( 'slot-setup', (string) $country_page->notice['tab'], 'Legacy allowed country importer should redirect to slot-setup.' );
+
+    $saved = $repo->get_offer_overrides();
+    tmw_assert_true( isset( $saved['1234'] ), 'Legacy final URL importer should create the target offer override row.' );
+    tmw_assert_true( isset( $saved['8780'] ), 'Legacy allowed country importer should create the target offer override row.' );
+    tmw_assert_same( 'https://trk.example.com/?tid=abc', (string) ( $saved['1234']['final_url_override'] ?? '' ), 'Legacy final URL importer should still save data.' );
+    tmw_assert_same( array( 'Belgium', 'United States' ), array_values( (array) ( $saved['8780']['allowed_countries'] ?? array() ) ), 'Legacy allowed country importer should still save data.' );
+};
+
 
 $tests['offer_without_tracking_or_manual_override_remains_excluded'] = function() {
     tmw_reset_test_state();
@@ -2760,8 +3103,1774 @@ $tests['pps_expansion_audit_summary_counts_are_correct'] = function() {
 };
 
 
+
+$tests['dashboard_filter_pps_is_distinct_from_revshare_lifetime'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta', 'dashboard_meta' );
+    $repository->save_synced_offers(
+        array(
+            '9001' => array( 'id' => '9001', 'name' => 'Offer PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+            '9002' => array( 'id' => '9002', 'name' => 'Offer CPA Flat', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+        )
+    );
+
+    $model = $repository->get_dashboard_filter_model();
+    $types = (array) ( $model['supported']['payout_type'] ?? array() );
+
+    tmw_assert_true( in_array( 'pps', $types, true ), 'PPS should be present as a distinct payout type.' );
+    tmw_assert_true( in_array( 'revshare_lifetime', $types, true ), 'Revshare Lifetime should remain present for cpa_flat.' );
+};
+
+$tests['dashboard_filter_payout_type_dropdown_is_data_driven'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'cr_api_key' => 'secure' ) );
+    $_GET = array( 'tab' => 'offers' );
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repository, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    foreach ( array( 'soi', 'pps', 'doi', 'cpi', 'cpm', 'cpc' ) as $type_key ) {
+        tmw_assert_true( false === strpos( $html, 'name="payout_type[]" value="' . $type_key . '"' ), 'Unsupported payout type should not render: ' . $type_key );
+    }
+};
+
+$tests['dashboard_filter_payout_type_dropdown_only_shows_current_synced_types'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'gf1' => array( 'id' => 'gf1', 'name' => 'Group Fallback - Generic', 'status' => 'active', 'payout_type' => 'cpa_flat' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'name="payout_type[]" value="multi_cpa"', $html, 'cpa_flat rows should expose multi_cpa.' );
+    tmw_assert_contains( 'name="payout_type[]" value="revshare_lifetime"', $html, 'cpa_flat rows should expose revshare_lifetime.' );
+    tmw_assert_contains( 'name="payout_type[]" value="fallback"', $html, 'Fallback rows should expose fallback type.' );
+    foreach ( array( 'soi', 'doi', 'cpi', 'cpm', 'cpc' ) as $type_key ) {
+        tmw_assert_true( false === strpos( $html, 'name="payout_type[]" value="' . $type_key . '"' ), 'Unrelated payout type should not render: ' . $type_key );
+    }
+};
+
+$tests['dashboard_filter_normalizes_ppc_alias_to_cpc'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta', 'dashboard_meta' );
+    $repository->save_synced_offers(
+        array(
+            '9010' => array( 'id' => '9010', 'name' => 'Offer PPC', 'status' => 'active', 'payout_type' => 'PPC' ),
+        )
+    );
+
+    $model = $repository->get_dashboard_filter_model();
+    $types = (array) ( $model['supported']['payout_type'] ?? array() );
+
+    tmw_assert_true( in_array( 'cpc', $types, true ), 'PPC alias should normalize to cpc.' );
+};
+
+$tests['frontend_pool_unchanged_for_8780_be_after_payout_alias_fix'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '8780' => array( 'id' => '8780', 'name' => 'Jerkmate - PPS', 'status' => 'active', 'tracking_url' => 'https://trk.example.com/jm?transaction_id=1' ) ) );
+    $repo->save_offer_overrides( array( '8780' => array( 'allowed_countries' => array( 'Belgium' ) ) ) );
+
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '8780' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    tmw_assert_same( '8780', (string) $offers[0]['id'], '8780 should remain eligible for Belgium.' );
+};
+
+$tests['frontend_pool_unchanged_for_10366_us_after_payout_alias_fix'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '10366' => array( 'id' => '10366', 'name' => 'NaughtyCharm - PPS', 'status' => 'active', 'tracking_url' => 'https://trk.example.com/nc?transaction_id=1' ) ) );
+    $repo->save_offer_overrides( array( '10366' => array( 'allowed_countries' => array( 'United States' ) ) ) );
+
+    $us_offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '10366' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'United States', array() );
+    tmw_assert_same( '10366', (string) $us_offers[0]['id'], '10366 should remain eligible for United States.' );
+
+    $be_offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '10366' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    tmw_assert_same( 0, count( $be_offers ), '10366 should remain excluded for Belgium.' );
+};
+
+$tests['unavailable_account_offers_still_excluded_after_payout_alias_fix'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers(
+        array(
+            '9647' => array( 'id' => '9647', 'name' => 'Blocked A - PPS', 'status' => 'active', 'tracking_url' => 'https://trk.example.com/a?transaction_id=1' ),
+            '9781' => array( 'id' => '9781', 'name' => 'Blocked B - PPS', 'status' => 'active', 'tracking_url' => 'https://trk.example.com/b?transaction_id=1' ),
+        )
+    );
+
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '9647', '9781' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'United States', array() );
+    tmw_assert_same( 0, count( $offers ), 'Unavailable account offers 9647 and 9781 must remain excluded.' );
+};
+
+
+
+$tests['offers_tab_payout_dropdown_uses_current_synced_labels_only'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'cr_api_key' => 'secure' ) );
+    $_GET = array( 'tab' => 'offers' );
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
+    $repository->save_synced_offers( array( 'tp1' => array( 'id' => 'tp1', 'name' => 'Type PPS', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repository, 'sidebar' );
+
+    ob_start();
+    $page->render_page();
+    $html = (string) ob_get_clean();
+
+    tmw_assert_contains( 'name="payout_type[]" value="pps"', $html, 'Offers payout dropdown should include synced PPS value.' );
+    tmw_assert_contains( '>PPS<', $html, 'Offers payout dropdown should include PPS label.' );
+    foreach ( array( 'soi', 'doi', 'cpi', 'cpm', 'cpc' ) as $unsupported ) {
+        tmw_assert_true( false === strpos( $html, 'name="payout_type[]" value="' . $unsupported . '"' ), 'Unsynced payout type should not render: ' . $unsupported );
+    }
+};
+
+$tests['performance_filter_cpc_matches_raw_ppc_row'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
+    $repo->save_synced_offers( array( 'p1' => array( 'id' => 'p1', 'name' => 'P1', 'status' => 'active' ) ) );
+    $repo->save_offer_stats( array( 'p1|US' => array( 'offer_id' => 'p1', 'offer_name' => 'P1', 'country_name' => 'US', 'payout_type' => 'PPC', 'clicks' => 10, 'conversions' => 1, 'payout' => 2 ) ) );
+    $rows = $repo->get_performance_rows( 'US', array( 'payout_type' => 'cpc' ) );
+    tmw_assert_same( 1, count( $rows ), 'Filter cpc should match raw PPC row.' );
+};
+
+$tests['performance_filter_revshare_lifetime_matches_raw_cpa_flat_row'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
+    $repo->save_synced_offers( array( 'p2' => array( 'id' => 'p2', 'name' => 'P2', 'status' => 'active' ) ) );
+    $repo->save_offer_stats( array( 'p2|US' => array( 'offer_id' => 'p2', 'offer_name' => 'P2', 'country_name' => 'US', 'payout_type' => 'cpa_flat', 'clicks' => 10, 'conversions' => 1, 'payout' => 2 ) ) );
+    $rows = $repo->get_performance_rows( 'US', array( 'payout_type' => 'revshare_lifetime' ) );
+    tmw_assert_same( 1, count( $rows ), 'Filter revshare_lifetime should match raw cpa_flat row.' );
+};
+
+$tests['performance_filter_revshare_matches_raw_revenue_share_row'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
+    $repo->save_synced_offers( array( 'p3' => array( 'id' => 'p3', 'name' => 'P3', 'status' => 'active' ) ) );
+    $repo->save_offer_stats( array( 'p3|US' => array( 'offer_id' => 'p3', 'offer_name' => 'P3', 'country_name' => 'US', 'payout_type' => 'revenue_share', 'clicks' => 10, 'conversions' => 1, 'payout' => 2 ) ) );
+    $rows = $repo->get_performance_rows( 'US', array( 'payout_type' => 'revshare' ) );
+    tmw_assert_same( 1, count( $rows ), 'Filter revshare should match raw revenue_share row.' );
+};
+
+$tests['performance_filter_multi_cpa_matches_raw_hybrid_row'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
+    $repo->save_synced_offers( array( 'p4' => array( 'id' => 'p4', 'name' => 'P4', 'status' => 'active' ) ) );
+    $repo->save_offer_stats( array( 'p4|US' => array( 'offer_id' => 'p4', 'offer_name' => 'P4', 'country_name' => 'US', 'payout_type' => 'hybrid', 'clicks' => 10, 'conversions' => 1, 'payout' => 2 ) ) );
+    $rows = $repo->get_performance_rows( 'US', array( 'payout_type' => 'multi_cpa' ) );
+    tmw_assert_same( 1, count( $rows ), 'Filter multi_cpa should match raw hybrid row.' );
+};
+
+$tests['performance_filter_pps_distinct_from_revshare_lifetime_in_results'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
+    $repo->save_synced_offers( array( 'p5' => array( 'id' => 'p5', 'name' => 'P5', 'status' => 'active' ), 'p6' => array( 'id' => 'p6', 'name' => 'P6', 'status' => 'active' ) ) );
+    $repo->save_offer_stats( array(
+        'p5|US' => array( 'offer_id' => 'p5', 'offer_name' => 'P5', 'country_name' => 'US', 'payout_type' => 'PPS', 'clicks' => 10, 'conversions' => 1, 'payout' => 2 ),
+        'p6|US' => array( 'offer_id' => 'p6', 'offer_name' => 'P6', 'country_name' => 'US', 'payout_type' => 'cpa_flat', 'clicks' => 10, 'conversions' => 1, 'payout' => 2 ),
+    ) );
+
+    $pps_rows = $repo->get_performance_rows( 'US', array( 'payout_type' => 'pps' ) );
+    tmw_assert_same( 1, count( $pps_rows ), 'PPS filter should return only PPS row.' );
+    tmw_assert_same( 'p5', (string) $pps_rows[0]['offer_id'], 'PPS filter should return p5.' );
+
+    $lifetime_rows = $repo->get_performance_rows( 'US', array( 'payout_type' => 'revshare_lifetime' ) );
+    tmw_assert_same( 1, count( $lifetime_rows ), 'Revshare Lifetime filter should return only cpa_flat row.' );
+    tmw_assert_same( 'p6', (string) $lifetime_rows[0]['offer_id'], 'Revshare Lifetime filter should return p6.' );
+};
+
+$tests['offers_tab_payout_filter_for_pps_returns_only_pps_offers'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        'o1' => array( 'id' => 'o1', 'name' => 'Offer PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+        'o2' => array( 'id' => 'o2', 'name' => 'Offer FLAT', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+    ) );
+
+    $result = $repo->get_filtered_synced_offers_for_admin( array( 'payout_type' => array( 'pps' ) ), array() );
+    tmw_assert_same( 1, (int) $result['total'], 'Offers payout filter pps should return one offer.' );
+    tmw_assert_same( 'o1', (string) $result['items'][0]['id'], 'Offers payout filter pps should return PPS offer only.' );
+};
+
+
+
+/**
+ * Test double repository used to inject deterministic audit rows.
+ */
+class TMW_Test_Audit_Repo extends TMW_CR_Slot_Offer_Repository {
+    public $manual_rows = array();
+    public $pps_rows = array();
+
+    /**
+     * Return injected manual audit rows for Slot Setup rendering tests.
+     *
+     * @param array<string,mixed> $settings Unused in test double.
+     * @param array<string,mixed> $banner_data Unused in test double.
+     * @param string $country Unused in test double.
+     * @param array<string,mixed> $legacy_catalog Unused in test double.
+     * @return array<int,array<string,mixed>>
+     */
+    public function get_manual_winner_eligibility_audit_rows( $settings, $banner_data = array(), $country = '', $legacy_catalog = array() ) {
+        return $this->manual_rows;
+    }
+
+    /**
+     * Return injected PPS expansion rows for Slot Setup rendering tests.
+     *
+     * @param array<string,mixed> $settings Unused in test double.
+     * @param array<string,mixed> $banner_data Unused in test double.
+     * @return array<int,array<string,mixed>>
+     */
+    public function get_pps_expansion_readiness_audit_rows( $settings, $banner_data = array() ) {
+        return $this->pps_rows;
+    }
+
+    /**
+     * Return deterministic summary values derived from provided PPS rows.
+     *
+     * @param array<int,array<string,mixed>> $rows PPS rows.
+     * @return array<string,int>
+     */
+    public function get_pps_expansion_readiness_audit_summary( $rows ) {
+        return array(
+            'total_pps_candidates' => count( $rows ),
+            'frontend_ready_pps_offers' => 22,
+            'blocked_by_business_rule' => 7,
+            'missing_valid_cta' => 63,
+            'missing_allowed_country_override' => 1,
+            'missing_logo' => 0,
+            'override_only_candidates' => 1,
+            'synced_candidates' => 431,
+        );
+    }
+}
+
+/**
+ * Build synthetic audit rows with predictable IDs/names for pagination and filter assertions.
+ *
+ * @param int    $count Number of rows.
+ * @param string $prefix Prefix for row names.
+ * @param string $type Row family marker.
+ * @return array<int,array<string,mixed>>
+ */
+function tmw_make_audit_rows( $count, $prefix, $type = 'pps' ) {
+    $rows = array();
+    for ( $i = 1; $i <= $count; $i++ ) {
+        $id = sprintf( '%03d', $i );
+        $rows[] = array(
+            'offer_id' => (string) $i,
+            'offer_name' => strtoupper( $prefix ) . '_ROW_' . $id,
+            'source' => ( 0 === $i % 2 ) ? 'synced' : 'override_only',
+            'block_reason' => ( 0 === $i % 5 ) ? 'missing_logo' : ( ( 0 === $i % 3 ) ? 'business_rule_blocked' : 'missing_valid_cta' ),
+            'frontend_ready' => ( 0 === $i % 7 ) ? 'yes' : 'no',
+            'pps_detected' => 'yes',
+            'blocked_by_business_rule' => ( 0 === $i % 3 ) ? 'yes' : 'no',
+            'final_cta_source' => 'tracking_url',
+            'final_cta_host' => 'trk.example.test',
+            'has_allowed_country_override' => ( 0 === $i % 4 ) ? 'yes' : 'no',
+            'allowed_countries_count' => ( 0 === $i % 4 ) ? '2' : '0',
+            'example_be_result' => 'ok',
+            'example_us_result' => 'ok',
+            'logo_resolved' => 'yes',
+            'logo_filename' => 'logo.png',
+            'has_final_url_override' => 1,
+            'final_url_host' => 'example.test',
+            'visitor_country_raw' => 'BE',
+            'visitor_country_normalized' => 'BE',
+            'eligibility_result' => 'eligible',
+            'exclusion_reason' => '',
+        );
+    }
+    return $rows;
+}
+
+/**
+ * Build a compact PPS row set that explicitly covers all filter/search branches.
+ *
+ * @return array<int,array<string,mixed>>
+ */
+function tmw_make_pps_filter_rows() {
+    return array(
+        array( 'offer_id' => '8780', 'offer_name' => 'JerkMate MixedCase', 'source' => 'synced', 'block_reason' => '', 'frontend_ready' => 'yes', 'pps_detected' => 'yes', 'blocked_by_business_rule' => 'no', 'final_cta_source' => 'tracking_url', 'final_cta_host' => 'trk.example.test', 'has_allowed_country_override' => 'yes', 'allowed_countries_count' => '2', 'example_be_result' => 'ok', 'example_us_result' => 'ok', 'logo_resolved' => 'yes', 'logo_filename' => 'jm.png' ),
+        array( 'offer_id' => '1001', 'offer_name' => 'Missing CTA', 'source' => 'synced', 'block_reason' => 'missing_valid_cta', 'frontend_ready' => 'no', 'pps_detected' => 'yes', 'blocked_by_business_rule' => 'no', 'final_cta_source' => 'none', 'final_cta_host' => '', 'has_allowed_country_override' => 'yes', 'allowed_countries_count' => '2', 'example_be_result' => 'blocked', 'example_us_result' => 'blocked', 'logo_resolved' => 'yes', 'logo_filename' => 'a.png' ),
+        array( 'offer_id' => '1002', 'offer_name' => 'Missing Country', 'source' => 'synced', 'block_reason' => 'missing_allowed_country_override', 'frontend_ready' => 'no', 'pps_detected' => 'yes', 'blocked_by_business_rule' => 'no', 'final_cta_source' => 'tracking_url', 'final_cta_host' => 'trk.example.test', 'has_allowed_country_override' => 'no', 'allowed_countries_count' => '0', 'example_be_result' => 'blocked', 'example_us_result' => 'blocked', 'logo_resolved' => 'yes', 'logo_filename' => 'b.png' ),
+        array( 'offer_id' => '1003', 'offer_name' => 'Missing Logo', 'source' => 'synced', 'block_reason' => 'missing_logo', 'frontend_ready' => 'no', 'pps_detected' => 'yes', 'blocked_by_business_rule' => 'no', 'final_cta_source' => 'tracking_url', 'final_cta_host' => 'trk.example.test', 'has_allowed_country_override' => 'yes', 'allowed_countries_count' => '2', 'example_be_result' => 'blocked', 'example_us_result' => 'blocked', 'logo_resolved' => 'no', 'logo_filename' => '' ),
+        array( 'offer_id' => '1004', 'offer_name' => 'Business Rule', 'source' => 'synced', 'block_reason' => 'business_rule_blocked', 'frontend_ready' => 'no', 'pps_detected' => 'yes', 'blocked_by_business_rule' => 'yes', 'final_cta_source' => 'tracking_url', 'final_cta_host' => 'trk.example.test', 'has_allowed_country_override' => 'yes', 'allowed_countries_count' => '2', 'example_be_result' => 'blocked', 'example_us_result' => 'blocked', 'logo_resolved' => 'yes', 'logo_filename' => 'd.png' ),
+        array( 'offer_id' => '1005', 'offer_name' => 'Unavailable Account', 'source' => 'synced', 'block_reason' => 'unavailable_account_offer', 'frontend_ready' => 'no', 'pps_detected' => 'yes', 'blocked_by_business_rule' => 'yes', 'final_cta_source' => 'tracking_url', 'final_cta_host' => 'trk.example.test', 'has_allowed_country_override' => 'yes', 'allowed_countries_count' => '2', 'example_be_result' => 'blocked', 'example_us_result' => 'blocked', 'logo_resolved' => 'yes', 'logo_filename' => 'e.png' ),
+        array( 'offer_id' => '1006', 'offer_name' => 'Override Only', 'source' => 'override_only', 'block_reason' => '', 'frontend_ready' => 'no', 'pps_detected' => 'yes', 'blocked_by_business_rule' => 'no', 'final_cta_source' => 'tracking_url', 'final_cta_host' => 'trk.example.test', 'has_allowed_country_override' => 'yes', 'allowed_countries_count' => '2', 'example_be_result' => 'ok', 'example_us_result' => 'ok', 'logo_resolved' => 'yes', 'logo_filename' => 'f.png' ),
+    );
+}
+
+$tests['pps_audit_default_pagination_25_rows'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup' );
+    $repo = new TMW_Test_Audit_Repo( 'o', 'm' );
+    $repo->pps_rows = tmw_make_audit_rows( 60, 'PPS' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'PPS_ROW_001', $html, 'Page 1 should include first PPS row.' );
+    tmw_assert_contains( 'PPS_ROW_025', $html, 'Page 1 should include row 25.' );
+    tmw_assert_true( false === strpos( $html, 'PPS_ROW_026' ), 'Page 1 should exclude row 26.' );
+    tmw_assert_true( false === strpos( $html, 'PPS_ROW_060' ), 'Page 1 should exclude row 60.' );
+};
+
+$tests['pps_audit_pagination_page_2_returns_rows_26_through_50'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup', 'pps_audit_page' => '2' );
+    $repo = new TMW_Test_Audit_Repo( 'o', 'm' );
+    $repo->pps_rows = tmw_make_audit_rows( 60, 'PPS' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'PPS_ROW_026', $html, 'Page 2 should include row 26.' );
+    tmw_assert_contains( 'PPS_ROW_050', $html, 'Page 2 should include row 50.' );
+    tmw_assert_true( false === strpos( $html, 'PPS_ROW_025' ), 'Page 2 should exclude row 25.' );
+    tmw_assert_true( false === strpos( $html, 'PPS_ROW_051' ), 'Page 2 should exclude row 51.' );
+};
+
+$tests['manual_audit_default_pagination_25_rows'] = function() {
+    tmw_reset_test_state(); $_GET = array( 'tab' => 'slot-setup' );
+    $repo = new TMW_Test_Audit_Repo( 'o', 'm' ); $repo->manual_rows = tmw_make_audit_rows( 60, 'MAN' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'MAN_ROW_001', $html, 'Manual page 1 should include row 1.' );
+    tmw_assert_contains( 'MAN_ROW_025', $html, 'Manual page 1 should include row 25.' );
+    tmw_assert_true( false === strpos( $html, 'MAN_ROW_026' ), 'Manual page 1 should exclude row 26.' );
+    tmw_assert_true( false === strpos( $html, 'MAN_ROW_060' ), 'Manual page 1 should exclude row 60.' );
+};
+
+$tests['manual_audit_pagination_page_2_returns_rows_26_through_50'] = function() {
+    tmw_reset_test_state(); $_GET = array( 'tab' => 'slot-setup', 'manual_audit_page' => '2' );
+    $repo = new TMW_Test_Audit_Repo( 'o', 'm' ); $repo->manual_rows = tmw_make_audit_rows( 60, 'MAN' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'MAN_ROW_026', $html, 'Manual page 2 should include row 26.' );
+    tmw_assert_contains( 'MAN_ROW_050', $html, 'Manual page 2 should include row 50.' );
+    tmw_assert_true( false === strpos( $html, 'MAN_ROW_025' ), 'Manual page 2 should exclude row 25.' );
+    tmw_assert_true( false === strpos( $html, 'MAN_ROW_051' ), 'Manual page 2 should exclude row 51.' );
+};
+
+$tests['pps_audit_pagination_clamps_invalid_page_values'] = function() {
+    $repo = new TMW_Test_Audit_Repo( 'o', 'm' );
+    $repo->pps_rows = tmw_make_audit_rows( 60, 'PPS' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+
+    tmw_reset_test_state(); $_GET = array( 'tab' => 'slot-setup', 'pps_audit_page' => '-5' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'PPS_ROW_001', $html, 'Negative page should normalize to page 1.' );
+    tmw_assert_true( false === strpos( $html, 'PPS_ROW_026' ), 'Negative page should exclude row 26.' );
+
+    tmw_reset_test_state(); $_GET = array( 'tab' => 'slot-setup', 'pps_audit_page' => 'abc' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'PPS_ROW_025', $html, 'Non numeric page should normalize to page 1.' );
+    tmw_assert_true( false === strpos( $html, 'PPS_ROW_051' ), 'Non numeric page should exclude row 51.' );
+
+    tmw_reset_test_state(); $_GET = array( 'tab' => 'slot-setup', 'pps_audit_page' => '999' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'PPS_ROW_051', $html, 'Too-high page should clamp to last page.' );
+    tmw_assert_contains( 'PPS_ROW_060', $html, 'Last page should include row 60.' );
+    tmw_assert_true( false === strpos( $html, 'PPS_ROW_025' ), 'Clamped last page should exclude early rows.' );
+};
+
+$tests['manual_audit_pagination_independent_from_pps_pagination'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup', 'manual_audit_page' => '3', 'pps_audit_page' => '2' );
+    $repo = new TMW_Test_Audit_Repo( 'o', 'm' );
+    $repo->manual_rows = tmw_make_audit_rows( 60, 'MAN' );
+    $repo->pps_rows = tmw_make_audit_rows( 60, 'PPS' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'MAN_ROW_051', $html, 'Manual page 3 should include row 51.' );
+    tmw_assert_contains( 'MAN_ROW_060', $html, 'Manual page 3 should include row 60.' );
+    tmw_assert_true( false === strpos( $html, 'MAN_ROW_050' ), 'Manual page 3 should exclude row 50.' );
+    tmw_assert_contains( 'PPS_ROW_026', $html, 'PPS page 2 should include row 26.' );
+    tmw_assert_contains( 'PPS_ROW_050', $html, 'PPS page 2 should include row 50.' );
+    tmw_assert_true( false === strpos( $html, 'PPS_ROW_025' ), 'PPS page 2 should exclude row 25.' );
+    tmw_assert_true( false === strpos( $html, 'PPS_ROW_051' ), 'PPS page 2 should exclude row 51.' );
+};
+
+$tests['pps_audit_filter_frontend_ready_only_excludes_blocked_rows'] = function() {
+    tmw_reset_test_state(); $_GET = array( 'tab' => 'slot-setup', 'pps_audit_filter' => 'frontend_ready_only' );
+    $repo = new TMW_Test_Audit_Repo( 'o', 'm' ); $repo->pps_rows = tmw_make_pps_filter_rows();
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'JerkMate MixedCase', $html, 'Ready row should remain.' );
+    tmw_assert_true( false === strpos( $html, 'Missing CTA' ), 'Blocked row should be filtered out.' );
+    tmw_assert_contains( 'Filtered rows:', $html, 'Filtered row summary should appear.' );
+};
+$tests['pps_audit_filter_missing_cta_keeps_only_missing_cta_block_reason'] = function() {
+    tmw_reset_test_state(); $_GET = array( 'tab' => 'slot-setup', 'pps_audit_filter' => 'missing_cta' );
+    $repo = new TMW_Test_Audit_Repo( 'o', 'm' ); $repo->pps_rows = tmw_make_pps_filter_rows(); $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Missing CTA', $html, 'Missing CTA row should be present.' ); tmw_assert_true( false === strpos( $html, 'Missing Country' ), 'Other reasons excluded.' );
+};
+$tests['pps_audit_filter_missing_country_override_keeps_only_matching_rows'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup', 'pps_audit_filter' => 'missing_country_override' );
+    $repo = new TMW_Test_Audit_Repo( 'o', 'm' );
+    $repo->pps_rows = tmw_make_pps_filter_rows();
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Missing Country', $html, 'Country override row present.' );
+    tmw_assert_true( false === strpos( $html, 'Missing Logo' ), 'Other rows excluded.' );
+};
+$tests['pps_audit_filter_missing_logo_keeps_only_matching_rows'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup', 'pps_audit_filter' => 'missing_logo' );
+    $repo = new TMW_Test_Audit_Repo( 'o', 'm' );
+    $repo->pps_rows = tmw_make_pps_filter_rows();
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Missing Logo', $html, 'Missing logo row present.' );
+    tmw_assert_true( false === strpos( $html, 'Missing CTA' ), 'Other rows excluded.' );
+};
+$tests['pps_audit_filter_blocked_by_business_rule_keeps_business_and_unavailable_rows'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup', 'pps_audit_filter' => 'blocked_by_business_rule' );
+    $repo = new TMW_Test_Audit_Repo( 'o', 'm' );
+    $repo->pps_rows = tmw_make_pps_filter_rows();
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Business Rule', $html, 'Business blocked row present.' );
+    tmw_assert_contains( 'Unavailable Account', $html, 'Unavailable row present.' );
+    tmw_assert_true( false === strpos( $html, 'Missing CTA' ), 'Non-business block excluded.' );
+};
+$tests['pps_audit_filter_override_only_and_synced_sources'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup', 'pps_audit_filter' => 'override_only' );
+    $repo = new TMW_Test_Audit_Repo( 'o', 'm' );
+    $repo->pps_rows = tmw_make_pps_filter_rows();
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Override Only', $html, 'Override source present.' );
+    tmw_assert_true( false === strpos( $html, 'Missing CTA' ), 'Synced source excluded for override filter.' );
+
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup', 'pps_audit_filter' => 'synced' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Missing CTA', $html, 'Synced row present.' );
+    tmw_assert_true( false === strpos( $html, 'Override Only' ), 'Override row excluded in synced filter.' );
+};
+$tests['pps_audit_search_matches_offer_id_substring'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup', 'pps_audit_search' => '8780' );
+    $repo = new TMW_Test_Audit_Repo( 'o', 'm' );
+    $repo->pps_rows = tmw_make_pps_filter_rows();
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'JerkMate MixedCase', $html, 'ID match row present.' );
+    tmw_assert_true( false === strpos( $html, 'Missing CTA' ), 'Unrelated row excluded.' );
+};
+$tests['pps_audit_search_matches_offer_name_case_insensitive'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup', 'pps_audit_search' => 'jerkmate' );
+    $repo = new TMW_Test_Audit_Repo( 'o', 'm' );
+    $repo->pps_rows = tmw_make_pps_filter_rows();
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'JerkMate MixedCase', $html, 'Case-insensitive match should pass.' );
+    tmw_assert_true( false === strpos( $html, 'Unavailable Account' ), 'Unrelated row excluded.' );
+};
+$tests['audit_pagination_summary_counts_unchanged_by_filter'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup', 'pps_audit_filter' => 'missing_logo' );
+    $repo = new TMW_Test_Audit_Repo( 'o', 'm' );
+    $repo->pps_rows = tmw_make_audit_rows( 60, 'PPS' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Total PPS candidates: 60', $html, 'Summary must use unfiltered count.' );
+    tmw_assert_contains( 'Filtered rows:', $html, 'Filtered row count should render separately.' );
+};
+$tests['audit_pagination_links_preserve_slot_setup_tab'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup', 'manual_audit_page' => '2', 'pps_audit_page' => '2' );
+    $repo = new TMW_Test_Audit_Repo( 'o', 'm' );
+    $repo->manual_rows = tmw_make_audit_rows( 60, 'MAN' );
+    $repo->pps_rows = tmw_make_audit_rows( 60, 'PPS' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'page=tmw-cr-slot-sidebar-banner', $html, 'Pagination links should preserve page slug.' );
+    tmw_assert_contains( 'tab=slot-setup', $html, 'Pagination links should preserve slot-setup tab.' );
+};
+$tests['audit_pagination_links_preserve_independent_report_query_args'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup', 'manual_audit_page' => '3', 'pps_audit_page' => '2', 'pps_audit_filter' => 'missing_cta', 'pps_audit_search' => '8780' );
+    $repo = new TMW_Test_Audit_Repo( 'o', 'm' );
+    $repo->manual_rows = tmw_make_audit_rows( 60, 'MAN' );
+    $repo->pps_rows = tmw_make_audit_rows( 60, 'PPS' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'manual_audit_page=3', $html, 'PPS links should preserve manual page.' );
+    tmw_assert_contains( 'pps_audit_page=2', $html, 'Manual links should preserve PPS page.' );
+    tmw_assert_contains( 'pps_audit_filter=missing_cta', $html, 'Manual links should preserve PPS filter.' );
+    tmw_assert_contains( 'pps_audit_search=8780', $html, 'Manual links should preserve PPS search.' );
+};
+$tests['audit_pagination_does_not_break_combined_override_import_form_post'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'action" value="tmw_cr_slot_banner_import_both_overrides"', $html, 'Combined import action remains.' );
+    tmw_assert_contains( 'name="allowed_country_override_csv"', $html, 'Combined import allowed-country field remains.' );
+    tmw_assert_contains( 'name="final_url_override_csv"', $html, 'Combined import final URL field remains.' );
+};
+$tests['audit_pagination_does_not_readd_removed_standalone_import_sections'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_true( false === strpos( $html, '<h3>Import Allowed Country Overrides</h3>' ), 'Standalone allowed-country section should remain removed.' );
+    tmw_assert_true( false === strpos( $html, '<h3>Import Final URL Overrides</h3>' ), 'Standalone final-url section should remain removed.' );
+    tmw_assert_contains( '<h3>Import Both Override CSVs</h3>', $html, 'Combined import section should remain visible.' );
+};
+$tests['audit_pagination_does_not_change_frontend_pool'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        '8780' => array( 'id' => '8780', 'name' => 'Jerkmate', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '10366' => array( 'id' => '10366', 'name' => 'NaughtyCharm', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '9647' => array( 'id' => '9647', 'name' => 'Group Fallback - Tapyn - PPS - Mobile - Android', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '9781' => array( 'id' => '9781', 'name' => 'Group Fallback - Dating.com PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+    ) );
+    $repo->save_offer_overrides( array(
+        '8780' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/a', 'allowed_countries' => 'Belgium' ),
+        '10366' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/b', 'allowed_countries' => 'United States' ),
+    ) );
+    $be = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    $us = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'United States', array() );
+    tmw_assert_true( false !== strpos( wp_json_encode( $be ), '8780' ), '8780 should be eligible for Belgium.' );
+    tmw_assert_true( false !== strpos( wp_json_encode( $us ), '10366' ), '10366 should be eligible for US.' );
+    tmw_assert_true( false === strpos( wp_json_encode( $be ), '10366' ), '10366 should be excluded for Belgium.' );
+    tmw_assert_true( false === strpos( wp_json_encode( $us ), '9647' ) && false === strpos( wp_json_encode( $us ), '9781' ), 'Unavailable offers should remain excluded.' );
+};
+$tests['logo_status_mapped_local_when_file_exists_for_known_brand'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    tmw_with_temp_logo_file(
+        'sex-messenger-80x80-transparent.png',
+        'fixture',
+        static function () use ( $repo ) {
+            $offer = array( 'id' => 'x1', 'name' => 'Sex Messenger' );
+            tmw_assert_same( 'mapped_local', $repo->get_logo_status_for_offer_any( 'x1', $offer ), 'Known local brand should resolve mapped local logo.' );
+        }
+    );
+};
+$tests['logo_status_manual_override_when_image_url_override_set'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_offer_overrides( array( 'x2' => array( 'image_url_override' => 'https://cdn.example.test/logo.png' ) ) );
+    tmw_assert_same( 'manual_override', $repo->get_logo_status_for_offer_any( 'x2', array( 'id' => 'x2', 'name' => 'Unknown Name' ) ), 'Manual override should win.' );
+};
+$tests['logo_status_placeholder_only_when_no_brand_match_and_no_override'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    tmw_assert_same( 'placeholder_only', $repo->get_logo_status_for_offer_any( 'x3', array( 'id' => 'x3', 'name' => 'No Brand Fixture' ) ), 'Unknown offer should be placeholder only.' );
+};
+$tests['logo_status_missing_when_brand_match_but_no_file_on_disk'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    tmw_without_logo_file(
+        'jerkmate-80x80-transparent.png',
+        static function () use ( $repo ) {
+            $status = $repo->get_logo_status_for_offer_any( 'x4', array( 'id' => 'x4', 'name' => 'Jerkmate' ) );
+            tmw_assert_same( 'missing', $status, 'Known mapped brand without disk file should return missing.' );
+        }
+    );
+};
+
+$tests['logo_filename_missing_file_does_not_reference_report_alias_state'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    tmw_without_logo_file( '80x80/jerkmate-80x80-transparent.png', static function () use ( $repo ) {
+        $filename = $repo->get_offer_logo_filename( array( 'id' => 'logo-fixture', 'name' => 'Jerkmate' ) );
+        tmw_assert_same( '', $filename, 'Missing mapped logo file should return empty filename without report alias references.' );
+    } );
+};
+
+$tests['logo_status_filter_filters_offers_correctly'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    tmw_with_temp_logo_file( 'jerkmate-80x80-transparent.png', 'fixture', static function () use ( $repo ) {
+        $repo->save_synced_offers(
+            array(
+                '20001' => array( 'id' => '20001', 'name' => 'Unique Manual Offer', 'status' => 'active', 'payout_type' => 'PPS' ),
+                '20002' => array( 'id' => '20002', 'name' => 'Jerkmate', 'status' => 'active', 'payout_type' => 'PPS' ),
+                '20003' => array( 'id' => '20003', 'name' => 'No Brand Placeholder', 'status' => 'active', 'payout_type' => 'PPS' ),
+            )
+        );
+        $repo->save_offer_overrides( array( '20001' => array( 'image_url_override' => 'https://cdn.example.test/20001.png' ) ) );
+        $filtered = $repo->get_filtered_synced_offers_for_admin( array( 'logo_status' => 'manual_override', 'per_page' => 50 ), array() );
+        $json = wp_json_encode( $filtered['items'] );
+        tmw_assert_true( false !== strpos( $json, '20001' ), 'Manual override offer should remain after logo_status filter.' );
+        tmw_assert_true( false === strpos( $json, '20002' ) && false === strpos( $json, '20003' ), 'Non-matching offers should be excluded by logo_status filter.' );
+    } );
+};
+$tests['frontend_eligibility_summary_returns_valid_for_8780_be'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    tmw_with_temp_logo_file( 'jerkmate-80x80-transparent.png', 'fixture', static function () use ( $repo ) {
+        $offer = array( 'id' => '8780', 'name' => 'Jerkmate', 'status' => 'active', 'payout_type' => 'PPS', 'thumbnail' => 'https://cdn.example.test/jerkmate.png' );
+        $repo->save_offer_overrides( array( '8780' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/a', 'allowed_countries' => 'Belgium' ) ) );
+        $summary = $repo->get_offer_frontend_eligibility_summary( $offer, array( 'allowed_offer_types' => array( 'pps' ) ), 'BE', array() );
+        tmw_assert_true( true === $summary['is_eligible'] && 'valid' === $summary['block_reason'], '8780 should be valid for BE.' );
+    } );
+};
+$tests['frontend_eligibility_summary_returns_country_not_allowed_for_10366_be'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $offer = array( 'id' => '10366', 'name' => 'NaughtyCharm', 'status' => 'active', 'payout_type' => 'PPS' );
+    $repo->save_offer_overrides( array( '10366' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/b', 'allowed_countries' => 'United States' ) ) );
+    $summary = $repo->get_offer_frontend_eligibility_summary( $offer, array( 'allowed_offer_types' => array( 'pps' ) ), 'BE', array() );
+    tmw_assert_same( 'country_not_allowed', $summary['block_reason'], '10366 should be blocked for BE.' );
+};
+$tests['frontend_eligibility_summary_returns_valid_for_10366_us'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    tmw_with_temp_logo_file( 'naughtycharm-80x80-transparent.png', 'fixture', static function () use ( $repo ) {
+        $offer = array( 'id' => '10366', 'name' => 'NaughtyCharm', 'status' => 'active', 'payout_type' => 'PPS' );
+        $repo->save_offer_overrides( array( '10366' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/b', 'allowed_countries' => 'United States' ) ) );
+        $summary = $repo->get_offer_frontend_eligibility_summary( $offer, array( 'allowed_offer_types' => array( 'pps' ) ), 'US', array() );
+        tmw_assert_true( true === $summary['is_eligible'] && 'valid' === $summary['block_reason'], '10366 should be valid for US.' );
+    } );
+};
+$tests['frontend_eligibility_summary_returns_business_rule_blocked_for_male_targeted_offer'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $offer = array( 'id' => '2492', 'name' => 'Gay Dating Offer', 'status' => 'active', 'payout_type' => 'PPS', 'tag' => 'gay' );
+    $summary = $repo->get_offer_frontend_eligibility_summary( $offer, array( 'allowed_offer_types' => array( 'pps' ) ), 'US', array() );
+    tmw_assert_same( 'business_rule_blocked', $summary['block_reason'], 'Male targeted offer should be blocked by business rule.' );
+};
+$tests['frontend_eligibility_summary_returns_unavailable_account_offer_for_9647_and_9781'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    foreach ( array( '9647' => 'Group Fallback - Tapyn - PPS - Mobile - Android', '9781' => 'Group Fallback - Dating.com PPS' ) as $id => $name ) {
+        $summary = $repo->get_offer_frontend_eligibility_summary( array( 'id' => $id, 'name' => $name, 'status' => 'active', 'payout_type' => 'PPS' ), array( 'allowed_offer_types' => array( 'pps' ) ), 'US', array() );
+        tmw_assert_same( 'unavailable_account_offer', $summary['block_reason'], 'Unavailable offer should be flagged for ' . $id );
+    }
+};
+$tests['frontend_eligibility_summary_returns_missing_valid_cta'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $offer = array( 'id' => '24001', 'name' => 'CTA Missing Fixture', 'status' => 'active', 'payout_type' => 'PPS' );
+    $summary = $repo->get_offer_frontend_eligibility_summary( $offer, array( 'allowed_offer_types' => array( 'pps' ), 'cta_url' => '' ), 'US', array() );
+    tmw_assert_same( 'missing_valid_cta', $summary['block_reason'], 'Missing CTA should block eligibility.' );
+};
+$tests['frontend_eligibility_summary_matches_frontend_pool_inclusion_for_8780_be'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    tmw_with_temp_logo_file( 'jerkmate-80x80-transparent.png', 'fixture', static function () use ( $repo ) {
+        $offer = array( 'id' => '8780', 'name' => 'Jerkmate', 'status' => 'active', 'payout_type' => 'PPS' );
+        $repo->save_synced_offers( array( '8780' => $offer ) );
+        $repo->save_offer_overrides( array( '8780' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/a', 'allowed_countries' => 'Belgium' ) ) );
+        $summary = $repo->get_offer_frontend_eligibility_summary( $offer, array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '8780' ) ), 'Belgium', array() );
+        $pool = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '8780' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+        tmw_assert_true( true === $summary['is_eligible'], 'Summary should mark 8780 eligible for BE.' );
+        tmw_assert_true( false !== strpos( wp_json_encode( $pool ), '8780' ), 'Frontend pool should include 8780 for BE.' );
+    } );
+};
+$tests['logo_status_tests_restore_logo_fixture_files'] = function() {
+    tmw_reset_test_state();
+    $files = array(
+        'sex-messenger-80x80-transparent.png',
+        'jerkmate-80x80-transparent.png',
+        'naughtycharm-80x80-transparent.png',
+    );
+    $before = array();
+    foreach ( $files as $file ) {
+        $path = TMW_CR_SLOT_BANNER_PATH . 'assets/logos/' . $file;
+        $before[ $file ] = array(
+            'exists' => file_exists( $path ),
+            'hash' => file_exists( $path ) ? md5_file( $path ) : '',
+        );
+    }
+    tmw_with_temp_logo_file( 'sex-messenger-80x80-transparent.png', 'tmp1', static function () {
+    } );
+    tmw_without_logo_file( 'jerkmate-80x80-transparent.png', static function () {
+    } );
+    tmw_with_temp_logo_file( 'naughtycharm-80x80-transparent.png', 'tmp2', static function () {
+    } );
+    foreach ( $files as $file ) {
+        $path = TMW_CR_SLOT_BANNER_PATH . 'assets/logos/' . $file;
+        $exists_now = file_exists( $path );
+        $hash_now = $exists_now ? md5_file( $path ) : '';
+        tmw_assert_same( $before[ $file ]['exists'], $exists_now, 'File exists state should be restored for ' . $file );
+        tmw_assert_same( $before[ $file ]['hash'], $hash_now, 'File hash should be restored for ' . $file );
+    }
+};
+$tests['offers_tab_renders_logo_source_frontend_eligible_and_block_reason_columns'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Logo source', $html, 'Offers tab should render logo source column.' );
+    tmw_assert_contains( 'Frontend eligible', $html, 'Offers tab should render frontend eligible column.' );
+    tmw_assert_contains( 'Block reason', $html, 'Offers tab should render block reason column.' );
+};
+$tests['offers_tab_logo_status_filter_dropdown_renders_expected_options'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    foreach ( array( 'manual_override', 'mapped_local', 'auto_remote', 'placeholder_only', 'missing' ) as $opt ) {
+        tmw_assert_contains( 'value="' . $opt . '"', $html, 'Missing logo status filter option: ' . $opt );
+    }
+};
+$tests['offers_tab_unavailable_account_badge_shown_for_9647_and_9781'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array(
+        '9647' => array( 'id' => '9647', 'name' => 'UQ-9647-Offer', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '9781' => array( 'id' => '9781', 'name' => 'UQ-9781-Offer', 'status' => 'active', 'payout_type' => 'PPS' ),
+    ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'UQ-9647-Offer', $html, 'Expected 9647 row in offers table.' );
+    tmw_assert_contains( 'UQ-9781-Offer', $html, 'Expected 9781 row in offers table.' );
+    tmw_assert_true( substr_count( $html, 'Unavailable for account' ) >= 2, 'Unavailable badge should appear for both unavailable offers.' );
+};
+$tests['offers_tab_logo_status_filter_preserves_existing_payout_filter'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'logo_status' => 'missing', 'payout_type' => array( 'pps' ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'lp1' => array( 'id' => 'lp1', 'name' => 'Logo Fixture PPS', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'name="payout_type[]" value="pps"', $html, 'Payout filter option should render when fixture supports it.' );
+    tmw_assert_contains( 'name="payout_type[]" value="pps" checked', $html, 'Payout filter selection should remain checked when logo_status filter is also active.' );
+    tmw_assert_contains( 'name="logo_status"', $html, 'Logo status filter should remain rendered with payout filter selection.' );
+};
+$tests['offers_dashboard_empty_filter_params_are_ignored'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'search' => '', 'featured' => '', 'approval_required' => '', 'image_status' => '', 'logo_status' => '' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'e1' => array( 'id' => 'e1', 'name' => 'Empty Params PPS', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Empty Params PPS', $html, 'Offer should remain visible with empty any params.' );
+    tmw_assert_true( false === strpos( $html, 'No offers match the current filters.' ), 'No-offers message should not render for empty any params.' );
+};
+$tests['offers_dashboard_payout_type_pps_filter_returns_pps_rows'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'payout_type' => array( 'pps' ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array(
+        'pp1' => array( 'id' => 'pp1', 'name' => 'Only PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+        'pp2' => array( 'id' => 'pp2', 'name' => 'No Match Type', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+    ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Only PPS', $html, 'PPS offer should be visible when payout_type=pps.' );
+    tmw_assert_true( false === strpos( $html, 'No Match Type' ), 'Non-PPS offer should be filtered out when payout_type=pps.' );
+};
+$tests['offers_dashboard_combined_empty_params_with_payout_type_pps_returns_rows'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'payout_type' => array( 'pps' ), 'featured' => '', 'approval_required' => '', 'image_status' => '', 'logo_status' => '' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array(
+        'cp1' => array( 'id' => 'cp1', 'name' => 'Combined PPS 1', 'status' => 'active', 'payout_type' => 'PPS' ),
+        'cp2' => array( 'id' => 'cp2', 'name' => 'Combined PPS 2', 'status' => 'active', 'payout_type' => 'PPS' ),
+    ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Combined PPS 1', $html, 'First PPS offer should remain visible with empty params plus payout_type=pps.' );
+    tmw_assert_contains( 'Combined PPS 2', $html, 'Second PPS offer should remain visible with empty params plus payout_type=pps.' );
+    tmw_assert_true( false === strpos( $html, 'No offers match the current filters.' ), 'No-offers message should not render for empty params plus payout_type=pps.' );
+};
+$tests['offers_dashboard_featured_any_does_not_filter_rows'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'featured' => '' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'f1' => array( 'id' => 'f1', 'name' => 'Featured Any Fixture', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Featured Any Fixture', $html, 'Blank featured should behave as any.' );
+};
+$tests['offers_dashboard_approval_any_does_not_filter_rows'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'approval_required' => '' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'a1' => array( 'id' => 'a1', 'name' => 'Approval Any Fixture', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Approval Any Fixture', $html, 'Blank approval should behave as any.' );
+};
+$tests['offers_dashboard_image_status_any_does_not_filter_rows'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'image_status' => '' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'i1' => array( 'id' => 'i1', 'name' => 'Image Any Fixture', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Image Any Fixture', $html, 'Blank image status should behave as any.' );
+};
+$tests['offers_dashboard_logo_status_any_does_not_filter_rows'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'logo_status' => '' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'l1' => array( 'id' => 'l1', 'name' => 'Logo Any Fixture', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Logo Any Fixture', $html, 'Blank logo status should behave as any.' );
+};
+$tests['offers_dashboard_payout_type_pps_falls_back_to_raw_offer_type_when_metadata_missing'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'fb1' => array( 'id' => 'fb1', 'name' => 'Raw Offer PPS', 'status' => 'active' ) ) );
+    $result = $repo->get_filtered_synced_offers_for_admin( array( 'payout_type' => array( 'pps' ) ), array() );
+    tmw_assert_same( 1, (int) $result['total'], 'PPS filter should include offer when metadata families are missing but raw offer indicates PPS.' );
+    tmw_assert_same( 'fb1', (string) $result['items'][0]['id'], 'Fallback should keep the raw PPS offer.' );
+};
+$tests['offers_dashboard_payout_type_multi_cpa_falls_back_from_raw_cpa_when_metadata_missing'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'mc1' => array( 'id' => 'mc1', 'name' => 'Raw Multi CPA Offer', 'status' => 'active' ) ) );
+    $result = $repo->get_filtered_synced_offers_for_admin( array( 'payout_type' => array( 'multi_cpa' ) ), array() );
+    tmw_assert_same( 1, (int) $result['total'], 'Multi-CPA filter should include raw CPA offer when metadata families are missing.' );
+    tmw_assert_same( 'mc1', (string) $result['items'][0]['id'], 'Fallback should map raw CPA to multi_cpa family.' );
+};
+$tests['offers_dashboard_payout_type_multi_cpa_matches_direct_raw_cpa'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'mc2' => array( 'id' => 'mc2', 'name' => 'Direct CPA', 'status' => 'active', 'payout_type' => 'CPA' ) ) );
+    $result = $repo->get_filtered_synced_offers_for_admin( array( 'payout_type' => array( 'multi_cpa' ) ), array() );
+    tmw_assert_same( 1, (int) $result['total'], 'Direct raw CPA payout_type should map to multi_cpa.' );
+};
+$tests['offers_dashboard_payout_type_multi_cpa_matches_direct_raw_cpa_flat'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'mc3' => array( 'id' => 'mc3', 'name' => 'Direct CPA Flat', 'status' => 'active', 'payout_type' => 'cpa_flat' ) ) );
+    $result = $repo->get_filtered_synced_offers_for_admin( array( 'payout_type' => array( 'multi_cpa' ) ), array() );
+    tmw_assert_same( 1, (int) $result['total'], 'Direct raw cpa_flat payout_type should map to multi_cpa.' );
+};
+$tests['offers_dashboard_status_filter_preserves_spaced_status_value'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'status' => 'pending review' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array(
+        's1' => array( 'id' => 's1', 'name' => 'Pending Review Offer', 'status' => 'pending review', 'payout_type' => 'PPS' ),
+        's2' => array( 'id' => 's2', 'name' => 'Active Only Offer', 'status' => 'active', 'payout_type' => 'PPS' ),
+    ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Pending Review Offer', $html, 'Spaced status value should be preserved and match pending review offer.' );
+    tmw_assert_true( false === strpos( $html, 'Active Only Offer' ), 'Active fixture should be filtered out by pending review status filter.' );
+};
+
+$tests['offers_dashboard_payout_type_pps_matches_name_even_when_raw_payout_type_cpa_flat'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'pps-fallback' => array( 'id' => 'pps-fallback', 'name' => 'Group Fallback - Dating PPS', 'status' => 'active', 'payout_type' => 'cpa_flat' ) ) );
+    $result = $repo->get_filtered_synced_offers_for_admin( array( 'payout_type' => array( 'pps' ) ), array() );
+    tmw_assert_same( 1, (int) $result['total'], 'PPS should match by offer-name signal even with raw cpa_flat.' );
+};
+
+$tests['offers_dashboard_payout_type_soi_matches_name_even_when_raw_payout_type_cpa_flat'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'soi-fallback' => array( 'id' => 'soi-fallback', 'name' => 'Group Fallback - Example SOI', 'status' => 'active', 'payout_type' => 'cpa_flat' ) ) );
+    $result = $repo->get_filtered_synced_offers_for_admin( array( 'payout_type' => array( 'soi' ) ), array() );
+    tmw_assert_same( 1, (int) $result['total'], 'SOI should match by offer-name signal even with raw cpa_flat.' );
+};
+
+$tests['dashboard_metadata_layer_includes_payout_type'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta', 'dashboard_meta' );
+    $repo->save_synced_offers( array( 'meta-soi' => array( 'id' => 'meta-soi', 'name' => 'Group Fallback - Example SOI', 'status' => 'active', 'payout_type' => 'cpa_flat' ) ) );
+    $meta = (array) get_option( 'dashboard_meta', array() );
+    tmw_assert_true( isset( $meta['meta-soi']['payout_type'] ), 'Dashboard metadata layer should include payout_type key.' );
+    tmw_assert_true( in_array( 'soi', (array) $meta['meta-soi']['payout_type'], true ), 'Metadata payout_type should include normalized SOI.' );
+};
+
+
+$tests['dashboard_metadata_layer_preserves_existing_payout_type_on_resync'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta', 'dashboard_meta' );
+    $repo->save_synced_offers( array( 'meta-preserve' => array( 'id' => 'meta-preserve', 'name' => 'First SOI Signal', 'status' => 'active', 'payout_type' => 'SOI' ) ) );
+    $first = (array) get_option( 'dashboard_meta', array() );
+    tmw_assert_true( in_array( 'soi', (array) ( $first['meta-preserve']['payout_type'] ?? array() ), true ), 'Initial metadata should include soi.' );
+
+    $repo->save_synced_offers( array( 'meta-preserve' => array( 'id' => 'meta-preserve', 'name' => 'Generic Offer Name', 'status' => 'active' ) ) );
+    $second = $repo->get_dashboard_metadata_layer();
+    tmw_assert_true( in_array( 'soi', (array) ( $second['meta-preserve']['payout_type'] ?? array() ), true ), 'Resync should preserve existing payout_type metadata when new signal is missing.' );
+};
+
+$tests['payout_filter_does_not_offer_soi_when_no_soi_rows_exist'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'n1' => array( 'id' => 'n1', 'name' => 'Group Fallback - Generic', 'status' => 'active', 'payout_type' => 'cpa_flat' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_true( false === strpos( $html, 'name="payout_type[]" value="soi"' ), 'SOI should not be shown when no SOI rows exist.' );
+};
+
+$tests['offers_dashboard_payout_type_soi_matches_raw_offer_when_metadata_wrong'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'payout_type' => array( 'soi' ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'so1' => array( 'id' => 'so1', 'name' => 'SOI Fast Flow', 'status' => 'active', 'payout_type' => 'SOI' ) ) );
+    update_option( 'tmw_cr_slot_banner_offer_dashboard_meta', array( 'so1' => array( 'payout_type' => array( 'pps' ), 'tag' => array( 'wrong' ), 'vertical' => array( 'wrong' ), 'performs_in' => array( 'US' ), 'optimized_for' => array(), 'accepted_country' => array( 'US' ), 'niche' => array( 'wrong' ), 'promotion_method' => array( 'wrong' ) ) ) );
+    $result = $repo->get_filtered_synced_offers_for_admin( array( 'payout_type' => array( 'soi' ) ), array() );
+    tmw_assert_same( 1, (int) $result['total'], 'SOI raw type should match even with stale metadata payout_type.' );
+};
+$tests['offers_dashboard_tag_vertical_niche_promotion_match_raw_when_metadata_wrong'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'rv1' => array( 'id' => 'rv1', 'name' => 'Raw Families', 'status' => 'active', 'payout_type' => 'PPS', 'tag' => 'cam', 'vertical' => 'dating', 'niche' => 'adult', 'promotion_method' => 'seo' ) ) );
+    update_option( 'tmw_cr_slot_banner_offer_dashboard_meta', array( 'rv1' => array( 'tag' => array( 'wrong' ), 'vertical' => array( 'wrong' ), 'performs_in' => array(), 'optimized_for' => array(), 'accepted_country' => array(), 'niche' => array( 'wrong' ), 'promotion_method' => array( 'wrong' ) ) ) );
+    tmw_assert_same( 1, (int) $repo->get_filtered_synced_offers_for_admin( array( 'tag' => array( 'cam' ) ), array() )['total'], 'Tag should match raw row.' );
+    tmw_assert_same( 1, (int) $repo->get_filtered_synced_offers_for_admin( array( 'vertical' => array( 'dating' ) ), array() )['total'], 'Vertical should match raw row.' );
+    tmw_assert_same( 1, (int) $repo->get_filtered_synced_offers_for_admin( array( 'niche' => array( 'adult' ) ), array() )['total'], 'Niche should match raw row.' );
+    tmw_assert_same( 1, (int) $repo->get_filtered_synced_offers_for_admin( array( 'promotion_method' => array( 'seo' ) ), array() )['total'], 'Promotion method should match raw row.' );
+};
+$tests['offers_dashboard_performs_and_accepted_country_match_code_and_name'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'c1' => array( 'id' => 'c1', 'name' => 'Country Offer', 'status' => 'active', 'payout_type' => 'PPS', 'performs_in' => 'Belgium', 'accepted_country' => 'US|Belgium' ) ) );
+    tmw_assert_same( 1, (int) $repo->get_filtered_synced_offers_for_admin( array( 'performs_in' => array( 'BE' ) ), array() )['total'], 'BE code should match Belgium name.' );
+    tmw_assert_same( 1, (int) $repo->get_filtered_synced_offers_for_admin( array( 'accepted_country' => array( 'usa' ) ), array() )['total'], 'USA should normalize to US.' );
+};
+$tests['offers_dashboard_performs_in_matches_germany_name_to_de_code'] = function() {
+    tmw_reset_test_state(); $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'de1' => array( 'id' => 'de1', 'name' => 'Germany Offer', 'status' => 'active', 'payout_type' => 'PPS', 'performs_in' => 'Germany' ) ) );
+    tmw_assert_same( 1, (int) $repo->get_filtered_synced_offers_for_admin( array( 'performs_in' => array( 'DE' ) ), array() )['total'], 'Germany should normalize to DE.' );
+};
+$tests['offers_dashboard_accepted_country_matches_united_kingdom_name_to_gb_code'] = function() {
+    tmw_reset_test_state(); $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'gb1' => array( 'id' => 'gb1', 'name' => 'UK Offer', 'status' => 'active', 'payout_type' => 'PPS', 'accepted_country' => 'United Kingdom' ) ) );
+    tmw_assert_same( 1, (int) $repo->get_filtered_synced_offers_for_admin( array( 'accepted_country' => array( 'GB' ) ), array() )['total'], 'United Kingdom should normalize to GB.' );
+};
+$tests['offers_dashboard_accepted_country_matches_netherlands_name_to_nl_code'] = function() {
+    tmw_reset_test_state(); $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'nl1' => array( 'id' => 'nl1', 'name' => 'NL Offer', 'status' => 'active', 'payout_type' => 'PPS', 'accepted_country' => 'Netherlands' ) ) );
+    tmw_assert_same( 1, (int) $repo->get_filtered_synced_offers_for_admin( array( 'accepted_country' => array( 'NL' ) ), array() )['total'], 'Netherlands should normalize to NL.' );
+};
+$tests['offers_dashboard_combined_live_url_shape_with_payout_type_soi_returns_rows'] = function() {
+    tmw_reset_test_state(); $_GET = array( 'tab' => 'offers', 'search' => '', 'payout_type' => array( 'soi' ), 'status' => '', 'featured' => '', 'approval_required' => '', 'image_status' => '', 'logo_status' => '' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ); $repo->save_synced_offers( array( 's01' => array( 'id' => 's01', 'name' => 'SOI URL Shape', 'status' => 'active', 'payout_type' => 'SOI' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'SOI URL Shape', $html, 'SOI row should render for live URL shape params.' );
+    tmw_assert_contains( 'TMW-BANNER-OFFERS-FILTER', $html, 'Debug comment should render when filters are active.' );
+};
+$tests['offers_dashboard_filter_options_include_raw_only_tag'] = function() {
+    tmw_reset_test_state(); $_GET = array( 'tab' => 'offers' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'ot1' => array( 'id' => 'ot1', 'name' => 'Tag Raw', 'status' => 'active', 'payout_type' => 'PPS', 'tag' => 'cam' ) ) );
+    update_option( 'tmw_cr_slot_banner_offer_dashboard_meta', array( 'ot1' => array( 'tag' => array( 'wrong' ) ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'name="tag[]" value="cam"', $html, 'Tag filter panel should include raw-only tag.' );
+};
+$tests['offers_dashboard_filter_options_include_raw_only_vertical'] = function() { tmw_reset_test_state(); $_GET = array( 'tab' => 'offers' ); $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ); $repo->save_synced_offers( array( 'ov1' => array( 'id' => 'ov1', 'name' => 'Vert Raw', 'status' => 'active', 'payout_type' => 'PPS', 'vertical' => 'dating' ) ) ); $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); ob_start(); $page->render_page(); $html = (string) ob_get_clean(); tmw_assert_contains( 'name="vertical[]" value="dating"', $html, 'Vertical filter panel should include raw-only vertical.' ); };
+$tests['offers_dashboard_filter_options_include_raw_only_payout_type_soi'] = function() { tmw_reset_test_state(); $_GET = array( 'tab' => 'offers' ); $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ); $repo->save_synced_offers( array( 'op1' => array( 'id' => 'op1', 'name' => 'SOI Raw', 'status' => 'active', 'payout_type' => 'SOI' ) ) ); $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); ob_start(); $page->render_page(); $html = (string) ob_get_clean(); tmw_assert_contains( 'name="payout_type[]" value="soi"', $html, 'Payout filter panel should include raw-only SOI.' ); };
+$tests['offers_dashboard_filter_options_include_raw_country_name_as_code'] = function() { tmw_reset_test_state(); $_GET = array( 'tab' => 'offers' ); $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ); $repo->save_synced_offers( array( 'oc1' => array( 'id' => 'oc1', 'name' => 'Country Raw', 'status' => 'active', 'payout_type' => 'PPS', 'accepted_country' => 'Germany' ) ) ); $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); ob_start(); $page->render_page(); $html = (string) ob_get_clean(); tmw_assert_contains( 'name="accepted_country[]" value="DE"', $html, 'Accepted country filter panel should include DE from Germany raw value.' ); };
+$tests['offers_dashboard_filter_diagnostics_are_not_placeholder_counts'] = function() {
+    tmw_reset_test_state(); $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'lg1' => array( 'id' => 'lg1', 'name' => 'Log Fixture', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $log = tmw_capture_error_log( function() use ( $repo ) { $repo->get_filtered_synced_offers_for_admin( array( 'payout_type' => array( 'pps' ) ), array() ); } );
+    tmw_assert_true( false === strpos( $log, 'matched=0 raw_used=1 metadata_used=1' ), 'Placeholder family log pattern must not appear.' );
+    tmw_assert_true( false !== strpos( $log, '[TMW-BANNER-OFFERS-FILTER]' ), 'Summary filter diagnostic log should remain present.' );
+};
+$tests['offers_dashboard_clear_all_link_has_clean_base_url'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'search' => '', 'payout_type' => array( 'pps' ), 'featured' => '', 'approval_required' => '', 'image_status' => '', 'logo_status' => '' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    $matched = preg_match( '/<a[^>]*href="([^"]+)"[^>]*>\s*Clear all\s*<\/a>/i', $html, $clear_all_matches );
+    tmw_assert_same( 1, (int) $matched, 'Clear all button should render with an href.' );
+    $clear_all_href = html_entity_decode( (string) $clear_all_matches[1] );
+    tmw_assert_contains( 'page=tmw-cr-slot-sidebar-banner', $clear_all_href, 'Clear all URL should preserve plugin page param.' );
+    tmw_assert_contains( 'tab=offers', $clear_all_href, 'Clear all URL should point to offers tab.' );
+    $parsed_query = (string) parse_url( $clear_all_href, PHP_URL_QUERY );
+    $query_params = array();
+    parse_str( $parsed_query, $query_params );
+    foreach ( array( 'search', 'payout_type', 'featured', 'approval_required', 'image_status', 'logo_status', 'tag', 'vertical', 'performs_in', 'optimized_for', 'accepted_country', 'niche', 'status', 'promotion_method' ) as $forbidden_param ) {
+        tmw_assert_true( ! array_key_exists( $forbidden_param, $query_params ), 'Clear all URL must not include stale filter param: ' . $forbidden_param );
+    }
+};
+$tests['offers_tab_summary_shows_synced_count_without_filters'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array(
+        's1' => array( 'id' => 's1', 'name' => 'Summary One', 'status' => 'active', 'payout_type' => 'PPS' ),
+        's2' => array( 'id' => 's2', 'name' => 'Summary Two', 'status' => 'active', 'payout_type' => 'PPS' ),
+        's3' => array( 'id' => 's3', 'name' => 'Summary Three', 'status' => 'active', 'payout_type' => 'CPC' ),
+    ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Showing 3 of 3 synced offers', $html, 'Offers summary should show synced count when no filters are active.' );
+    tmw_assert_contains( 'Summary One', $html, 'Rows should still render with summary.' );
+};
+$tests['offers_tab_summary_shows_matched_and_source_count_with_payout_filter'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'payout_type' => array( 'pps' ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array(
+        'm1' => array( 'id' => 'm1', 'name' => 'Matched PPS 1', 'status' => 'active', 'payout_type' => 'PPS' ),
+        'm2' => array( 'id' => 'm2', 'name' => 'Matched PPS 2', 'status' => 'active', 'payout_type' => 'PPS' ),
+        'm3' => array( 'id' => 'm3', 'name' => 'Only CPC', 'status' => 'active', 'payout_type' => 'CPC' ),
+    ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'of 2 matched offers from 3 synced offers', $html, 'Summary should show matched total and source synced total.' );
+    tmw_assert_contains( 'Payout Type: PPS — 2 admin-filter matched from 3 synced offers', $html, 'Summary context should show selected payout labels.' );
+    tmw_assert_true( false === strpos( $html, 'Only CPC' ), 'CPC-only row should not be visible for PPS filter.' );
+};
+$tests['offers_tab_summary_handles_zero_matches'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'payout_type' => array( 'pps' ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array(
+        'z1' => array( 'id' => 'z1', 'name' => 'Only CPC One', 'status' => 'active', 'payout_type' => 'CPC' ),
+        'z2' => array( 'id' => 'z2', 'name' => 'Only CPC Two', 'status' => 'active', 'payout_type' => 'CPC' ),
+    ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Showing 0 of 0 matched offers from 2 synced offers', $html, 'Zero-match summary should include source synced count.' );
+    tmw_assert_contains( 'No offers match the current filters.', $html, 'Zero-match table state should remain visible.' );
+};
+$tests['offers_tab_summary_uses_full_matched_count_not_current_page_count'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'payout_type' => array( 'pps' ), 'paged' => '1' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $offers = array();
+    for ( $i = 1; $i <= 30; $i++ ) {
+        $id = 'pg' . $i;
+        $offers[ $id ] = array( 'id' => $id, 'name' => 'Paged PPS ' . $i, 'status' => 'active', 'payout_type' => 'PPS' );
+    }
+    $repo->save_synced_offers( $offers );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'of 30 matched offers from 30 synced offers', $html, 'Summary should show full matched count, not current page item count.' );
+    tmw_assert_contains( 'Showing 1–25 of 30 matched offers from 30 synced offers', $html, 'Summary should show current visible range for paginated results.' );
+};
+$tests['offers_tab_summary_preserves_filter_badges'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'payout_type' => array( 'pps' ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'b1' => array( 'id' => 'b1', 'name' => 'Badge Offer', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'tmw-cr-filter-panel__count', $html, 'Existing selected-filter count badges should remain visible.' );
+    tmw_assert_contains( 'Payout Type: PPS — 1 admin-filter matched from 1 synced offers', $html, 'Summary should render alongside existing badges.' );
+};
+$tests['offers_tab_payout_clarity_shows_raw_and_detected_meaning'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'pc1' => array( 'id' => 'pc1', 'name' => 'Payout Clarity PPS', 'status' => 'active', 'payout_type' => 'cpa_flat', 'default_payout' => '90.00000' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Raw payout: 90.00000 / cpa_flat', $html, 'Raw payout type should remain visible in payout cell.' );
+    tmw_assert_true( false !== strpos( $html, 'Detected types: Pps' ) || false !== strpos( $html, 'Offer Type Keys: Pps' ), 'Detected type wording should be visible for payout clarity.' );
+};
+$tests['offers_tab_summary_normalizes_legacy_payout_alias_labels'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'payout_type' => array( 'cpa_flat' ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'rl1' => array( 'id' => 'rl1', 'name' => 'Revshare Lifetime Offer', 'status' => 'active', 'payout_type' => 'cpa_flat' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Payout Type: Revshare Lifetime', $html, 'Legacy alias label should render with canonical payout family label.' );
+    tmw_assert_true( false === strpos( $html, 'Payout Type: CPA_FLAT' ), 'Legacy alias should not be rendered as raw CPA_FLAT label.' );
+};
+$tests['payout_reconciliation_counts_source_classes'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array(
+        'n1' => array( 'id' => 'n1', 'name' => 'Normal PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+        'g1' => array( 'id' => 'g1', 'name' => 'Group Fallback - Brand PPS', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+        's1' => array( 'id' => 's1', 'name' => 'CR Smartlink - Global', 'status' => 'active', 'payout_type' => 'unknown_type' ),
+        'u1' => array( 'id' => 'u1', 'name' => 'Mystery Offer', 'status' => 'active', 'payout_type' => '' ),
+    ) );
+    $counts = $repo->get_admin_payout_reconciliation_counts();
+    tmw_assert_same( 4, (int) $counts['source_total'], 'Source total should count all synced rows.' );
+    tmw_assert_same( 2, (int) $counts['source_class']['normal_offer'], 'Normal offers should include standard + unknown-non-group rows.' );
+    tmw_assert_same( 1, (int) $counts['source_class']['group_fallback'], 'Group fallback rows should be counted.' );
+    tmw_assert_same( 1, (int) $counts['source_class']['smartlink'], 'Smartlink rows should be counted.' );
+};
+$tests['payout_reconciliation_counts_separate_raw_detected_and_admin_filter'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array(
+        'a' => array( 'id' => 'a', 'name' => 'Brand PPS', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+        'b' => array( 'id' => 'b', 'name' => 'Brand SOI', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+        'c' => array( 'id' => 'c', 'name' => 'Brand Raw PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+    ) );
+    $counts = $repo->get_admin_payout_reconciliation_counts();
+    tmw_assert_same( 2, (int) $counts['raw']['cpa_flat'], 'Raw cpa_flat count should be 2.' );
+    tmw_assert_same( 1, (int) $counts['raw']['pps'], 'Raw PPS count should be 1.' );
+    tmw_assert_same( 2, (int) $counts['detected']['pps'], 'Detected PPS should include Brand PPS and Brand Raw PPS.' );
+    tmw_assert_same( 1, (int) $counts['detected']['soi'], 'Detected SOI should include Brand SOI.' );
+    tmw_assert_same( 2, (int) $counts['admin_filter']['pps'], 'Admin filter PPS should include Brand PPS and Brand Raw PPS.' );
+    tmw_assert_same( 1, (int) $counts['admin_filter']['soi'], 'Admin filter SOI should include Brand SOI.' );
+    tmw_assert_same( 2, (int) $counts['admin_filter']['revshare_lifetime'], 'Admin filter revshare_lifetime should include cpa_flat rows.' );
+    tmw_assert_same( 2, (int) $counts['admin_filter']['multi_cpa'], 'Admin filter multi_cpa should include cpa_flat rows.' );
+};
+$tests['payout_reconciliation_counts_source_total_excludes_malformed_rows'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    update_option(
+        'offers',
+        array(
+            'v1' => array( 'id' => 'v1', 'name' => 'Valid PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+            'bad1' => 'malformed-row',
+        )
+    );
+    $counts = $repo->get_admin_payout_reconciliation_counts();
+    tmw_assert_same( 1, (int) $counts['source_total'], 'source_total should count only processed valid offer rows.' );
+    tmw_assert_same( 1, (int) $counts['raw']['pps'], 'Raw counts should reflect only valid rows.' );
+    tmw_assert_same( 1, (int) $counts['detected']['pps'], 'Detected counts should reflect only valid rows.' );
+    tmw_assert_same( 1, (int) $counts['admin_filter']['pps'], 'Admin filter counts should reflect only valid rows.' );
+    tmw_assert_same( 1, (int) $counts['source_class']['normal_offer'], 'Source class counts should reflect only valid rows.' );
+};
+$tests['offers_tab_renders_payout_reconciliation_panel'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array(
+        'p1' => array( 'id' => 'p1', 'name' => 'PPS One', 'status' => 'active', 'payout_type' => 'PPS' ),
+        's1' => array( 'id' => 's1', 'name' => 'SOI One', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+        'r1' => array( 'id' => 'r1', 'name' => 'Rev Lifetime', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+    ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Payout count reconciliation', $html, 'Panel title should render.' );
+    tmw_assert_contains( 'Raw payout_type', $html, 'Raw header should render.' );
+    tmw_assert_contains( 'Detected local type', $html, 'Detected header should render.' );
+    tmw_assert_contains( 'Admin filter count', $html, 'Admin header should render.' );
+    tmw_assert_contains( 'Group fallback/fallback rows', $html, 'Source class group/fallback summary should render.' );
+    tmw_assert_contains( 'PPS', $html, 'PPS family row should render.' );
+    tmw_assert_contains( 'SOI', $html, 'SOI family row should render.' );
+    tmw_assert_contains( 'Revshare Lifetime', $html, 'Revshare Lifetime family row should render.' );
+};
+$tests['offers_tab_active_payout_summary_shows_raw_detected_admin_counts'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'payout_type' => array( 'pps' ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array(
+        'x1' => array( 'id' => 'x1', 'name' => 'Name PPS only', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+        'x2' => array( 'id' => 'x2', 'name' => 'Raw PPS row', 'status' => 'active', 'payout_type' => 'PPS' ),
+    ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'admin-filter matched', $html, 'Summary should explicitly say admin-filter matched.' );
+    tmw_assert_contains( 'Raw payout_type PPS rows: 1', $html, 'Summary should include raw PPS rows.' );
+    tmw_assert_contains( 'Detected local PPS rows: 2', $html, 'Summary should include detected PPS rows.' );
+};
+$tests['offers_tab_revshare_lifetime_context_mentions_cpa_flat_mapping'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'payout_type' => array( 'revshare_lifetime' ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array(
+        'rv1' => array( 'id' => 'rv1', 'name' => 'Group Fallback - Lifetime', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+    ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Raw cpa_flat rows mapped locally', $html, 'Revshare Lifetime context should mention cpa_flat mapped rows.' );
+};
+$tests['payout_reconciliation_counts_do_not_change_filter_results'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array(
+        'q1' => array( 'id' => 'q1', 'name' => 'Q PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+        'q2' => array( 'id' => 'q2', 'name' => 'Q SOI', 'status' => 'active', 'payout_type' => 'SOI' ),
+        'q3' => array( 'id' => 'q3', 'name' => 'Q CPA Flat PPS', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+    ) );
+    $before = $repo->get_filtered_synced_offers_for_admin( array( 'payout_type' => array( 'pps' ) ), array() );
+    $repo->get_admin_payout_reconciliation_counts();
+    $after = $repo->get_filtered_synced_offers_for_admin( array( 'payout_type' => array( 'pps' ) ), array() );
+    tmw_assert_same( (int) $before['total'], (int) $after['total'], 'Filter totals must remain unchanged.' );
+    tmw_assert_same( wp_json_encode( $before['items'] ), wp_json_encode( $after['items'] ), 'Matched item ordering/content must remain unchanged.' );
+};
+$tests['payout_reconciliation_panel_handles_empty_dataset'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Payout count reconciliation', $html, 'Panel should render even when dataset is empty.' );
+    tmw_assert_contains( 'Total synced offers: 0', $html, 'Panel should show zero total safely.' );
+    tmw_assert_true( false === strpos( strtolower( $html ), 'warning' ), 'Panel rendering should not emit warnings.' );
+};
+$tests['offers_tab_summary_handles_out_of_range_page_without_invalid_range'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $summary = $page->test_build_offers_count_summary(
+        array(
+            'items' => array(),
+            'total' => 5,
+            'source_total' => 5,
+            'active_filters' => array( 'payout_type' ),
+            'page' => 2,
+            'per_page' => 25,
+        ),
+        array( 'payout_type' => array( 'pps' ) ),
+        array( 'pps' => 'PPS' )
+    );
+    $headline = (string) ( $summary['headline'] ?? '' );
+    tmw_assert_true( false === strpos( $headline, '26–25' ), 'Out-of-range summary must not render invalid first-last range.' );
+    tmw_assert_contains( 'Showing 0 on this page of 5 matched offers from 5 synced offers', $headline, 'Out-of-range summary should use safe empty-page wording.' );
+};
+$tests['offers_tab_does_not_readd_removed_standalone_import_sections'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_true( false === strpos( $html, '<h3>Import Allowed Country Overrides</h3>' ), 'Standalone allowed-country heading must stay hidden.' );
+    tmw_assert_true( false === strpos( $html, '<h3>Import Final URL Overrides</h3>' ), 'Standalone final-url heading must stay hidden.' );
+    tmw_assert_contains( '<h3>Import Both Override CSVs</h3>', $html, 'Combined import section must remain visible.' );
+};
+$tests['offers_dashboard_changes_do_not_change_frontend_pool'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        '8780' => array( 'id' => '8780', 'name' => 'Jerkmate', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '10366' => array( 'id' => '10366', 'name' => 'NaughtyCharm', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '9647' => array( 'id' => '9647', 'name' => 'Group Fallback - Tapyn - PPS - Mobile - Android', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '9781' => array( 'id' => '9781', 'name' => 'Group Fallback - Dating.com PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+    ) );
+    $repo->save_offer_overrides( array(
+        '8780' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/a', 'allowed_countries' => 'Belgium' ),
+        '10366' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/b', 'allowed_countries' => 'United States' ),
+    ) );
+    $be = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '8780', '10366', '9647', '9781' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    $us = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '8780', '10366', '9647', '9781' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'United States', array() );
+    tmw_assert_true( false !== strpos( wp_json_encode( $be ), '8780' ), '8780 remains eligible for BE.' );
+    tmw_assert_true( false !== strpos( wp_json_encode( $us ), '10366' ), '10366 remains eligible for US.' );
+    tmw_assert_true( false === strpos( wp_json_encode( $be ), '10366' ), '10366 remains excluded for BE.' );
+    tmw_assert_true( false === strpos( wp_json_encode( $us ), '9647' ) && false === strpos( wp_json_encode( $us ), '9781' ), 'Unavailable offers remain excluded.' );
+};
+$tests['frontend_pool_unchanged_after_payout_reconciliation_counts'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        '8780' => array( 'id' => '8780', 'name' => 'Jerkmate', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '10366' => array( 'id' => '10366', 'name' => 'NaughtyCharm', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '9647' => array( 'id' => '9647', 'name' => 'Group Fallback - Tapyn - PPS - Mobile - Android', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '9781' => array( 'id' => '9781', 'name' => 'Group Fallback - Dating.com PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+        'x-soi' => array( 'id' => 'x-soi', 'name' => 'SOI Offer', 'status' => 'active', 'payout_type' => 'SOI' ),
+    ) );
+    $repo->save_offer_overrides( array(
+        '8780' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/a', 'allowed_countries' => 'Belgium' ),
+        '10366' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/b', 'allowed_countries' => 'United States' ),
+    ) );
+    $be = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '8780', '10366', '9647', '9781', 'x-soi' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    $us = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '8780', '10366', '9647', '9781', 'x-soi' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'United States', array() );
+    tmw_assert_true( false !== strpos( wp_json_encode( $be ), '8780' ), '8780 remains eligible for BE.' );
+    tmw_assert_true( false !== strpos( wp_json_encode( $us ), '10366' ), '10366 remains eligible for US.' );
+    tmw_assert_true( false === strpos( wp_json_encode( $be ), '10366' ), '10366 remains excluded for BE.' );
+    tmw_assert_true( false === strpos( wp_json_encode( $us ), '9647' ) && false === strpos( wp_json_encode( $us ), '9781' ), 'Unavailable offers remain excluded.' );
+    tmw_assert_true( false === strpos( wp_json_encode( $us ), 'x-soi' ), 'SOI should not be admitted under default PPS-only allowlist.' );
+};
+$tests['frontend_pool_unchanged_after_offers_count_ui'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        '8780' => array( 'id' => '8780', 'name' => 'Jerkmate', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '10366' => array( 'id' => '10366', 'name' => 'NaughtyCharm', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '9647' => array( 'id' => '9647', 'name' => 'Group Fallback - Tapyn - PPS - Mobile - Android', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '9781' => array( 'id' => '9781', 'name' => 'Group Fallback - Dating.com PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+        'x-soi' => array( 'id' => 'x-soi', 'name' => 'SOI Fixture', 'status' => 'active', 'payout_type' => 'SOI' ),
+    ) );
+    $repo->save_offer_overrides( array(
+        '8780' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/a', 'allowed_countries' => 'Belgium' ),
+        '10366' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/b', 'allowed_countries' => 'United States' ),
+    ) );
+    $be = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '8780', '10366', '9647', '9781', 'x-soi' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    $us = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '8780', '10366', '9647', '9781', 'x-soi' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'United States', array() );
+    tmw_assert_true( false !== strpos( wp_json_encode( $be ), '8780' ), '8780 remains eligible for BE.' );
+    tmw_assert_true( false !== strpos( wp_json_encode( $us ), '10366' ), '10366 remains eligible for US.' );
+    tmw_assert_true( false === strpos( wp_json_encode( $be ), '10366' ), '10366 remains excluded for BE.' );
+    tmw_assert_true( false === strpos( wp_json_encode( $us ), '9647' ) && false === strpos( wp_json_encode( $us ), '9781' ), 'Unavailable offers remain excluded.' );
+    tmw_assert_true( false === strpos( wp_json_encode( $us ), 'x-soi' ), 'Default frontend allowlist remains PPS-only.' );
+};
+
+
+$tests['enforce_skipped_offers_exclusion_default_is_zero'] = function() {
+    tmw_reset_test_state();
+    $settings = TMW_CR_Slot_Sidebar_Banner::get_settings();
+    tmw_assert_same( 0, (int) $settings['enforce_skipped_offers_exclusion'], 'Default should be 0.' );
+};
+$tests['enforce_skipped_offers_exclusion_setting_saves_and_loads'] = function() {
+    tmw_reset_test_state();
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    $a = $page->sanitize_settings( array( 'enforce_skipped_offers_exclusion' => 1 ) );
+    tmw_assert_same( 1, (int) $a['enforce_skipped_offers_exclusion'], 'Enabled should save as 1.' );
+    $b = $page->sanitize_settings( array() );
+    tmw_assert_same( 0, (int) $b['enforce_skipped_offers_exclusion'], 'Missing should save as 0.' );
+};
+
+if ( ! function_exists( 'tmw_capture_error_log' ) ) {
+    function tmw_capture_error_log( $callback ) {
+        $tmp = tempnam( sys_get_temp_dir(), 'tmw-log-' );
+        $prev = ini_get( 'error_log' );
+        ini_set( 'error_log', $tmp );
+
+        try {
+            $callback();
+            return file_exists( $tmp ) ? (string) file_get_contents( $tmp ) : '';
+        } finally {
+            ini_set( 'error_log', (string) $prev );
+            if ( is_string( $tmp ) && file_exists( $tmp ) ) {
+                unlink( $tmp );
+            }
+        }
+    }
+}
+
+$tests['get_skipped_offer_ids_for_frontend_returns_only_skip_decisions'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    update_option( 'tmw_cr_slot_banner_skipped_offers', array(
+        '2492'=>array('offer_id'=>'2492','decision'=>'skip','reason'=>' male-targeted ','notes'=>'x'),
+        '1111'=>array('offer_id'=>'1111','decision'=>'review_later','reason'=>'r','notes'=>'n'),
+        '2222'=>array('offer_id'=>'2222','decision'=>'keep','reason'=>'k','notes'=>'n'),
+        ''=>array('offer_id'=>'','decision'=>'skip','reason'=>'e','notes'=>'n'),
+    ) );
+    $set = $repo->get_skipped_offer_ids_for_frontend();
+    tmw_assert_true( isset( $set['2492'] ) && ! isset( $set['1111'] ) && ! isset( $set['2222'] ) && ! isset( $set[''] ), 'Only explicit skip rows with valid IDs should be included.' );
+    if ( ! isset( $set['2492'] ) ) {
+        throw new Exception( 'Missing expected 2492 row.' );
+    }
+    tmw_assert_same( 'male-targeted', $set['2492']['reason'], 'Reason should be sanitized.' );
+    tmw_assert_true( ! isset( $set['2492']['notes'] ), 'Notes must not be returned.' );
+};
+
+$tests['get_skipped_offer_ids_for_frontend_uses_row_key_for_legacy_rows'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    update_option( 'tmw_cr_slot_banner_skipped_offers', array(
+        'legacy-2492' => array( 'decision' => 'skip', 'reason' => '  legacy reason  ', 'notes' => 'secret' ),
+    ) );
+    $set = $repo->get_skipped_offer_ids_for_frontend();
+    tmw_assert_true( isset( $set['legacy-2492'] ), 'Legacy key-based offer_id should be included.' );
+    tmw_assert_same( 'legacy reason', (string) $set['legacy-2492']['reason'], 'Reason should be sanitized.' );
+    tmw_assert_true( ! isset( $set['legacy-2492']['notes'] ), 'Notes should not be returned.' );
+};
+$tests['get_skipped_offer_ids_for_frontend_does_not_include_non_skip_defaults'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    update_option( 'tmw_cr_slot_banner_skipped_offers', array(
+        'legacy-default' => array( 'reason' => 'default decision row', 'notes' => 'secret-a' ),
+        'legacy-invalid' => array( 'decision' => 'unknown', 'reason' => 'invalid decision row', 'notes' => 'secret-b' ),
+    ) );
+    $normalized = $repo->get_skipped_offers();
+    $set = $repo->get_skipped_offer_ids_for_frontend();
+    tmw_assert_true( isset( $normalized['legacy-default'] ) && 'skip' === (string) $normalized['legacy-default']['decision'], 'Missing decision should normalize to skip.' );
+    tmw_assert_true( isset( $normalized['legacy-invalid'] ) && 'skip' === (string) $normalized['legacy-invalid']['decision'], 'Invalid decision should normalize to skip.' );
+    tmw_assert_true( ! isset( $set['legacy-default'] ) && ! isset( $set['legacy-invalid'] ), 'Frontend helper should exclude missing/invalid non-skip decisions.' );
+};
+$tests['frontend_pool_excludes_skip_decision_when_setting_on_for_synced_offer'] = function() {
+    tmw_reset_test_state(); $repo=new TMW_CR_Slot_Offer_Repository('offers','meta');
+    $repo->save_synced_offers(array('7001'=>array('id'=>'7001','name'=>'Safe PPS','status'=>'active','payout_type'=>'PPS')));
+    $repo->save_offer_overrides(array('7001'=>array('enabled'=>1,'final_url_override'=>'https://trk.example.test/7001','allowed_countries'=>'US')));
+    $repo->save_skipped_offers(array(array('offer_id'=>'7001','offer_name'=>'Safe PPS','decision'=>'skip','reason'=>'test')));
+    $offers=$repo->get_frontend_slot_offers('sidebar',array('allowed_offer_types'=>array('pps'),'slot_offer_ids'=>array('7001'),'enforce_skipped_offers_exclusion'=>1),array('cta_url'=>'','cta_text'=>'CTA'),'US',array());
+    tmw_assert_true(false===strpos(wp_json_encode($offers),'7001'),'7001 should be excluded.');
+};
+$tests['frontend_pool_does_not_exclude_review_later_decision_when_setting_on'] = function() {
+    tmw_reset_test_state(); $repo=new TMW_CR_Slot_Offer_Repository('offers','meta');
+    $repo->save_synced_offers(array('7002'=>array('id'=>'7002','name'=>'Safe PPS2','status'=>'active','payout_type'=>'PPS')));
+    $repo->save_offer_overrides(array('7002'=>array('enabled'=>1,'final_url_override'=>'https://trk.example.test/7002','allowed_countries'=>'US')));
+    $repo->save_skipped_offers(array(array('offer_id'=>'7002','offer_name'=>'Safe PPS2','decision'=>'review_later','reason'=>'test')));
+    $offers=$repo->get_frontend_slot_offers('sidebar',array('allowed_offer_types'=>array('pps'),'slot_offer_ids'=>array('7002'),'enforce_skipped_offers_exclusion'=>1),array('cta_url'=>'','cta_text'=>'CTA'),'US',array());
+    tmw_assert_true(false!==strpos(wp_json_encode($offers),'7002'),'7002 should remain eligible.');
+};
+
+$tests['frontend_pool_ignores_skipped_offers_when_setting_off_default'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '7101' => array( 'id' => '7101', 'name' => 'Fixture PPS', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $repo->save_offer_overrides( array( '7101' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/7101', 'allowed_countries' => 'US' ) ) );
+    $repo->save_skipped_offers( array( array( 'offer_id' => '7101', 'decision' => 'skip', 'reason' => 'test' ) ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '7101' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    tmw_assert_true( false !== strpos( wp_json_encode( $offers ), '7101' ), 'Offer should remain when setting is OFF.' );
+};
+$tests['frontend_pool_excludes_skip_decision_when_setting_on_for_override_only_offer'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_offer_overrides( array( '8780' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/override-8780', 'allowed_countries' => 'Belgium' ) ) );
+    $repo->save_skipped_offers( array( array( 'offer_id' => '8780', 'decision' => 'skip', 'reason' => 'test' ) ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'enforce_skipped_offers_exclusion' => 1 ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    tmw_assert_true( false === strpos( wp_json_encode( $offers ), '8780' ), 'Override-only offer should be excluded when skipped.' );
+};
+$tests['frontend_pool_does_not_exclude_keep_or_empty_decision_when_setting_on'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        '7201' => array( 'id' => '7201', 'name' => 'Keep Decision', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '7202' => array( 'id' => '7202', 'name' => 'Empty Decision', 'status' => 'active', 'payout_type' => 'PPS' ),
+    ) );
+    $repo->save_offer_overrides( array(
+        '7201' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/7201', 'allowed_countries' => 'US' ),
+        '7202' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/7202', 'allowed_countries' => 'US' ),
+    ) );
+    update_option( 'tmw_cr_slot_banner_skipped_offers', array(
+        '7201' => array( 'offer_id' => '7201', 'decision' => 'keep', 'reason' => 'keep' ),
+        '7202' => array( 'offer_id' => '7202', 'decision' => '', 'reason' => 'empty' ),
+    ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '7201','7202' ), 'enforce_skipped_offers_exclusion' => 1 ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    $json = wp_json_encode( $offers );
+    tmw_assert_true( false !== strpos( $json, '7201' ) && false !== strpos( $json, '7202' ), 'Keep/empty decisions should remain eligible.' );
+};
+$tests['frontend_pool_skipped_offer_id_matching_uses_string_normalization'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '7001' => array( 'id' => 7001, 'name' => 'Numeric ID', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    update_option( 'tmw_cr_slot_banner_skipped_offers', array( '7001' => array( 'offer_id' => '7001', 'decision' => 'skip', 'reason' => 'id match' ) ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( 7001 ), 'enforce_skipped_offers_exclusion' => 1 ), array( 'cta_url' => 'https://base.test', 'cta_text' => 'CTA' ), 'US', array() );
+    tmw_assert_true( false === strpos( wp_json_encode( $offers ), '7001' ), 'String-normalized matching should exclude.' );
+};
+$tests['frontend_pool_8780_be_eligible_with_setting_off'] = function() { tmw_reset_test_state(); $r=new TMW_CR_Slot_Offer_Repository('offers','meta','overrides'); $r->save_synced_offers(array('8780'=>array('id'=>'8780','name'=>'Jerkmate','status'=>'active','payout_type'=>'PPS'))); $r->save_offer_overrides(array('8780'=>array('enabled'=>1,'final_url_override'=>'https://trk.example.test/a','allowed_countries'=>'Belgium'))); $o=$r->get_frontend_slot_offers('sidebar',array('allowed_offer_types'=>array('pps'),'slot_offer_ids'=>array('8780')),array('cta_url'=>'','cta_text'=>'CTA'),'Belgium',array()); tmw_assert_true(false!==strpos(wp_json_encode($o),'8780'),'8780 eligible with OFF'); };
+$tests['frontend_pool_8780_be_eligible_with_setting_on_when_not_skipped'] = function() { tmw_reset_test_state(); $r=new TMW_CR_Slot_Offer_Repository('offers','meta','overrides'); $r->save_synced_offers(array('8780'=>array('id'=>'8780','name'=>'Jerkmate','status'=>'active','payout_type'=>'PPS'))); $r->save_offer_overrides(array('8780'=>array('enabled'=>1,'final_url_override'=>'https://trk.example.test/a','allowed_countries'=>'Belgium'))); $o=$r->get_frontend_slot_offers('sidebar',array('allowed_offer_types'=>array('pps'),'slot_offer_ids'=>array('8780'),'enforce_skipped_offers_exclusion'=>1),array('cta_url'=>'','cta_text'=>'CTA'),'Belgium',array()); tmw_assert_true(false!==strpos(wp_json_encode($o),'8780'),'8780 eligible with ON not skipped'); };
+$tests['frontend_pool_10366_us_eligible_with_setting_off'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '10366' => array( 'id' => '10366', 'name' => 'NaughtyCharm', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $repo->save_offer_overrides( array( '10366' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/10366', 'allowed_countries' => 'United States' ) ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '10366' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'United States', array() );
+    tmw_assert_true( false !== strpos( wp_json_encode( $offers ), '10366' ), '10366 should be eligible in US when setting is OFF.' );
+};
+$tests['frontend_pool_10366_us_eligible_with_setting_on_when_not_skipped'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '10366' => array( 'id' => '10366', 'name' => 'NaughtyCharm', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $repo->save_offer_overrides( array( '10366' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/10366', 'allowed_countries' => 'United States' ) ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '10366' ), 'enforce_skipped_offers_exclusion' => 1 ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'United States', array() );
+    tmw_assert_true( false !== strpos( wp_json_encode( $offers ), '10366' ), '10366 should remain eligible in US when ON and not skipped.' );
+};
+$tests['frontend_pool_10366_be_still_excluded_by_country_with_setting_on'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '10366' => array( 'id' => '10366', 'name' => 'NaughtyCharm', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $repo->save_offer_overrides( array( '10366' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/10366', 'allowed_countries' => 'United States' ) ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '10366' ), 'enforce_skipped_offers_exclusion' => 1 ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    tmw_assert_true( false === strpos( wp_json_encode( $offers ), '10366' ), '10366 should remain excluded for Belgium by country targeting.' );
+};
+$tests['frontend_pool_final_url_override_priority_unchanged_with_setting_on'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '7401' => array( 'id' => '7401', 'name' => 'Priority Offer', 'status' => 'active', 'payout_type' => 'PPS', 'tracking_url' => 'https://trk.example.test/tracking' ) ) );
+    $repo->save_offer_overrides( array( '7401' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/final-override', 'allowed_countries' => 'US' ) ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '7401' ), 'enforce_skipped_offers_exclusion' => 1, 'cta_url' => 'https://global.example.test/cta' ), array( 'cta_url' => 'https://global.example.test/cta', 'cta_text' => 'CTA' ), 'US', array() );
+    $offer_json = wp_json_encode( $offers );
+    tmw_assert_true( false !== strpos( $offer_json, 'final-override' ), 'final_url_override should remain the selected frontend CTA target.' );
+};
+$tests['frontend_pool_unavailable_account_9647_9781_still_excluded_with_setting_on'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        '9647' => array( 'id' => '9647', 'name' => 'Group Fallback - Tapyn - PPS - Mobile - Android', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '9781' => array( 'id' => '9781', 'name' => 'Group Fallback - Dating.com PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+    ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '9647', '9781' ), 'enforce_skipped_offers_exclusion' => 1 ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'United States', array() );
+    $json = wp_json_encode( $offers );
+    tmw_assert_true( false === strpos( $json, '9647' ) && false === strpos( $json, '9781' ), 'Unavailable account offers must remain excluded when ON.' );
+};
+$tests['skipped_exclusion_checkbox_renders_on_slot_setup_unchecked_by_default'] = function() {
+    tmw_reset_test_state(); $_GET = array( 'tab' => 'slot-setup' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers','meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'enforce_skipped_offers_exclusion', $html, 'Checkbox should render.' );
+    tmw_assert_true( false === strpos( $html, 'enforce_skipped_offers_exclusion" value="1" checked' ), 'Default should be unchecked.' );
+};
+$tests['skipped_exclusion_checkbox_renders_checked_when_enabled'] = function() {
+    tmw_reset_test_state();
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers','meta' ), 'sidebar' );
+    $saved = $page->sanitize_settings( array( 'enforce_skipped_offers_exclusion' => 1 ) );
+    tmw_assert_same( 1, (int) $saved['enforce_skipped_offers_exclusion'], 'Enabled should sanitize to 1.' );
+};
+$tests['skipped_exclusion_does_not_readd_removed_standalone_import_sections'] = function() { tmw_reset_test_state(); $_GET=array('tab'=>'slot-setup'); $p=new TMW_Test_Admin_Page(TMW_CR_Slot_Sidebar_Banner::OPTION_KEY,new TMW_CR_Slot_Offer_Repository('offers','meta'),'sidebar'); ob_start(); $p->render_page(); $h=(string)ob_get_clean(); tmw_assert_true(false===strpos($h,'<h3>Import Allowed Country Overrides</h3>') && false===strpos($h,'<h3>Import Final URL Overrides</h3>'),'Standalone imports must remain hidden.'); };
+$tests['skipped_exclusion_does_not_break_slot_setup_pagination'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup', 'manual_audit_page' => '2', 'pps_audit_page' => '3' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'manual_audit_page', $html, 'Manual audit pagination controls should still render.' );
+    tmw_assert_contains( 'tab=slot-setup', $html, 'Slot setup pagination links should retain slot-setup tab context.' );
+};
+$tests['skipped_exclusion_does_not_break_offers_dashboard_columns'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Logo source', $html, 'Offers tab should keep Logo source column.' );
+    tmw_assert_contains( 'Frontend eligible', $html, 'Offers tab should keep Frontend eligible column.' );
+    tmw_assert_contains( 'Block reason', $html, 'Offers tab should keep Block reason column.' );
+};
+$tests['skipped_exclusion_dashboard_helper_marks_skipped_when_setting_on'] = function() {
+    tmw_reset_test_state(); $repo=new TMW_CR_Slot_Offer_Repository('offers','meta','overrides');
+    $offer=array('id'=>'7301','name'=>'Dash Skip','status'=>'active','payout_type'=>'PPS');
+    $repo->save_offer_overrides(array('7301'=>array('enabled'=>1,'final_url_override'=>'https://trk.example.test/7301','allowed_countries'=>'US')));
+    $repo->save_skipped_offers(array(array('offer_id'=>'7301','decision'=>'skip','reason'=>'dash')));
+    $summary=$repo->get_offer_frontend_eligibility_summary($offer,array('allowed_offer_types'=>array('pps'),'enforce_skipped_offers_exclusion'=>1),'US',array());
+    tmw_assert_same('skipped_offer',(string)$summary['block_reason'],'Skipped should block when ON.');
+};
+$tests['skipped_exclusion_dashboard_helper_ignores_skipped_when_setting_off'] = function() {
+    tmw_reset_test_state(); $repo=new TMW_CR_Slot_Offer_Repository('offers','meta','overrides');
+    $offer=array('id'=>'7302','name'=>'Dash Keep','status'=>'active','payout_type'=>'PPS');
+    $repo->save_offer_overrides(array('7302'=>array('enabled'=>1,'final_url_override'=>'https://trk.example.test/7302','allowed_countries'=>'US')));
+    $repo->save_skipped_offers(array(array('offer_id'=>'7302','decision'=>'skip','reason'=>'dash')));
+    $summary=$repo->get_offer_frontend_eligibility_summary($offer,array('allowed_offer_types'=>array('pps'),'enforce_skipped_offers_exclusion'=>0),'US',array());
+    tmw_assert_true('skipped_offer' !== (string)$summary['block_reason'],'Skipped should not block when OFF.');
+};
+
+
+$tests['frontend_pool_does_not_exclude_legacy_invalid_decision_when_setting_on'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '7601' => array( 'id' => '7601', 'name' => 'Legacy Invalid Decision', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $repo->save_offer_overrides( array( '7601' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/7601', 'allowed_countries' => 'US' ) ) );
+    update_option( 'tmw_cr_slot_banner_skipped_offers', array(
+        '7601' => array( 'decision' => 'unknown', 'reason' => 'legacy-invalid', 'notes' => 'secret-note' ),
+    ) );
+    $logs = tmw_capture_error_log( static function () use ( $repo ) {
+        $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '7601' ), 'enforce_skipped_offers_exclusion' => 1 ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    } );
+    tmw_assert_true( false === strpos( $logs, '[TMW-BANNER-SKIP] skipped_offer_excluded offer_id=7601' ), 'Invalid legacy decision should not emit skip exclusion log.' );
+    tmw_assert_true( false === strpos( $logs, 'secret-note' ), 'Notes must never appear in logs.' );
+};
+$tests['skipped_exclusion_does_not_log_type_disallowed_selected_offer'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( 'x-soi' => array( 'id' => 'x-soi', 'name' => 'SOI Offer', 'status' => 'active', 'payout_type' => 'SOI' ), 'safe-pps' => array( 'id' => 'safe-pps', 'name' => 'Safe PPS', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    update_option( 'tmw_cr_slot_banner_skipped_offers', array( 'x-soi' => array( 'offer_id' => 'x-soi', 'decision' => 'skip', 'reason' => 'type disallowed', 'notes' => 'do not log' ) ) );
+    $logs = tmw_capture_error_log( static function () use ( $repo ) {
+        $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( 'safe-pps', 'x-soi' ), 'enforce_skipped_offers_exclusion' => 1 ), array( 'cta_url' => 'https://base.test', 'cta_text' => 'CTA' ), 'US', array() );
+    } );
+    tmw_assert_true( false === strpos( $logs, '[TMW-BANNER-SKIP] skipped_offer_excluded offer_id=x-soi' ), 'Type-disallowed selected offer should not emit skipped exclusion log.' );
+};
+$tests['skipped_exclusion_logs_every_candidate_path'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        's1' => array( 'id' => 's1', 'name' => 'S1', 'status' => 'active', 'payout_type' => 'PPS' ),
+        's2' => array( 'id' => 's2', 'name' => 'S2', 'status' => 'active', 'payout_type' => 'PPS' ),
+    ) );
+    $repo->save_offer_overrides( array( '8780' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/8780', 'allowed_countries' => 'US' ) ) );
+    update_option( 'tmw_cr_slot_banner_skipped_offers', array(
+        's1' => array( 'offer_id' => 's1', 'decision' => 'skip', 'reason' => 'selected', 'notes' => 'secret-a' ),
+        's2' => array( 'offer_id' => 's2', 'decision' => 'skip', 'reason' => 'fallback', 'notes' => 'secret-b' ),
+        '8780' => array( 'offer_id' => '8780', 'decision' => 'skip', 'reason' => 'override', 'notes' => 'secret-c' ),
+        'legacy-1' => array( 'offer_id' => 'legacy-1', 'decision' => 'skip', 'reason' => 'legacy', 'notes' => 'secret-d' ),
+    ) );
+    $legacy = array( array( 'id' => 'legacy-1', 'name' => 'Legacy One', 'cta_url' => 'https://trk.example.test/legacy', 'image_url' => 'https://img.test/legacy.jpg' ) );
+    $logs = tmw_capture_error_log( static function () use ( $repo, $legacy ) {
+        $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps', 'fallback' ), 'slot_offer_ids' => array( 's1' ), 'enforce_skipped_offers_exclusion' => 1 ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', $legacy );
+    } );
+    foreach ( array( 'offer_id=s1', 'offer_id=s2', 'offer_id=8780', 'offer_id=legacy-1' ) as $needle ) {
+        tmw_assert_true( false !== strpos( $logs, $needle ), 'Missing skipped log for ' . $needle );
+    }
+    tmw_assert_true( false !== strpos( $logs, '[TMW-BANNER-SKIP] frontend_pool_summary' ), 'Expected frontend_pool_summary log when enforcement is ON.' );
+    tmw_assert_true( false === strpos( $logs, 'secret-' ), 'Notes must never be logged.' );
+};
 $failures = array();
 $passes   = 0;
+
+$tests['frontend_pool_8780_be_eligible_after_regex_extension'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '8780' => array( 'id' => '8780', 'name' => 'Jerkmate - PPS', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $repo->save_offer_overrides( array( '8780' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/8780', 'allowed_countries' => 'Belgium' ) ) );
+
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array(), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    tmw_assert_true( false !== strpos( wp_json_encode( $offers ), '8780' ), '8780 must remain eligible for Belgium under default PPS allowlist.' );
+};
+
+$tests['frontend_pool_10366_us_eligible_after_regex_extension'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '10366' => array( 'id' => '10366', 'name' => 'NaughtyCharm - PPS', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $repo->save_offer_overrides( array( '10366' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/10366', 'allowed_countries' => 'United States' ) ) );
+
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array(), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'United States', array() );
+    tmw_assert_true( false !== strpos( wp_json_encode( $offers ), '10366' ), '10366 must remain eligible for United States under default PPS allowlist.' );
+};
+
+$tests['frontend_pool_10366_be_still_excluded_after_regex_extension'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '10366' => array( 'id' => '10366', 'name' => 'NaughtyCharm - PPS', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $repo->save_offer_overrides( array( '10366' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/10366', 'allowed_countries' => 'United States' ) ) );
+
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array(), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    tmw_assert_true( false === strpos( wp_json_encode( $offers ), '10366' ), '10366 must remain excluded for Belgium.' );
+};
+
+$tests['unavailable_account_9647_9781_still_excluded_after_regex_extension'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        '9647' => array( 'id' => '9647', 'name' => 'Group Fallback - Tapyn - PPS - Mobile - Android', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '9781' => array( 'id' => '9781', 'name' => 'Group Fallback - Dating.com PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+    ) );
+    $repo->save_offer_overrides( array(
+        '9647' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/9647', 'allowed_countries' => 'United States' ),
+        '9781' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/9781', 'allowed_countries' => 'United States' ),
+    ) );
+
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array(), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'United States', array() );
+    $json = wp_json_encode( $offers );
+    tmw_assert_true( false === strpos( $json, '9647' ) && false === strpos( $json, '9781' ), 'Unavailable account offers 9647/9781 must remain excluded.' );
+};
+
+$tests['skipped_exclusion_contract_unchanged_after_type_metadata_extension'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        's-skip' => array( 'id' => 's-skip', 'name' => 'Skip Decision - PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+        's-review' => array( 'id' => 's-review', 'name' => 'Review Decision - PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+        's-keep' => array( 'id' => 's-keep', 'name' => 'Keep Decision - PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+        's-empty' => array( 'id' => 's-empty', 'name' => 'Empty Decision - PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+        's-unknown' => array( 'id' => 's-unknown', 'name' => 'Unknown Decision - PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+    ) );
+    $repo->save_offer_overrides( array(
+        's-skip' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/s-skip', 'allowed_countries' => 'US' ),
+        's-review' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/s-review', 'allowed_countries' => 'US' ),
+        's-keep' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/s-keep', 'allowed_countries' => 'US' ),
+        's-empty' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/s-empty', 'allowed_countries' => 'US' ),
+        's-unknown' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/s-unknown', 'allowed_countries' => 'US' ),
+    ) );
+    update_option( 'tmw_cr_slot_banner_skipped_offers', array(
+        's-skip' => array( 'offer_id' => 's-skip', 'decision' => 'skip', 'reason' => 'skip', 'notes' => 'secret-note' ),
+        's-review' => array( 'offer_id' => 's-review', 'decision' => 'review_later', 'reason' => 'review', 'notes' => 'secret-note' ),
+        's-keep' => array( 'offer_id' => 's-keep', 'decision' => 'keep', 'reason' => 'keep', 'notes' => 'secret-note' ),
+        's-empty' => array( 'offer_id' => 's-empty', 'decision' => '', 'reason' => 'empty', 'notes' => 'secret-note' ),
+        's-unknown' => array( 'offer_id' => 's-unknown', 'decision' => 'unknown', 'reason' => 'unknown', 'notes' => 'secret-note' ),
+    ) );
+
+    $off_offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'enforce_skipped_offers_exclusion' => 0 ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    $off_json = wp_json_encode( $off_offers );
+    tmw_assert_true( false !== strpos( $off_json, 's-skip' ), 'With OFF, skipped store should not affect frontend eligibility.' );
+
+    $logs = tmw_capture_error_log( static function () use ( $repo ) {
+        $on_offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'enforce_skipped_offers_exclusion' => 1 ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+        $json = wp_json_encode( $on_offers );
+        tmw_assert_true( false === strpos( $json, 's-skip' ), 'With ON, decision=skip must hard-exclude.' );
+        tmw_assert_true( false !== strpos( $json, 's-review' ), 'With ON, review_later must not hard-exclude.' );
+        tmw_assert_true( false !== strpos( $json, 's-keep' ), 'With ON, keep must not hard-exclude.' );
+        tmw_assert_true( false !== strpos( $json, 's-empty' ), 'With ON, empty decision must not hard-exclude.' );
+        tmw_assert_true( false !== strpos( $json, 's-unknown' ), 'With ON, unknown decision must not hard-exclude.' );
+    } );
+    tmw_assert_true( false === strpos( $logs, 'secret-note' ), 'Notes must never be logged.' );
+};
+
+$tests['slot_setup_cpi_cpm_options_render_unchecked_by_default'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start();
+    $page->render_page();
+    $html = (string) ob_get_clean();
+
+    tmw_assert_contains( 'value="cpi"', $html, 'CPI option should render in Slot Setup.' );
+    tmw_assert_contains( 'value="cpm"', $html, 'CPM option should render in Slot Setup.' );
+    tmw_assert_true( false === strpos( $html, 'value="cpi" checked' ), 'CPI should be unchecked by default.' );
+    tmw_assert_true( false === strpos( $html, 'value="cpm" checked' ), 'CPM should be unchecked by default.' );
+    tmw_assert_true( false !== strpos( $html, 'value="pps" checked' ), 'PPS should remain checked by default.' );
+};
+
+
+$tests['cr_offers_parsed_fixture_integrity'] = function() {
+    error_log( '[TMW-FIXTURE-INTEGRITY] cr_offers_parsed.csv test starting' );
+
+    $path = __DIR__ . '/fixtures/cr_offers_parsed.csv';
+    tmw_assert_true( file_exists( $path ), 'cr_offers_parsed.csv fixture must exist at tests/fixtures/cr_offers_parsed.csv.' );
+
+    $handle = fopen( $path, 'rb' );
+    tmw_assert_true( false !== $handle, 'cr_offers_parsed.csv must be readable via fopen.' );
+
+    $header = fgetcsv( $handle );
+    $expected_header = array( 'cr_id', 'name', 'approval', 'payout_type', 'page', 'pdf' );
+    tmw_assert_same( $expected_header, $header, 'cr_offers_parsed.csv header must match the canonical six-column order.' );
+
+    $rows = array();
+    while ( false !== ( $row = fgetcsv( $handle ) ) ) {
+        // Skip blank trailing lines that fgetcsv reports as array(null).
+        if ( array( null ) === $row ) {
+            continue;
+        }
+        if ( 1 === count( $row ) && '' === trim( (string) $row[0] ) ) {
+            continue;
+        }
+        tmw_assert_same( 6, count( $row ), 'Every CSV row must have exactly 6 columns. Bad row: ' . implode( '|', $row ) );
+        $rows[] = array(
+            'cr_id'       => (string) $row[0],
+            'name'        => (string) $row[1],
+            'approval'    => (string) $row[2],
+            'payout_type' => (string) $row[3],
+            'page'        => (string) $row[4],
+            'pdf'         => (string) $row[5],
+        );
+    }
+    fclose( $handle );
+
+    tmw_assert_same( 273, count( $rows ), 'cr_offers_parsed.csv must contain exactly 273 data rows. CR UI shows 274; one row is a known PDF/OCR gap and is not synthesized.' );
+
+    $approval_counts = array();
+    $payout_counts   = array();
+    foreach ( $rows as $r ) {
+        $a = $r['approval'];
+        $p = $r['payout_type'];
+        $approval_counts[ $a ] = isset( $approval_counts[ $a ] ) ? $approval_counts[ $a ] + 1 : 1;
+        $payout_counts[ $p ]   = isset( $payout_counts[ $p ] )   ? $payout_counts[ $p ]   + 1 : 1;
+    }
+
+    tmw_assert_same( 223, (int) ( $approval_counts['Approved'] ?? 0 ), 'Approved approval-status count must equal 223.' );
+    tmw_assert_same( 50,  (int) ( $approval_counts['Required'] ?? 0 ), 'Required approval-status count must equal 50.' );
+
+    tmw_assert_same( 89, (int) ( $payout_counts['PPS'] ?? 0 ),               'Visible CR payout_type PPS count must equal 89.' );
+    tmw_assert_same( 77, (int) ( $payout_counts['Revshare Lifetime'] ?? 0 ), 'Visible CR payout_type Revshare Lifetime count must equal 77.' );
+    tmw_assert_same( 39, (int) ( $payout_counts['Revshare'] ?? 0 ),          'Visible CR payout_type Revshare count must equal 39.' );
+    tmw_assert_same( 27, (int) ( $payout_counts['SOI'] ?? 0 ),               'Visible CR payout_type SOI count must equal 27.' );
+    tmw_assert_same( 23, (int) ( $payout_counts['DOI'] ?? 0 ),               'Visible CR payout_type DOI count must equal 23.' );
+    tmw_assert_same( 18, (int) ( $payout_counts['Multi-CPA'] ?? 0 ),         'Visible CR payout_type Multi-CPA count must equal 18.' );
+    tmw_assert_same( 0,  (int) ( $payout_counts['CPC'] ?? 0 ),               'Visible CR payout_type CPC count must equal 0.' );
+    tmw_assert_same( 0,  (int) ( $payout_counts['CPI'] ?? 0 ),               'Visible CR payout_type CPI count must equal 0.' );
+    tmw_assert_same( 0,  (int) ( $payout_counts['CPM'] ?? 0 ),               'Visible CR payout_type CPM count must equal 0.' );
+
+    $allowed_approval_values = array( 'Approved', 'Required' );
+    $allowed_payout_values   = array( 'PPS', 'SOI', 'DOI', 'CPC', 'CPI', 'CPM', 'Multi-CPA', 'Revshare', 'Revshare Lifetime', 'Smartlink' );
+    foreach ( $rows as $r ) {
+        tmw_assert_true( in_array( $r['approval'], $allowed_approval_values, true ), 'Unexpected approval value at cr_id=' . $r['cr_id'] . ': ' . $r['approval'] );
+        tmw_assert_true( in_array( $r['payout_type'], $allowed_payout_values, true ), 'Unexpected payout_type value at cr_id=' . $r['cr_id'] . ': ' . $r['payout_type'] );
+        tmw_assert_true( '' !== trim( $r['cr_id'] ),       'cr_id must not be empty. Row: ' . implode( '|', $r ) );
+        tmw_assert_true( '' !== trim( $r['name'] ),        'name must not be empty. cr_id=' . $r['cr_id'] );
+        tmw_assert_true( '' !== trim( $r['approval'] ),    'approval must not be empty. cr_id=' . $r['cr_id'] );
+        tmw_assert_true( '' !== trim( $r['payout_type'] ), 'payout_type must not be empty. cr_id=' . $r['cr_id'] );
+    }
+
+    $ids = array();
+    foreach ( $rows as $r ) {
+        $ids[] = $r['cr_id'];
+    }
+    tmw_assert_same( count( $ids ), count( array_unique( $ids ) ), 'Duplicate cr_id values must not appear in fixture.' );
+
+    $ids_int = array_map( 'intval', $ids );
+    sort( $ids_int );
+    $is_synthetic_sequence = ( 273 === count( $ids_int ) && $ids_int === range( 1000, 1272 ) );
+    tmw_assert_true( ! $is_synthetic_sequence, 'cr_id list must not be the synthetic 1000..1272 sequence rejected by prior audit.' );
+
+    tmw_assert_true( min( $ids_int ) < 1000,  'min(cr_id) must be < 1000 (real CR data has early-era IDs like 235, 425, 779).' );
+    tmw_assert_true( max( $ids_int ) > 10000, 'max(cr_id) must be > 10000 (real CR data has recent IDs in the 10000s).' );
+
+    foreach ( $rows as $r ) {
+        tmw_assert_true( 1 !== preg_match( '/^CR Parsed Offer\s+\d+/i', $r['name'] ), 'Synthetic placeholder name pattern detected: ' . $r['name'] . ' (cr_id=' . $r['cr_id'] . ')' );
+    }
+
+    tmw_assert_true( ( $approval_counts['Required'] ?? 0 ) > 0, 'Fixture must contain at least one Required approval row.' );
+
+    $anchor = null;
+    foreach ( $rows as $r ) {
+        if ( '235' === $r['cr_id'] ) {
+            $anchor = $r;
+            break;
+        }
+    }
+    tmw_assert_true( null !== $anchor, 'Anchor row cr_id=235 must exist in fixture.' );
+    tmw_assert_contains( 'Exposed Webcams', $anchor['name'],        'Anchor row cr_id=235 name must contain "Exposed Webcams".' );
+    tmw_assert_same( 'Required',          $anchor['approval'],      'Anchor row cr_id=235 approval must be Required.' );
+    tmw_assert_same( 'Revshare Lifetime', $anchor['payout_type'],   'Anchor row cr_id=235 payout_type must be Revshare Lifetime.' );
+};
+
 
 foreach ( $tests as $name => $test ) {
     try {

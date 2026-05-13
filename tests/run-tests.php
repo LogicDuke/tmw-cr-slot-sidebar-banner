@@ -3762,11 +3762,16 @@ if ( ! function_exists( 'tmw_capture_error_log' ) ) {
         $tmp = tempnam( sys_get_temp_dir(), 'tmw-log-' );
         $prev = ini_get( 'error_log' );
         ini_set( 'error_log', $tmp );
-        $callback();
-        ini_set( 'error_log', (string) $prev );
-        $logs = file_exists( $tmp ) ? (string) file_get_contents( $tmp ) : '';
-        if ( file_exists( $tmp ) ) { unlink( $tmp ); }
-        return $logs;
+
+        try {
+            $callback();
+            return file_exists( $tmp ) ? (string) file_get_contents( $tmp ) : '';
+        } finally {
+            ini_set( 'error_log', (string) $prev );
+            if ( is_string( $tmp ) && file_exists( $tmp ) ) {
+                unlink( $tmp );
+            }
+        }
     }
 }
 
@@ -3777,10 +3782,10 @@ $tests['get_skipped_offer_ids_for_frontend_returns_only_skip_decisions'] = funct
         '2492'=>array('offer_id'=>'2492','decision'=>'skip','reason'=>' male-targeted ','notes'=>'x'),
         '1111'=>array('offer_id'=>'1111','decision'=>'review_later','reason'=>'r','notes'=>'n'),
         '2222'=>array('offer_id'=>'2222','decision'=>'keep','reason'=>'k','notes'=>'n'),
-        'x'=>array('offer_id'=>'','decision'=>'skip','reason'=>'e','notes'=>'n'),
+        ''=>array('offer_id'=>'','decision'=>'skip','reason'=>'e','notes'=>'n'),
     ) );
     $set = $repo->get_skipped_offer_ids_for_frontend();
-    tmw_assert_true( isset( $set['2492'] ) && isset( $set['2222'] ), 'Rows normalized to skip should be included.' );
+    tmw_assert_true( isset( $set['2492'] ) && ! isset( $set['1111'] ) && ! isset( $set['2222'] ) && ! isset( $set[''] ), 'Only explicit skip rows with valid IDs should be included.' );
     if ( ! isset( $set['2492'] ) ) {
         throw new Exception( 'Missing expected 2492 row.' );
     }
@@ -3864,7 +3869,7 @@ $tests['frontend_pool_does_not_exclude_keep_or_empty_decision_when_setting_on'] 
     ) );
     $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '7201','7202' ), 'enforce_skipped_offers_exclusion' => 1 ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
     $json = wp_json_encode( $offers );
-    tmw_assert_true( false === strpos( $json, '7201' ) && false === strpos( $json, '7202' ), 'Decisions normalized to skip should be excluded.' );
+    tmw_assert_true( false !== strpos( $json, '7201' ) && false !== strpos( $json, '7202' ), 'Keep/empty decisions should remain eligible.' );
 };
 $tests['frontend_pool_skipped_offer_id_matching_uses_string_normalization'] = function() {
     tmw_reset_test_state();

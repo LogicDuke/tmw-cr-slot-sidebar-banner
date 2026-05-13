@@ -755,6 +755,7 @@ class TMW_CR_Slot_Admin_Page {
             (array) ( $filter_model['supported']['payout_type'] ?? array() ),
             $payout_labels
         );
+        $offers_summary = $this->build_offers_count_summary( $result, $args, $payout_labels );
         $performs_in_options = $country_options;
         $optimized_for_options = $this->build_filter_option_map( (array) ( $filter_model['supported']['optimized_for'] ?? array() ) );
         $accepted_country_options = $country_options;
@@ -783,6 +784,15 @@ class TMW_CR_Slot_Admin_Page {
             <?php submit_button( __( 'Apply', 'tmw-cr-slot-sidebar-banner' ), 'secondary', '', false ); ?>
             <a class="button button-secondary" href="<?php echo esc_url( admin_url( 'options-general.php?page=tmw-cr-slot-sidebar-banner&tab=offers' ) ); ?>"><?php esc_html_e( 'Clear all', 'tmw-cr-slot-sidebar-banner' ); ?></a>
         </form>
+        <p class="description">
+            <strong><?php echo esc_html( (string) ( $offers_summary['headline'] ?? '' ) ); ?></strong>
+            <?php if ( ! empty( $offers_summary['context'] ) ) : ?>
+                <br />
+                <?php echo esc_html( (string) $offers_summary['context'] ); ?>
+            <?php endif; ?>
+            <br />
+            <?php esc_html_e( 'Payout filters use normalized detected type keys from synced offers. Raw payout strings (for example cpa_flat) can still appear in the payout display.', 'tmw-cr-slot-sidebar-banner' ); ?>
+        </p>
 
         <table class="widefat striped">
             <?php if ( ! empty( $result['active_filters'] ) ) : ?>
@@ -847,7 +857,15 @@ class TMW_CR_Slot_Admin_Page {
                             </td>
                             <td><code><?php echo esc_html( (string) ( $offer['id'] ?? '' ) ); ?></code></td>
                             <td><?php $this->render_badge( (string) ( $offer['status'] ?? '-' ), 'status' ); ?></td>
-                            <td><small><?php echo esc_html( $this->format_payout( $offer ) ); ?></small></td>
+                            <td>
+                                <small><?php echo esc_html( 'Raw payout: ' . $this->format_payout( $offer ) ); ?></small>
+                                <?php
+                                $type_keys = $this->offer_repository->get_offer_type_keys( $offer );
+                                if ( ! empty( $type_keys ) ) :
+                                    ?>
+                                    <br /><small class="description"><?php echo esc_html( 'Detected types: ' . implode( ', ', array_map( 'ucfirst', $type_keys ) ) ); ?></small>
+                                <?php endif; ?>
+                            </td>
                             <td><?php $this->render_badge( ! empty( $offer['is_featured'] ) ? 'Yes' : 'No', ! empty( $offer['is_featured'] ) ? 'featured' : 'muted' ); ?></td>
                             <td><?php $this->render_badge( '1' === (string) ( $offer['require_approval'] ?? '' ) ? 'Required' : 'No', 'approval' ); ?></td>
                             <td><?php $this->render_image_status_badge( (string) ( $offer['image_status'] ?? '' ) ); ?></td>
@@ -2100,6 +2118,86 @@ class TMW_CR_Slot_Admin_Page {
         );
 
         return ! empty( $parts ) ? implode( ' / ', $parts ) : '-';
+    }
+
+    /**
+     * @param array<string,mixed> $result Filtered result payload.
+     * @param array<string,mixed> $args Request args.
+     * @param array<string,string> $payout_labels Label map.
+     *
+     * @return array<string,string>
+     */
+    protected function build_offers_count_summary( $result, $args, $payout_labels ) {
+        $visible_count = count( (array) ( $result['items'] ?? array() ) );
+        $source_total  = isset( $result['source_total'] ) ? (int) $result['source_total'] : (int) $visible_count;
+        $matched_total = isset( $result['total'] ) ? (int) $result['total'] : (int) $visible_count;
+        $has_filters   = ! empty( $result['active_filters'] );
+        $page          = max( 1, (int) ( $result['page'] ?? 1 ) );
+        $per_page      = max( 1, (int) ( $result['per_page'] ?? 25 ) );
+        $headline      = '';
+
+        if ( $has_filters ) {
+            if ( $matched_total <= 0 ) {
+                $headline = sprintf( 'Showing 0 of 0 matched offers from %d synced offers', $source_total );
+            } elseif ( $visible_count <= 0 ) {
+                $headline = sprintf( 'Showing 0 on this page of %1$d matched offers from %2$d synced offers', $matched_total, $source_total );
+            } else {
+                $first = (int) ( ( $page - 1 ) * $per_page ) + 1;
+                if ( $first > $matched_total ) {
+                    $headline = sprintf( 'Showing 0 on this page of %1$d matched offers from %2$d synced offers', $matched_total, $source_total );
+                } else {
+                    $last     = min( (int) ( $first + $visible_count - 1 ), $matched_total );
+                    $headline = sprintf( 'Showing %1$d–%2$d of %3$d matched offers from %4$d synced offers', $first, $last, $matched_total, $source_total );
+                }
+            }
+        } else {
+            $headline = sprintf( 'Showing %1$d of %2$d synced offers', $visible_count, $source_total );
+        }
+
+        $context = '';
+        $payout_values = isset( $args['payout_type'] ) ? (array) $args['payout_type'] : array();
+        if ( ! empty( $payout_values ) ) {
+            $labels = array();
+            foreach ( $payout_values as $value ) {
+                $value = $this->normalize_payout_summary_value( (string) $value );
+                if ( '' === $value ) {
+                    continue;
+                }
+                $labels[] = isset( $payout_labels[ $value ] ) ? $payout_labels[ $value ] : strtoupper( $value );
+            }
+            if ( ! empty( $labels ) ) {
+                $context = sprintf( 'Payout Type: %1$s — %2$d matched from %3$d synced offers', implode( ', ', $labels ), $matched_total, $source_total );
+            }
+        }
+
+        return array(
+            'headline' => $headline,
+            'context'  => $context,
+        );
+    }
+
+    /**
+     * @param string $value Raw payout filter value.
+     *
+     * @return string
+     */
+    protected function normalize_payout_summary_value( $value ) {
+        $value = sanitize_key( strtolower( trim( str_replace( array( ' ', '-' ), '_', (string) $value ) ) ) );
+        $aliases = array(
+            'cpa' => 'multi_cpa',
+            'multi_cpa' => 'multi_cpa',
+            'cpa_flat' => 'revshare_lifetime',
+            'pps' => 'pps',
+            'soi' => 'soi',
+            'doi' => 'doi',
+            'cpc' => 'cpc',
+            'cpi' => 'cpi',
+            'cpm' => 'cpm',
+            'revshare' => 'revshare',
+            'revshare_lifetime' => 'revshare_lifetime',
+            'fallback' => 'fallback',
+        );
+        return isset( $aliases[ $value ] ) ? $aliases[ $value ] : $value;
     }
 
     /**

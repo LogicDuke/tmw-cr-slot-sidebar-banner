@@ -966,6 +966,10 @@ class TMW_CR_Slot_Offer_Repository {
         $promotion_values = $this->normalize_query_values( $query['promotion_method'], 'promotion_method' );
         $image       = strtolower( trim( (string) $query['image_status'] ) );
         $logo_status = strtolower( trim( (string) $query['logo_status'] ) );
+        $payout_filter_active = ! empty( $payout_values );
+        $payout_total_count = 0;
+        $payout_matched_count = 0;
+        $payout_metadata_fallback_used = 0;
         $offers         = array_values( $this->get_synced_offers() );
         $legacy_catalog = $this->get_default_legacy_catalog();
         $filtered       = array();
@@ -1016,8 +1020,19 @@ class TMW_CR_Slot_Offer_Repository {
                 }
             }
 
-            if ( ! empty( $payout_values ) && ! $this->values_intersect_filter_set( $payout_values, (array) ( $offer_meta['payout_type'] ?? array() ) ) ) {
-                continue;
+            if ( $payout_filter_active ) {
+                ++$payout_total_count;
+                $offer_payout_types = (array) ( $offer_meta['payout_type'] ?? array() );
+                if ( empty( $offer_payout_types ) ) {
+                    $offer_payout_types = $this->get_offer_type_keys( $offer );
+                    if ( ! empty( $offer_payout_types ) ) {
+                        ++$payout_metadata_fallback_used;
+                    }
+                }
+                if ( ! $this->values_intersect_filter_set( $payout_values, $offer_payout_types ) ) {
+                    continue;
+                }
+                ++$payout_matched_count;
             }
             if ( ! empty( $performs_values ) && ! $this->values_intersect_filter_set( $performs_values, (array) ( $offer_meta['performs_in'] ?? array() ), true ) ) {
                 continue;
@@ -1103,6 +1118,11 @@ class TMW_CR_Slot_Offer_Repository {
         }
 
         $offset = ( $page - 1 ) * $per_page;
+
+        if ( $payout_filter_active ) {
+            $requested = implode( ',', array_map( 'sanitize_key', $payout_values ) );
+            error_log( sprintf( '[TMW-BANNER-OFFERS-FILTER] payout_type_filter requested=%s total=%d matched=%d metadata_fallback_used=%d', $requested, $payout_total_count, $payout_matched_count, $payout_metadata_fallback_used ) );
+        }
 
         return array(
             'items'    => array_slice( $filtered, $offset, $per_page ),

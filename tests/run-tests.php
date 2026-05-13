@@ -3828,6 +3828,96 @@ $tests['offers_tab_logo_status_filter_preserves_existing_payout_filter'] = funct
         tmw_assert_contains( 'value="' . $payout_value . '"', $html, 'Payout filter option missing: ' . $payout_value );
     }
 };
+$tests['offers_dashboard_empty_filter_params_are_ignored'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'search' => '', 'featured' => '', 'approval_required' => '', 'image_status' => '', 'logo_status' => '' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'e1' => array( 'id' => 'e1', 'name' => 'Empty Params PPS', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Empty Params PPS', $html, 'Offer should remain visible with empty any params.' );
+    tmw_assert_true( false === strpos( $html, 'No offers match the current filters.' ), 'No-offers message should not render for empty any params.' );
+};
+$tests['offers_dashboard_payout_type_pps_filter_returns_pps_rows'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'payout_type' => array( 'pps' ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array(
+        'pp1' => array( 'id' => 'pp1', 'name' => 'Only PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+        'pp2' => array( 'id' => 'pp2', 'name' => 'Not PPS', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+    ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Only PPS', $html, 'PPS offer should be visible when payout_type=pps.' );
+    tmw_assert_true( false === strpos( $html, 'Not PPS' ), 'Non-PPS offer should be filtered out when payout_type=pps.' );
+};
+$tests['offers_dashboard_combined_empty_params_with_payout_type_pps_returns_rows'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'search' => '', 'payout_type' => array( 'pps' ), 'featured' => '', 'approval_required' => '', 'image_status' => '', 'logo_status' => '' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array(
+        'cp1' => array( 'id' => 'cp1', 'name' => 'Combined PPS 1', 'status' => 'active', 'payout_type' => 'PPS' ),
+        'cp2' => array( 'id' => 'cp2', 'name' => 'Combined PPS 2', 'status' => 'active', 'payout_type' => 'PPS' ),
+    ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Combined PPS 1', $html, 'First PPS offer should remain visible with empty params plus payout_type=pps.' );
+    tmw_assert_contains( 'Combined PPS 2', $html, 'Second PPS offer should remain visible with empty params plus payout_type=pps.' );
+    tmw_assert_true( false === strpos( $html, 'No offers match the current filters.' ), 'No-offers message should not render for empty params plus payout_type=pps.' );
+};
+$tests['offers_dashboard_featured_any_does_not_filter_rows'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'featured' => '' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'f1' => array( 'id' => 'f1', 'name' => 'Featured Any Fixture', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Featured Any Fixture', $html, 'Blank featured should behave as any.' );
+};
+$tests['offers_dashboard_approval_any_does_not_filter_rows'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'approval_required' => '' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'a1' => array( 'id' => 'a1', 'name' => 'Approval Any Fixture', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Approval Any Fixture', $html, 'Blank approval should behave as any.' );
+};
+$tests['offers_dashboard_image_status_any_does_not_filter_rows'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'image_status' => '' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'i1' => array( 'id' => 'i1', 'name' => 'Image Any Fixture', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Image Any Fixture', $html, 'Blank image status should behave as any.' );
+};
+$tests['offers_dashboard_logo_status_any_does_not_filter_rows'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'logo_status' => '' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'l1' => array( 'id' => 'l1', 'name' => 'Logo Any Fixture', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Logo Any Fixture', $html, 'Blank logo status should behave as any.' );
+};
+$tests['offers_dashboard_payout_type_pps_falls_back_to_raw_offer_type_when_metadata_missing'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'fb1' => array( 'id' => 'fb1', 'name' => 'Raw Offer PPS', 'status' => 'active' ) ) );
+    $result = $repo->get_filtered_synced_offers_for_admin( array( 'payout_type' => array( 'pps' ) ), array() );
+    tmw_assert_same( 1, (int) $result['total'], 'PPS filter should include offer when metadata families are missing but raw offer indicates PPS.' );
+    tmw_assert_same( 'fb1', (string) $result['items'][0]['id'], 'Fallback should keep the raw PPS offer.' );
+};
+$tests['offers_dashboard_clear_all_link_has_clean_base_url'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'search' => '', 'payout_type' => array( 'pps' ), 'featured' => '', 'approval_required' => '', 'image_status' => '', 'logo_status' => '' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'tab=offers', $html, 'Clear all URL should point to offers tab.' );
+    tmw_assert_true( false !== strpos( $html, '>Clear all<' ), 'Clear all button should render.' );
+    tmw_assert_true( false === strpos( $html, 'Clear all</a></form>&search' ), 'Clear all URL must not carry search filter params.' );
+};
 $tests['offers_tab_does_not_readd_removed_standalone_import_sections'] = function() {
     tmw_reset_test_state();
     $_GET = array( 'tab' => 'slot-setup' );
@@ -4260,4 +4350,3 @@ echo "\nTotal: {$passes} passed, " . count( $failures ) . " failed\n";
 if ( ! empty( $failures ) ) {
     exit( 1 );
 }
-

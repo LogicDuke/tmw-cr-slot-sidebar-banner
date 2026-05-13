@@ -723,25 +723,14 @@ class TMW_CR_Slot_Admin_Page {
      */
     protected function render_offers_tab( $settings ) {
         $country_options = $this->get_country_options();
-        $args = array(
-            'search'            => isset( $_GET['search'] ) ? sanitize_text_field( wp_unslash( $_GET['search'] ) ) : '',
-            'tag'               => $this->read_multi_query_values( 'tag' ),
-            'vertical'          => $this->read_multi_query_values( 'vertical' ),
-            'status'            => $this->read_multi_query_values( 'status', true ),
-            'featured'          => isset( $_GET['featured'] ) ? sanitize_key( wp_unslash( $_GET['featured'] ) ) : '',
-            'approval_required' => isset( $_GET['approval_required'] ) ? sanitize_key( wp_unslash( $_GET['approval_required'] ) ) : '',
-            'payout_type'       => $this->read_multi_query_values( 'payout_type' ),
-            'performs_in'       => $this->read_multi_query_values( 'performs_in', true ),
-            'optimized_for'     => $this->read_multi_query_values( 'optimized_for' ),
-            'accepted_country'  => $this->read_multi_query_values( 'accepted_country', true ),
-            'niche'             => $this->read_multi_query_values( 'niche' ),
-            'promotion_method'  => $this->read_multi_query_values( 'promotion_method' ),
-            'image_status'      => isset( $_GET['image_status'] ) ? sanitize_key( wp_unslash( $_GET['image_status'] ) ) : '',
-            'logo_status'       => isset( $_GET['logo_status'] ) ? sanitize_key( wp_unslash( $_GET['logo_status'] ) ) : '',
+        $args = array_merge(
+            $this->read_offers_tab_filters_from_request(),
+            array(
             'sort_by'           => isset( $_GET['sort_by'] ) ? sanitize_key( wp_unslash( $_GET['sort_by'] ) ) : 'name',
             'sort_order'        => isset( $_GET['sort_order'] ) ? sanitize_key( wp_unslash( $_GET['sort_order'] ) ) : 'asc',
             'page'              => isset( $_GET['paged'] ) ? max( 1, (int) $_GET['paged'] ) : 1,
             'per_page'          => 25,
+            )
         );
 
         $legacy_catalog = TMW_CR_Slot_Sidebar_Banner::get_offer_catalog_defaults();
@@ -800,7 +789,8 @@ class TMW_CR_Slot_Admin_Page {
             <?php $this->render_filter_panel( 'optimized_for', __( 'Optimized For', 'tmw-cr-slot-sidebar-banner' ), $args['optimized_for'], $optimized_for_options, true ); ?>
             <?php $this->render_filter_panel( 'accepted_country', __( 'Accepted Country', 'tmw-cr-slot-sidebar-banner' ), $args['accepted_country'], $accepted_country_options, true ); ?>
             <?php $this->render_filter_panel( 'niche', __( 'Niche', 'tmw-cr-slot-sidebar-banner' ), $args['niche'], $niche_options, true ); ?>
-            <?php $this->render_filter_panel( 'status', __( 'Status', 'tmw-cr-slot-sidebar-banner' ), $args['status'], $status_options, false ); ?>
+            <?php $status_select_options = array( '' => 'Status: any' ) + $status_options; ?>
+            <?php $this->render_filter_select( 'status', $args['status'], $status_select_options ); ?>
             <?php $this->render_filter_panel( 'promotion_method', __( 'Promotion Method', 'tmw-cr-slot-sidebar-banner' ), $args['promotion_method'], $promotion_options, true ); ?>
             <?php $this->render_filter_select( 'featured', $args['featured'], array( '' => 'Featured: any', 'yes' => 'Featured: yes', 'no' => 'Featured: no' ) ); ?>
             <?php $this->render_filter_select( 'approval_required', $args['approval_required'], array( '' => 'Approval: any', 'yes' => 'Approval required', 'no' => 'Approval not required' ) ); ?>
@@ -1892,6 +1882,41 @@ class TMW_CR_Slot_Admin_Page {
         }
 
         return array_values( array_unique( $values ) );
+    }
+
+    /**
+     * @param string $key Query key.
+     *
+     * @return string
+     */
+    protected function read_scalar_query_value( $key ) {
+        if ( ! isset( $_GET[ $key ] ) ) {
+            return '';
+        }
+        $value = sanitize_key( wp_unslash( $_GET[ $key ] ) );
+        return trim( (string) $value );
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    protected function read_offers_tab_filters_from_request() {
+        return array(
+            'search'            => isset( $_GET['search'] ) ? trim( sanitize_text_field( wp_unslash( $_GET['search'] ) ) ) : '',
+            'tag'               => $this->read_multi_query_values( 'tag' ),
+            'vertical'          => $this->read_multi_query_values( 'vertical' ),
+            'status'            => $this->read_scalar_query_value( 'status' ),
+            'featured'          => $this->read_scalar_query_value( 'featured' ),
+            'approval_required' => $this->read_scalar_query_value( 'approval_required' ),
+            'payout_type'       => $this->read_multi_query_values( 'payout_type' ),
+            'performs_in'       => $this->read_multi_query_values( 'performs_in', true ),
+            'optimized_for'     => $this->read_multi_query_values( 'optimized_for' ),
+            'accepted_country'  => $this->read_multi_query_values( 'accepted_country', true ),
+            'niche'             => $this->read_multi_query_values( 'niche' ),
+            'promotion_method'  => $this->read_multi_query_values( 'promotion_method' ),
+            'image_status'      => $this->read_scalar_query_value( 'image_status' ),
+            'logo_status'       => $this->read_scalar_query_value( 'logo_status' ),
+        );
     }
 
     /**

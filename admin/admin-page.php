@@ -748,13 +748,36 @@ class TMW_CR_Slot_Admin_Page {
         $country        = strtoupper( TMW_CR_Slot_Geo_Helper::get_country_code() );
         $tag_options = $this->build_filter_option_map( (array) ( $filter_model['supported']['tag'] ?? array() ) );
         $vertical_options = $this->build_filter_option_map( (array) ( $filter_model['supported']['vertical'] ?? array() ) );
+        $known_payout_types = array(
+            'pps',
+            'soi',
+            'doi',
+            'cpi',
+            'cpm',
+            'cpc',
+            'multi_cpa',
+            'revshare',
+            'revshare_lifetime',
+        );
+        $payout_labels = array(
+            'pps' => 'PPS',
+            'soi' => 'SOI',
+            'doi' => 'DOI',
+            'cpi' => 'CPI',
+            'cpm' => 'CPM',
+            'cpc' => 'CPC',
+            'multi_cpa' => 'Multi-CPA',
+            'revshare' => 'Revshare',
+            'revshare_lifetime' => 'Revshare Lifetime',
+        );
         $payout_options = $this->build_filter_option_map(
-            (array) ( $filter_model['supported']['payout_type'] ?? array() ),
-            array(
-                'revshare' => 'Revshare',
-                'revshare_lifetime' => 'Revshare Lifetime',
-                'multi_cpa' => 'Multi-CPA',
-            )
+            array_unique(
+                array_merge(
+                    $known_payout_types,
+                    (array) ( $filter_model['supported']['payout_type'] ?? array() )
+                )
+            ),
+            $payout_labels
         );
         $performs_in_options = $country_options;
         $optimized_for_options = $this->build_filter_option_map( (array) ( $filter_model['supported']['optimized_for'] ?? array() ) );
@@ -1448,8 +1471,40 @@ class TMW_CR_Slot_Admin_Page {
                 $status_options[ $status_option ] = strtoupper( $status_option );
             }
             $payout_options = array( '' => 'Payout type: any' );
-            foreach ( (array) ( $filter_model['supported']['payout_type'] ?? array() ) as $type_option ) {
-                $payout_options[ $type_option ] = strtoupper( str_replace( '_', ' ', $type_option ) );
+            $known_payout_types = array(
+                'pps',
+                'soi',
+                'doi',
+                'cpi',
+                'cpm',
+                'cpc',
+                'multi_cpa',
+                'revshare',
+                'revshare_lifetime',
+            );
+            $payout_labels = array(
+                'pps' => 'PPS',
+                'soi' => 'SOI',
+                'doi' => 'DOI',
+                'cpi' => 'CPI',
+                'cpm' => 'CPM',
+                'cpc' => 'CPC',
+                'multi_cpa' => 'Multi-CPA',
+                'revshare' => 'Revshare',
+                'revshare_lifetime' => 'Revshare Lifetime',
+            );
+            $available_payout_types = array_unique(
+                array_merge(
+                    $known_payout_types,
+                    (array) ( $filter_model['supported']['payout_type'] ?? array() )
+                )
+            );
+            foreach ( $available_payout_types as $type_option ) {
+                $type_option = sanitize_key( (string) $type_option );
+                if ( '' === $type_option ) {
+                    continue;
+                }
+                $payout_options[ $type_option ] = $payout_labels[ $type_option ] ?? strtoupper( str_replace( '_', ' ', $type_option ) );
             }
             ?>
             <?php $this->render_filter_select( 'status', $status_filter, $status_options ); ?>

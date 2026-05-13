@@ -2591,7 +2591,7 @@ class TMW_CR_Slot_Offer_Repository {
                     'clicks'       => 0,
                     'conversions'  => 0.0,
                     'payout'       => 0.0,
-                    'payout_type'  => (string) ( $row['payout_type'] ?? ( $offer['payout_type'] ?? '' ) ),
+                    'payout_type'  => $this->normalize_filter_family_value( 'payout_type', (string) ( $row['payout_type'] ?? ( $offer['payout_type'] ?? '' ) ) ),
                     'status'       => (string) ( $offer['status'] ?? '' ),
                 );
             }
@@ -2602,7 +2602,7 @@ class TMW_CR_Slot_Offer_Repository {
         }
 
         foreach ( $grouped as $offer_id => $row ) {
-            if ( '' !== $payout_type_filter && $payout_type_filter !== sanitize_key( (string) ( $row['payout_type'] ?? '' ) ) ) {
+            if ( '' !== $payout_type_filter && $payout_type_filter !== $this->normalize_filter_family_value( 'payout_type', (string) ( $row['payout_type'] ?? '' ) ) ) {
                 unset( $grouped[ $offer_id ] );
                 continue;
             }
@@ -3110,15 +3110,31 @@ class TMW_CR_Slot_Offer_Repository {
                 'revenue_share' => 'revshare',
                 'cpa_flat' => 'revshare_lifetime',
                 'revshare_lifetime' => 'revshare_lifetime',
-                'pps' => 'revshare_lifetime',
+                'pps' => 'pps',
                 'cpa_both' => 'multi_cpa',
                 'multi_cpa' => 'multi_cpa',
+                'multi-cpa' => 'multi_cpa',
+                'multicpa' => 'multi_cpa',
                 'hybrid' => 'multi_cpa',
+                'soi' => 'soi',
+                'doi' => 'doi',
+                'cpi' => 'cpi',
+                'cpm' => 'cpm',
+                'cpc' => 'cpc',
+                'ppc' => 'cpc',
             );
 
             if ( isset( $aliases[ $normalized_key ] ) ) {
                 return $aliases[ $normalized_key ];
             }
+
+            error_log(
+                sprintf(
+                    '[TMW-BANNER-PAYOUT-NORM] unknown_payout_type raw="%s" normalized="%s"',
+                    sanitize_text_field( (string) $value ),
+                    $normalized_key
+                )
+            );
         }
 
         return strtolower( $value );

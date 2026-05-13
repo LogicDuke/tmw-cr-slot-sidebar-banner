@@ -2132,15 +2132,23 @@ class TMW_CR_Slot_Admin_Page {
         $source_total  = isset( $result['source_total'] ) ? (int) $result['source_total'] : (int) $visible_count;
         $matched_total = isset( $result['total'] ) ? (int) $result['total'] : (int) $visible_count;
         $has_filters   = ! empty( $result['active_filters'] );
+        $page          = max( 1, (int) ( $result['page'] ?? 1 ) );
+        $per_page      = max( 1, (int) ( $result['per_page'] ?? 25 ) );
         $headline      = '';
 
         if ( $has_filters ) {
             if ( $matched_total <= 0 ) {
                 $headline = sprintf( 'Showing 0 of 0 matched offers from %d synced offers', $source_total );
+            } elseif ( $visible_count <= 0 ) {
+                $headline = sprintf( 'Showing 0 on this page of %1$d matched offers from %2$d synced offers', $matched_total, $source_total );
             } else {
-                $first = (int) ( ( (int) ( $result['page'] ?? 1 ) - 1 ) * (int) ( $result['per_page'] ?? 25 ) ) + 1;
-                $last  = min( (int) ( $first + $visible_count - 1 ), $matched_total );
-                $headline = sprintf( 'Showing %1$d–%2$d of %3$d matched offers from %4$d synced offers', $first, $last, $matched_total, $source_total );
+                $first = (int) ( ( $page - 1 ) * $per_page ) + 1;
+                if ( $first > $matched_total ) {
+                    $headline = sprintf( 'Showing 0 on this page of %1$d matched offers from %2$d synced offers', $matched_total, $source_total );
+                } else {
+                    $last     = min( (int) ( $first + $visible_count - 1 ), $matched_total );
+                    $headline = sprintf( 'Showing %1$d–%2$d of %3$d matched offers from %4$d synced offers', $first, $last, $matched_total, $source_total );
+                }
             }
         } else {
             $headline = sprintf( 'Showing %1$d of %2$d synced offers', $visible_count, $source_total );
@@ -2151,7 +2159,7 @@ class TMW_CR_Slot_Admin_Page {
         if ( ! empty( $payout_values ) ) {
             $labels = array();
             foreach ( $payout_values as $value ) {
-                $value = sanitize_key( (string) $value );
+                $value = $this->normalize_payout_summary_value( (string) $value );
                 if ( '' === $value ) {
                     continue;
                 }
@@ -2166,6 +2174,30 @@ class TMW_CR_Slot_Admin_Page {
             'headline' => $headline,
             'context'  => $context,
         );
+    }
+
+    /**
+     * @param string $value Raw payout filter value.
+     *
+     * @return string
+     */
+    protected function normalize_payout_summary_value( $value ) {
+        $value = sanitize_key( strtolower( trim( str_replace( array( ' ', '-' ), '_', (string) $value ) ) ) );
+        $aliases = array(
+            'cpa' => 'multi_cpa',
+            'multi_cpa' => 'multi_cpa',
+            'cpa_flat' => 'revshare_lifetime',
+            'pps' => 'pps',
+            'soi' => 'soi',
+            'doi' => 'doi',
+            'cpc' => 'cpc',
+            'cpi' => 'cpi',
+            'cpm' => 'cpm',
+            'revshare' => 'revshare',
+            'revshare_lifetime' => 'revshare_lifetime',
+            'fallback' => 'fallback',
+        );
+        return isset( $aliases[ $value ] ) ? $aliases[ $value ] : $value;
     }
 
     /**

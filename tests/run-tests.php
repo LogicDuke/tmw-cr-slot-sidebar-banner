@@ -111,6 +111,10 @@ class TMW_Test_Admin_Page extends TMW_CR_Slot_Admin_Page {
 
         throw new RuntimeException( 'Missing nonce payload for admin action test.' );
     }
+
+    public function test_build_offers_count_summary( $result, $args, $payout_labels ) {
+        return $this->build_offers_count_summary( $result, $args, $payout_labels );
+    }
 }
 
 function tmw_reset_test_state() {
@@ -4155,6 +4159,36 @@ $tests['offers_tab_payout_clarity_shows_raw_and_detected_meaning'] = function() 
     ob_start(); $page->render_page(); $html = (string) ob_get_clean();
     tmw_assert_contains( 'Raw payout: 90.00000 / cpa_flat', $html, 'Raw payout type should remain visible in payout cell.' );
     tmw_assert_true( false !== strpos( $html, 'Detected types: Pps' ) || false !== strpos( $html, 'Offer Type Keys: Pps' ), 'Detected type wording should be visible for payout clarity.' );
+};
+$tests['offers_tab_summary_normalizes_legacy_payout_alias_labels'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'payout_type' => array( 'cpa_flat' ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'rl1' => array( 'id' => 'rl1', 'name' => 'Revshare Lifetime Offer', 'status' => 'active', 'payout_type' => 'cpa_flat' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Payout Type: Revshare Lifetime', $html, 'Legacy alias label should render with canonical payout family label.' );
+    tmw_assert_true( false === strpos( $html, 'Payout Type: CPA_FLAT' ), 'Legacy alias should not be rendered as raw CPA_FLAT label.' );
+};
+$tests['offers_tab_summary_handles_out_of_range_page_without_invalid_range'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $summary = $page->test_build_offers_count_summary(
+        array(
+            'items' => array(),
+            'total' => 5,
+            'source_total' => 5,
+            'active_filters' => array( 'payout_type' ),
+            'page' => 2,
+            'per_page' => 25,
+        ),
+        array( 'payout_type' => array( 'pps' ) ),
+        array( 'pps' => 'PPS' )
+    );
+    $headline = (string) ( $summary['headline'] ?? '' );
+    tmw_assert_true( false === strpos( $headline, '26–25' ), 'Out-of-range summary must not render invalid first-last range.' );
+    tmw_assert_contains( 'Showing 0 on this page of 5 matched offers from 5 synced offers', $headline, 'Out-of-range summary should use safe empty-page wording.' );
 };
 $tests['offers_tab_does_not_readd_removed_standalone_import_sections'] = function() {
     tmw_reset_test_state();

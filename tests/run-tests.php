@@ -395,6 +395,76 @@ $tests['offer_type_allowlist_behavior_cases'] = function() {
     tmw_assert_true( $repository->is_offer_type_allowed( array( 'name' => 'Custom Fallback - Unknown Campaign Name' ), array( 'allowed_offer_types' => array( 'fallback' ) ) ), 'Fallback offers should be allowed when fallback is selected.' );
 };
 
+
+$tests['get_offer_type_keys_detects_cpi_from_offer_name'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $types = $repository->get_offer_type_keys( array( 'name' => 'Brand X - CPI - T1' ) );
+    tmw_assert_true( in_array( 'cpi', $types, true ), 'CPI should be detected from offer name.' );
+};
+
+$tests['get_offer_type_keys_detects_cpm_from_payout_type_field'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $types = $repository->get_offer_type_keys( array( 'name' => 'Brand Y', 'payout_type' => 'CPM' ) );
+    tmw_assert_true( in_array( 'cpm', $types, true ), 'CPM should be detected from payout_type.' );
+};
+
+$tests['get_offer_type_keys_pps_still_detected_after_regex_extension'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $types = $repository->get_offer_type_keys( array( 'name' => 'Jerkmate - PPS' ) );
+    tmw_assert_true( in_array( 'pps', $types, true ), 'PPS should still be detected.' );
+};
+
+$tests['logo_coverage_report_for_type_pps_matches_legacy_pps_report'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repository->save_synced_offers( array(
+        'a' => array( 'id' => 'a', 'name' => 'Jerkmate - PPS', 'status' => 'active' ),
+        'b' => array( 'id' => 'b', 'name' => 'Unknown Brand - PPS', 'status' => 'active' ),
+    ) );
+    $settings = array( 'allowed_offer_types' => array( 'pps' ) );
+    $generic = $repository->get_logo_coverage_report_for_type( 'pps', $settings );
+    $legacy = $repository->get_pps_logo_coverage_report( $settings );
+    tmw_assert_same( array_keys( $legacy ), array_keys( $generic ), 'Generic PPS report should match legacy shape.' );
+    tmw_assert_same( $legacy['pps_candidates_total'], $generic['pps_candidates_total'], 'PPS candidate counts should match.' );
+    tmw_assert_same( $legacy['pps_with_logo'], $generic['pps_with_logo'], 'PPS with-logo counts should match.' );
+    tmw_assert_same( $legacy['pps_missing_logo'], $generic['pps_missing_logo'], 'PPS missing-logo counts should match.' );
+};
+
+$tests['logo_coverage_report_for_type_returns_zero_counts_for_empty_type'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repository->save_synced_offers( array(
+        'a' => array( 'id' => 'a', 'name' => 'Jerkmate - PPS', 'status' => 'active' ),
+    ) );
+    $report = $repository->get_logo_coverage_report_for_type( 'cpi', array( 'allowed_offer_types' => array( 'pps' ) ) );
+    tmw_assert_same( 0, (int) $report['pps_candidates_total'], 'No CPI candidates should result in zero candidates.' );
+    tmw_assert_same( 0, (int) $report['pps_with_logo'], 'No CPI candidates should result in zero with-logo count.' );
+    tmw_assert_same( 0, (int) $report['pps_missing_logo'], 'No CPI candidates should result in zero missing-logo count.' );
+};
+
+$tests['sanitize_allowed_offer_types_accepts_cpi_and_cpm'] = function() {
+    tmw_reset_test_state();
+    tmw_assert_same( array( 'cpi', 'cpm' ), TMW_CR_Slot_Offer_Repository::sanitize_allowed_offer_types( array( 'cpi', 'cpm' ) ), 'CPI and CPM should be accepted by sanitizer.' );
+};
+
+$tests['sanitize_allowed_offer_types_default_remains_pps_only_when_input_empty'] = function() {
+    tmw_reset_test_state();
+    tmw_assert_same( array( 'pps' ), TMW_CR_Slot_Offer_Repository::sanitize_allowed_offer_types( array() ), 'Empty type input should default to PPS only.' );
+};
+
+$tests['frontend_pool_allowlist_remains_pps_only_after_regex_extension'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( 'cpi1' => array( 'id' => 'cpi1', 'name' => 'Brand X - CPI - T1', 'status' => 'active', 'payout_type' => 'CPI', 'tracking_url' => 'https://trk.example.test/cpi1' ) ) );
+    $repo->save_offer_overrides( array( 'cpi1' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/cpi1-final', 'allowed_countries' => 'United States' ) ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array(), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'United States', array() );
+    tmw_assert_same( 0, count( $offers ), 'Default PPS-only allowlist must exclude CPI offers from frontend pool.' );
+};
+
+
 $tests['optimization_excludes_zero_clicks_and_zero_conversions'] = function() {
     tmw_reset_test_state();
     $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );

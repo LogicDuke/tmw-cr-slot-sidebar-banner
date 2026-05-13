@@ -8,7 +8,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 class TMW_CR_Slot_Offer_Repository {
-    const ALLOWED_OFFER_TYPES = array( 'pps', 'revshare', 'soi', 'doi', 'cpa', 'cpl', 'cpc', 'smartlink', 'fallback' );
+    const ALLOWED_OFFER_TYPES = array( 'pps', 'revshare', 'soi', 'doi', 'cpa', 'cpl', 'cpc', 'cpi', 'cpm', 'smartlink', 'fallback' );
     const UNAVAILABLE_ACCOUNT_PPS_OFFER_IDS = array( '9647', '9781' );
     const ELIGIBILITY_REASON_MISSING_FINAL_URL = 'missing_final_url';
     const ELIGIBILITY_REASON_INVALID_FINAL_URL = 'invalid_final_url';
@@ -453,6 +453,8 @@ class TMW_CR_Slot_Offer_Repository {
             'cpa'       => '/\b(multi[\s-]*cpa|cpa)\b/i',
             'cpl'       => '/\b(ppl|cpl)\b/i',
             'cpc'       => '/\b(ppc|cpc)\b/i',
+            'cpi'       => '/\bcpi\b/i',
+            'cpm'       => '/\bcpm\b/i',
             'pps'       => '/\bpps\b/i',
         );
 
@@ -1460,8 +1462,19 @@ class TMW_CR_Slot_Offer_Repository {
      * @return array<string,mixed>
      */
     public function get_pps_logo_coverage_report( $settings ) {
-        $synced = $this->get_synced_offers();
-        $report = array(
+        return $this->get_logo_coverage_report_for_type( 'pps', $settings );
+    }
+
+    /**
+     * @param string              $type     Offer type key.
+     * @param array<string,mixed> $settings Settings payload.
+     *
+     * @return array<string,mixed>
+     */
+    public function get_logo_coverage_report_for_type( $type, $settings ) {
+        $report_type = sanitize_key( (string) $type );
+        $synced      = $this->get_synced_offers();
+        $report      = array(
             'pps_candidates_total' => 0,
             'pps_with_logo' => 0,
             'pps_missing_logo' => 0,
@@ -1475,11 +1488,10 @@ class TMW_CR_Slot_Offer_Repository {
         );
 
         foreach ( $synced as $offer ) {
-            if ( ! is_array( $offer ) || ! $this->is_offer_type_allowed( $offer, $settings ) ) {
+            if ( ! is_array( $offer ) ) {
                 continue;
             }
-            $types = $this->get_offer_type_keys( $offer );
-            if ( ! in_array( 'pps', $types, true ) ) {
+            if ( ! $this->is_offer_type_allowed( $offer, array( 'allowed_offer_types' => array( $report_type ) ) ) ) {
                 continue;
             }
             if ( $this->is_offer_blocked_for_banner( $offer, $settings ) ) {
@@ -1514,7 +1526,8 @@ class TMW_CR_Slot_Offer_Repository {
         if ( function_exists( 'error_log' ) ) {
             error_log(
                 sprintf(
-                    '[TMW-BANNER-LOGO-COVERAGE] pps_candidates_total=%d pps_with_logo=%d pps_missing_logo=%d',
+                    '[TMW-BANNER-LOGO-COVERAGE] type=%s candidates_total=%d with_logo=%d missing_logo=%d',
+                    $report_type,
                     (int) $report['pps_candidates_total'],
                     (int) $report['pps_with_logo'],
                     (int) $report['pps_missing_logo']

@@ -990,6 +990,8 @@ class TMW_CR_Slot_Admin_Page {
                 'cpa' => 'CPA / Multi-CPA',
                 'cpl' => 'CPL / PPL',
                 'cpc' => 'CPC / PPC',
+                'cpi' => 'CPI',
+                'cpm' => 'CPM',
                 'smartlink' => 'Smartlink',
                 'fallback' => 'Fallback offers',
             );

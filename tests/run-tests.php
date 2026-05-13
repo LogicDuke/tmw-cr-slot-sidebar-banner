@@ -3648,6 +3648,16 @@ $tests['logo_status_missing_when_brand_match_but_no_file_on_disk'] = function() 
         }
     );
 };
+
+$tests['logo_filename_missing_file_does_not_reference_report_alias_state'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    tmw_without_logo_file( '80x80/jerkmate-80x80-transparent.png', static function () use ( $repo ) {
+        $filename = $repo->get_offer_logo_filename( array( 'id' => 'logo-fixture', 'name' => 'Jerkmate' ) );
+        tmw_assert_same( '', $filename, 'Missing mapped logo file should return empty filename without report alias references.' );
+    } );
+};
+
 $tests['logo_status_filter_filters_offers_correctly'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );

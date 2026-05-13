@@ -1351,6 +1351,10 @@ class TMW_CR_Slot_Admin_Page {
         <?php
         if ( current_user_can( 'manage_options' ) ) :
         ?>
+        <div class="screen-reader-text" aria-hidden="true" data-legacy-allowed-country-action="tmw_cr_slot_banner_import_allowed_country_overrides" data-legacy-final-url-action="tmw_cr_slot_banner_import_final_url_overrides">
+            <?php wp_nonce_field( 'tmw_cr_slot_banner_import_allowed_country_overrides', 'tmw_legacy_allowed_country_nonce' ); ?>
+            <?php wp_nonce_field( 'tmw_cr_slot_banner_import_final_url_overrides', 'tmw_legacy_final_url_nonce' ); ?>
+        </div>
         <h3><?php esc_html_e( 'Import Both Override CSVs', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
         <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
             <?php wp_nonce_field( 'tmw_cr_slot_banner_import_both_overrides' ); ?>

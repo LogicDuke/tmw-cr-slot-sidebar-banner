@@ -797,7 +797,7 @@ class TMW_CR_Slot_Admin_Page {
             <?php $this->render_filter_select( 'image_status', $args['image_status'], array( '' => 'Image status: any', 'manual_override' => 'Manual override', 'auto_local' => 'Auto local', 'auto_remote' => 'Auto remote', 'placeholder_only' => 'Placeholder' ) ); ?>
             <?php $this->render_filter_select( 'logo_status', $args['logo_status'], array( '' => 'Logo source: any', 'manual_override' => 'Manual override', 'mapped_local' => 'Mapped local', 'auto_remote' => 'Remote', 'placeholder_only' => 'Placeholder only', 'missing' => 'Missing' ) ); ?>
             <?php submit_button( __( 'Apply', 'tmw-cr-slot-sidebar-banner' ), 'secondary', '', false ); ?>
-            <a class="button button-secondary" href="<?php echo esc_url( add_query_arg( array( 'page' => 'tmw-cr-slot-sidebar-banner', 'tab' => 'offers' ), admin_url( 'options-general.php' ) ) ); ?>"><?php esc_html_e( 'Clear all', 'tmw-cr-slot-sidebar-banner' ); ?></a>
+            <a class="button button-secondary" href="<?php echo esc_url( admin_url( 'options-general.php?page=tmw-cr-slot-sidebar-banner&tab=offers' ) ); ?>"><?php esc_html_e( 'Clear all', 'tmw-cr-slot-sidebar-banner' ); ?></a>
         </form>
 
         <table class="widefat striped">
@@ -1893,8 +1893,15 @@ class TMW_CR_Slot_Admin_Page {
         if ( ! isset( $_GET[ $key ] ) ) {
             return '';
         }
-        $value = sanitize_key( wp_unslash( $_GET[ $key ] ) );
-        return trim( (string) $value );
+        $raw = wp_unslash( $_GET[ $key ] );
+        if ( is_array( $raw ) ) {
+            $raw = reset( $raw );
+        }
+        if ( is_array( $raw ) || is_object( $raw ) ) {
+            return '';
+        }
+        $value = trim( sanitize_text_field( (string) $raw ) );
+        return '' === $value ? '' : $value;
     }
 
     /**

@@ -1024,7 +1024,25 @@ class TMW_CR_Slot_Offer_Repository {
                 ++$payout_total_count;
                 $offer_payout_types = (array) ( $offer_meta['payout_type'] ?? array() );
                 if ( empty( $offer_payout_types ) ) {
-                    $offer_payout_types = $this->get_offer_type_keys( $offer );
+                    $fallback_types = (array) $this->get_offer_type_keys( $offer );
+                    $fallback_aliases = array(
+                        'cpa' => 'multi_cpa',
+                        'cpa_flat' => 'multi_cpa',
+                    );
+                    $offer_payout_types = array();
+                    foreach ( $fallback_types as $fallback_type ) {
+                        $fallback_type = strtolower( trim( (string) $fallback_type ) );
+                        if ( '' === $fallback_type ) {
+                            continue;
+                        }
+                        $mapped_type = isset( $fallback_aliases[ $fallback_type ] ) ? $fallback_aliases[ $fallback_type ] : $fallback_type;
+                        $normalized_type = $this->normalize_filter_family_value( 'payout_type', $mapped_type );
+                        if ( '' === $normalized_type ) {
+                            continue;
+                        }
+                        $offer_payout_types[] = $normalized_type;
+                    }
+                    $offer_payout_types = array_values( array_unique( $offer_payout_types ) );
                     if ( ! empty( $offer_payout_types ) ) {
                         ++$payout_metadata_fallback_used;
                     }

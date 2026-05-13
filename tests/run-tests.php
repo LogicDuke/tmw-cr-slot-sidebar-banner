@@ -3853,7 +3853,7 @@ $tests['offers_dashboard_payout_type_pps_filter_returns_pps_rows'] = function() 
 };
 $tests['offers_dashboard_combined_empty_params_with_payout_type_pps_returns_rows'] = function() {
     tmw_reset_test_state();
-    $_GET = array( 'tab' => 'offers', 'search' => '', 'payout_type' => array( 'pps' ), 'featured' => '', 'approval_required' => '', 'image_status' => '', 'logo_status' => '' );
+    $_GET = array( 'tab' => 'offers', 'payout_type' => array( 'pps' ), 'featured' => '', 'approval_required' => '', 'image_status' => '', 'logo_status' => '' );
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
     $repo->save_synced_offers( array(
         'cp1' => array( 'id' => 'cp1', 'name' => 'Combined PPS 1', 'status' => 'active', 'payout_type' => 'PPS' ),
@@ -3909,14 +3909,43 @@ $tests['offers_dashboard_payout_type_pps_falls_back_to_raw_offer_type_when_metad
     tmw_assert_same( 1, (int) $result['total'], 'PPS filter should include offer when metadata families are missing but raw offer indicates PPS.' );
     tmw_assert_same( 'fb1', (string) $result['items'][0]['id'], 'Fallback should keep the raw PPS offer.' );
 };
+$tests['offers_dashboard_payout_type_multi_cpa_falls_back_from_raw_cpa_when_metadata_missing'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'mc1' => array( 'id' => 'mc1', 'name' => 'Raw Multi CPA Offer', 'status' => 'active' ) ) );
+    $result = $repo->get_filtered_synced_offers_for_admin( array( 'payout_type' => array( 'multi_cpa' ) ), array() );
+    tmw_assert_same( 1, (int) $result['total'], 'Multi-CPA filter should include raw CPA offer when metadata families are missing.' );
+    tmw_assert_same( 'mc1', (string) $result['items'][0]['id'], 'Fallback should map raw CPA to multi_cpa family.' );
+};
+$tests['offers_dashboard_status_filter_preserves_spaced_status_value'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'status' => 'pending review' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array(
+        's1' => array( 'id' => 's1', 'name' => 'Pending Review Offer', 'status' => 'pending review', 'payout_type' => 'PPS' ),
+        's2' => array( 'id' => 's2', 'name' => 'Active Only Offer', 'status' => 'active', 'payout_type' => 'PPS' ),
+    ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Pending Review Offer', $html, 'Spaced status value should be preserved and match pending review offer.' );
+    tmw_assert_true( false === strpos( $html, 'Active Only Offer' ), 'Active fixture should be filtered out by pending review status filter.' );
+};
 $tests['offers_dashboard_clear_all_link_has_clean_base_url'] = function() {
     tmw_reset_test_state();
     $_GET = array( 'tab' => 'offers', 'search' => '', 'payout_type' => array( 'pps' ), 'featured' => '', 'approval_required' => '', 'image_status' => '', 'logo_status' => '' );
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
     ob_start(); $page->render_page(); $html = (string) ob_get_clean();
-    tmw_assert_contains( 'tab=offers', $html, 'Clear all URL should point to offers tab.' );
-    tmw_assert_true( false !== strpos( $html, '>Clear all<' ), 'Clear all button should render.' );
-    tmw_assert_true( false === strpos( $html, 'Clear all</a></form>&search' ), 'Clear all URL must not carry search filter params.' );
+    $matched = preg_match( '/<a[^>]*href="([^"]+)"[^>]*>\s*Clear all\s*<\/a>/i', $html, $clear_all_matches );
+    tmw_assert_same( 1, (int) $matched, 'Clear all button should render with an href.' );
+    $clear_all_href = html_entity_decode( (string) $clear_all_matches[1] );
+    tmw_assert_contains( 'page=tmw-cr-slot-sidebar-banner', $clear_all_href, 'Clear all URL should preserve plugin page param.' );
+    tmw_assert_contains( 'tab=offers', $clear_all_href, 'Clear all URL should point to offers tab.' );
+    $parsed_query = (string) parse_url( $clear_all_href, PHP_URL_QUERY );
+    $query_params = array();
+    parse_str( $parsed_query, $query_params );
+    foreach ( array( 'search', 'payout_type', 'featured', 'approval_required', 'image_status', 'logo_status', 'tag', 'vertical', 'performs_in', 'optimized_for', 'accepted_country', 'niche', 'status', 'promotion_method' ) as $forbidden_param ) {
+        tmw_assert_true( ! array_key_exists( $forbidden_param, $query_params ), 'Clear all URL must not include stale filter param: ' . $forbidden_param );
+    }
 };
 $tests['offers_tab_does_not_readd_removed_standalone_import_sections'] = function() {
     tmw_reset_test_state();

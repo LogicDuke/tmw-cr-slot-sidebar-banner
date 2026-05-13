@@ -133,6 +133,8 @@ class TMW_CR_Slot_Admin_Page {
             isset( $input['allowed_offer_types'] ) ? $input['allowed_offer_types'] : array()
         );
 
+        $output['enforce_skipped_offers_exclusion'] = ! empty( $input['enforce_skipped_offers_exclusion'] ) ? 1 : 0;
+
         $api_key              = isset( $input['cr_api_key'] ) ? trim( (string) $input['cr_api_key'] ) : '';
         $output['cr_api_key'] = '' !== $api_key ? sanitize_text_field( $api_key ) : (string) $existing['cr_api_key'];
 
@@ -838,7 +840,7 @@ class TMW_CR_Slot_Admin_Page {
                         $is_active = empty( $offer['status'] ) || 'active' === strtolower( (string) $offer['status'] );
                         $is_unavailable = $this->offer_repository->is_offer_unavailable_account_pps( $offer );
                         $eligibility_summary = $this->offer_repository->get_offer_frontend_eligibility_summary( $offer, $settings, $country, $legacy_catalog );
-                        $block_reason_labels = array( 'valid' => 'Valid', 'not_allowed_type' => 'Not allowed type', 'business_rule_blocked' => 'Business rule blocked', 'unavailable_account_offer' => 'Unavailable for account', 'missing_valid_cta' => 'Missing valid CTA', 'country_not_allowed' => 'Country not allowed', 'missing_logo' => 'Missing logo' );
+                        $block_reason_labels = array( 'valid' => 'Valid', 'not_allowed_type' => 'Not allowed type', 'business_rule_blocked' => 'Business rule blocked', 'unavailable_account_offer' => 'Unavailable for account', 'missing_valid_cta' => 'Missing valid CTA', 'country_not_allowed' => 'Country not allowed', 'missing_logo' => 'Missing logo', 'skipped_offer' => 'Skipped offer' );
                         $logo_status_labels = array( 'manual_override' => 'Manual override', 'mapped_local' => 'Mapped local', 'auto_remote' => 'Remote', 'placeholder_only' => 'Placeholder only', 'missing' => 'Missing' );
                         ?>
                         <tr>
@@ -1022,6 +1024,13 @@ class TMW_CR_Slot_Admin_Page {
                 );
                 ?>
             </p>
+            <p>
+                <label>
+                    <input type="checkbox" name="<?php echo esc_attr( $this->option_key ); ?>[enforce_skipped_offers_exclusion]" value="1" <?php checked( ! empty( $settings['enforce_skipped_offers_exclusion'] ) ); ?> />
+                    <?php esc_html_e( 'Enforce skipped-offer exclusion from frontend banner pool', 'tmw-cr-slot-sidebar-banner' ); ?>
+                </label>
+            </p>
+            <p class="description"><?php esc_html_e( 'When enabled, any offer in the Skipped / Rejected list with decision=skip is excluded from the live banner. When disabled, the skipped list remains audit-only.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
             <?php $pps_coverage = $this->offer_repository->get_pps_logo_coverage_report( $settings ); ?>
             <p class="description">
                 <?php

@@ -3742,6 +3742,50 @@ $tests['offers_dashboard_changes_do_not_change_frontend_pool'] = function() {
     tmw_assert_true( false === strpos( wp_json_encode( $us ), '9647' ) && false === strpos( wp_json_encode( $us ), '9781' ), 'Unavailable offers remain excluded.' );
 };
 
+
+$tests['enforce_skipped_offers_exclusion_default_is_zero'] = function() {
+    tmw_reset_test_state();
+    $settings = TMW_CR_Slot_Sidebar_Banner::get_settings();
+    tmw_assert_same( 0, (int) $settings['enforce_skipped_offers_exclusion'], 'Default should be 0.' );
+};
+$tests['enforce_skipped_offers_exclusion_setting_saves_and_loads'] = function() {
+    tmw_reset_test_state();
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    $a = $page->sanitize_settings( array( 'enforce_skipped_offers_exclusion' => 1 ) );
+    tmw_assert_same( 1, (int) $a['enforce_skipped_offers_exclusion'], 'Enabled should save as 1.' );
+    $b = $page->sanitize_settings( array() );
+    tmw_assert_same( 0, (int) $b['enforce_skipped_offers_exclusion'], 'Missing should save as 0.' );
+};
+$tests['get_skipped_offer_ids_for_frontend_returns_only_skip_decisions'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    update_option( 'tmw_cr_slot_banner_skipped_offers', array(
+        '2492'=>array('offer_id'=>'2492','decision'=>'skip','reason'=>' male-targeted ','notes'=>'x'),
+        '1111'=>array('offer_id'=>'1111','decision'=>'review_later','reason'=>'r','notes'=>'n'),
+        '2222'=>array('offer_id'=>'2222','decision'=>'keep','reason'=>'k','notes'=>'n'),
+        'x'=>array('offer_id'=>'','decision'=>'skip','reason'=>'e','notes'=>'n'),
+    ) );
+    $set = $repo->get_skipped_offer_ids_for_frontend();
+    tmw_assert_true( isset( $set['2492'] ) && 1 === count( $set ), 'Only 2492 should remain.' );
+    tmw_assert_same( 'male-targeted', $set['2492']['reason'], 'Reason should be sanitized.' );
+    tmw_assert_true( ! isset( $set['2492']['notes'] ), 'Notes must not be returned.' );
+};
+$tests['frontend_pool_excludes_skip_decision_when_setting_on_for_synced_offer'] = function() {
+    tmw_reset_test_state(); $repo=new TMW_CR_Slot_Offer_Repository('offers','meta');
+    $repo->save_synced_offers(array('7001'=>array('id'=>'7001','name'=>'Safe PPS','status'=>'active','payout_type'=>'PPS')));
+    $repo->save_offer_overrides(array('7001'=>array('enabled'=>1,'final_url_override'=>'https://trk.example.test/7001','allowed_countries'=>'US')));
+    $repo->save_skipped_offers(array(array('offer_id'=>'7001','offer_name'=>'Safe PPS','decision'=>'skip','reason'=>'test')));
+    $offers=$repo->get_frontend_slot_offers('sidebar',array('allowed_offer_types'=>array('pps'),'slot_offer_ids'=>array('7001'),'enforce_skipped_offers_exclusion'=>1),array('cta_url'=>'','cta_text'=>'CTA'),'US',array());
+    tmw_assert_true(false===strpos(wp_json_encode($offers),'7001'),'7001 should be excluded.');
+};
+$tests['frontend_pool_does_not_exclude_review_later_decision_when_setting_on'] = function() {
+    tmw_reset_test_state(); $repo=new TMW_CR_Slot_Offer_Repository('offers','meta');
+    $repo->save_synced_offers(array('7002'=>array('id'=>'7002','name'=>'Safe PPS2','status'=>'active','payout_type'=>'PPS')));
+    $repo->save_offer_overrides(array('7002'=>array('enabled'=>1,'final_url_override'=>'https://trk.example.test/7002','allowed_countries'=>'US')));
+    $repo->save_skipped_offers(array(array('offer_id'=>'7002','offer_name'=>'Safe PPS2','decision'=>'review_later','reason'=>'test')));
+    $offers=$repo->get_frontend_slot_offers('sidebar',array('allowed_offer_types'=>array('pps'),'slot_offer_ids'=>array('7002'),'enforce_skipped_offers_exclusion'=>1),array('cta_url'=>'','cta_text'=>'CTA'),'US',array());
+    tmw_assert_true(false!==strpos(wp_json_encode($offers),'7002'),'7002 should remain eligible.');
+};
 $failures = array();
 $passes   = 0;
 

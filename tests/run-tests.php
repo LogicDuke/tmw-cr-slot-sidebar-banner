@@ -2827,6 +2827,93 @@ $tests['pps_expansion_audit_summary_counts_are_correct'] = function() {
 };
 
 
+
+$tests['dashboard_filter_pps_is_distinct_from_revshare_lifetime'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta', 'dashboard_meta' );
+    $repository->save_synced_offers(
+        array(
+            '9001' => array( 'id' => '9001', 'name' => 'Offer PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+            '9002' => array( 'id' => '9002', 'name' => 'Offer CPA Flat', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+        )
+    );
+
+    $model = $repository->get_dashboard_filter_model();
+    $types = (array) ( $model['supported']['payout_type'] ?? array() );
+
+    tmw_assert_true( in_array( 'pps', $types, true ), 'PPS should be present as a distinct payout type.' );
+    tmw_assert_true( in_array( 'revshare_lifetime', $types, true ), 'Revshare Lifetime should remain present for cpa_flat.' );
+};
+
+$tests['dashboard_filter_payout_type_dropdown_includes_full_cr_set'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'cr_api_key' => 'secure' ) );
+    $_GET = array( 'tab' => 'performance' );
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
+    $page = new TMW_CR_Slot_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repository, 'sidebar' );
+
+    ob_start();
+    $page->render_page();
+    $html = (string) ob_get_clean();
+
+    foreach ( array( 'pps', 'soi', 'doi', 'cpi', 'cpm', 'cpc', 'multi_cpa', 'revshare', 'revshare_lifetime' ) as $type_key ) {
+        tmw_assert_contains( 'value="' . $type_key . '"', $html, 'Payout filter dropdown should include ' . $type_key . '.' );
+    }
+};
+
+$tests['dashboard_filter_normalizes_ppc_alias_to_cpc'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta', 'dashboard_meta' );
+    $repository->save_synced_offers(
+        array(
+            '9010' => array( 'id' => '9010', 'name' => 'Offer PPC', 'status' => 'active', 'payout_type' => 'PPC' ),
+        )
+    );
+
+    $model = $repository->get_dashboard_filter_model();
+    $types = (array) ( $model['supported']['payout_type'] ?? array() );
+
+    tmw_assert_true( in_array( 'cpc', $types, true ), 'PPC alias should normalize to cpc.' );
+};
+
+$tests['frontend_pool_unchanged_for_8780_be_after_payout_alias_fix'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '8780' => array( 'id' => '8780', 'name' => 'Jerkmate - PPS', 'status' => 'active', 'tracking_url' => 'https://trk.example.com/jm?transaction_id=1' ) ) );
+    $repo->save_offer_overrides( array( '8780' => array( 'allowed_countries' => array( 'Belgium' ) ) ) );
+
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '8780' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    tmw_assert_same( '8780', (string) $offers[0]['id'], '8780 should remain eligible for Belgium.' );
+};
+
+$tests['frontend_pool_unchanged_for_10366_us_after_payout_alias_fix'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '10366' => array( 'id' => '10366', 'name' => 'NaughtyCharm - PPS', 'status' => 'active', 'tracking_url' => 'https://trk.example.com/nc?transaction_id=1' ) ) );
+    $repo->save_offer_overrides( array( '10366' => array( 'allowed_countries' => array( 'United States' ) ) ) );
+
+    $us_offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '10366' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'United States', array() );
+    tmw_assert_same( '10366', (string) $us_offers[0]['id'], '10366 should remain eligible for United States.' );
+
+    $be_offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '10366' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    tmw_assert_same( 0, count( $be_offers ), '10366 should remain excluded for Belgium.' );
+};
+
+$tests['unavailable_account_offers_still_excluded_after_payout_alias_fix'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers(
+        array(
+            '9647' => array( 'id' => '9647', 'name' => 'Blocked A - PPS', 'status' => 'active', 'tracking_url' => 'https://trk.example.com/a?transaction_id=1' ),
+            '9781' => array( 'id' => '9781', 'name' => 'Blocked B - PPS', 'status' => 'active', 'tracking_url' => 'https://trk.example.com/b?transaction_id=1' ),
+        )
+    );
+
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '9647', '9781' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'United States', array() );
+    tmw_assert_same( 0, count( $offers ), 'Unavailable account offers 9647 and 9781 must remain excluded.' );
+};
+
+
 $failures = array();
 $passes   = 0;
 

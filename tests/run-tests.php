@@ -440,9 +440,26 @@ $tests['logo_coverage_report_for_type_returns_zero_counts_for_empty_type'] = fun
         'a' => array( 'id' => 'a', 'name' => 'Jerkmate - PPS', 'status' => 'active' ),
     ) );
     $report = $repository->get_logo_coverage_report_for_type( 'cpi', array( 'allowed_offer_types' => array( 'pps' ) ) );
-    tmw_assert_same( 0, (int) $report['pps_candidates_total'], 'No CPI candidates should result in zero candidates.' );
-    tmw_assert_same( 0, (int) $report['pps_with_logo'], 'No CPI candidates should result in zero with-logo count.' );
-    tmw_assert_same( 0, (int) $report['pps_missing_logo'], 'No CPI candidates should result in zero missing-logo count.' );
+    tmw_assert_same( 0, (int) $report['cpi_candidates_total'], 'No CPI candidates should result in zero CPI candidates.' );
+    tmw_assert_same( 0, (int) $report['cpi_with_logo'], 'No CPI candidates should result in zero CPI with-logo count.' );
+    tmw_assert_same( 0, (int) $report['cpi_missing_logo'], 'No CPI candidates should result in zero CPI missing-logo count.' );
+    tmw_assert_true( isset( $report['pps_candidates_total'] ), 'Legacy pps_candidates_total key should remain available for compatibility.' );
+};
+
+
+$tests['logo_coverage_report_for_type_cpi_uses_type_specific_keys'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repository->save_synced_offers( array(
+        'cpi-has-logo' => array( 'id' => 'cpi-has-logo', 'name' => 'Jerkmate - CPI', 'status' => 'active' ),
+        'cpi-missing-logo' => array( 'id' => 'cpi-missing-logo', 'name' => 'Unknown Brand - CPI', 'status' => 'active' ),
+    ) );
+    $report = $repository->get_logo_coverage_report_for_type( 'cpi', array( 'allowed_offer_types' => array( 'cpi' ) ) );
+
+    tmw_assert_same( 2, (int) $report['cpi_candidates_total'], 'CPI report should use type-specific candidates key.' );
+    tmw_assert_same( 1, (int) $report['cpi_with_logo'], 'CPI report should use type-specific with-logo key.' );
+    tmw_assert_same( 1, (int) $report['cpi_missing_logo'], 'CPI report should use type-specific missing-logo key.' );
+    tmw_assert_true( isset( $report['pps_candidates_total'] ), 'Legacy PPS keys should remain present for compatibility.' );
 };
 
 $tests['sanitize_allowed_offer_types_accepts_cpi_and_cpm'] = function() {

@@ -584,7 +584,14 @@ class TMW_CR_Slot_Offer_Repository {
 
         $path = dirname( __DIR__ ) . '/assets/logos/80x80/' . $expected;
         if ( ! file_exists( $path ) ) {
-            if ( function_exists( 'error_log' ) ) {
+    
+        $report[ $report_type . '_candidates_total' ] = (int) $report['pps_candidates_total'];
+        $report[ $report_type . '_with_logo' ] = (int) $report['pps_with_logo'];
+        $report[ $report_type . '_missing_logo' ] = (int) $report['pps_missing_logo'];
+        $report[ $report_type . '_missing_logo_offers' ] = (array) $report['pps_missing_logo_offers'];
+        $report[ $report_type . '_with_logo_offers' ] = (array) $report['pps_with_logo_offers'];
+
+        if ( function_exists( 'error_log' ) ) {
                 $offer_id = sanitize_text_field( (string) ( $offer['id'] ?? '' ) );
                 error_log( sprintf( '[TMW-BANNER-LOGO] missing_logo offer_id=%s brand_key=%s expected=%s', $offer_id, $brand_key, $expected ) );
             }
@@ -1435,6 +1442,7 @@ class TMW_CR_Slot_Offer_Repository {
 
         $offers = array_values( array_filter( $offers ) );
 
+
         if ( function_exists( 'error_log' ) ) {
             error_log(
                 sprintf(
@@ -1478,6 +1486,8 @@ class TMW_CR_Slot_Offer_Repository {
             'pps_candidates_total' => 0,
             'pps_with_logo' => 0,
             'pps_missing_logo' => 0,
+            'pps_missing_logo_offers' => array(),
+            'pps_with_logo_offers' => array(),
             'blocked_pps_offers_excluded' => 0,
             'unavailable_account_pps_offers_excluded' => 0,
             'unavailable_account_offer_ids' => array(),
@@ -1512,6 +1522,7 @@ class TMW_CR_Slot_Offer_Repository {
             $logo_url = $this->get_offer_logo_url( $offer );
             if ( '' !== $logo_url ) {
                 ++$report['pps_with_logo'];
+                $report['pps_with_logo_offers'][] = sanitize_text_field( (string) ( $offer['id'] ?? '' ) );
                 continue;
             }
             ++$report['pps_missing_logo'];
@@ -1519,9 +1530,24 @@ class TMW_CR_Slot_Offer_Repository {
             $offer_name = sanitize_text_field( (string) ( $offer['name'] ?? '' ) );
             $brand_key = $this->get_offer_brand_key( $offer_name );
             $report['missing_logo_offer_ids'][] = $offer_id;
+            $report['pps_missing_logo_offers'][] = $offer_id;
             $report['missing_logo_offer_names'][] = $offer_name;
             $report['missing_logo_expected_brand_keys'][] = $brand_key;
         }
+
+
+        $report[ $report_type . '_candidates_total' ] = (int) $report['pps_candidates_total'];
+        $report[ $report_type . '_with_logo' ] = (int) $report['pps_with_logo'];
+        $report[ $report_type . '_missing_logo' ] = (int) $report['pps_missing_logo'];
+        $report[ $report_type . '_missing_logo_offers' ] = (array) $report['pps_missing_logo_offers'];
+        $report[ $report_type . '_with_logo_offers' ] = (array) $report['pps_with_logo_offers'];
+
+
+        $report[ $report_type . '_candidates_total' ] = (int) $report['pps_candidates_total'];
+        $report[ $report_type . '_with_logo' ] = (int) $report['pps_with_logo'];
+        $report[ $report_type . '_missing_logo' ] = (int) $report['pps_missing_logo'];
+        $report[ $report_type . '_missing_logo_offers' ] = (array) $report['pps_missing_logo_offers'];
+        $report[ $report_type . '_with_logo_offers' ] = (array) $report['pps_with_logo_offers'];
 
         if ( function_exists( 'error_log' ) ) {
             error_log(

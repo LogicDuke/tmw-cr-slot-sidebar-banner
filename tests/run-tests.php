@@ -3117,19 +3117,30 @@ $tests['dashboard_filter_pps_is_distinct_from_revshare_lifetime'] = function() {
     tmw_assert_true( in_array( 'revshare_lifetime', $types, true ), 'Revshare Lifetime should remain present for cpa_flat.' );
 };
 
-$tests['dashboard_filter_payout_type_dropdown_includes_full_cr_set'] = function() {
+$tests['dashboard_filter_payout_type_dropdown_is_data_driven'] = function() {
     tmw_reset_test_state();
     update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'cr_api_key' => 'secure' ) );
-    $_GET = array( 'tab' => 'performance' );
+    $_GET = array( 'tab' => 'offers' );
     $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
-    $page = new TMW_CR_Slot_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repository, 'sidebar' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repository, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    foreach ( array( 'soi', 'pps', 'doi', 'cpi', 'cpm', 'cpc' ) as $type_key ) {
+        tmw_assert_true( false === strpos( $html, 'name="payout_type[]" value="' . $type_key . '"' ), 'Unsupported payout type should not render: ' . $type_key );
+    }
+};
 
-    ob_start();
-    $page->render_page();
-    $html = (string) ob_get_clean();
-
-    foreach ( array( 'pps', 'soi', 'doi', 'cpi', 'cpm', 'cpc', 'multi_cpa', 'revshare', 'revshare_lifetime' ) as $type_key ) {
-        tmw_assert_contains( 'value="' . $type_key . '"', $html, 'Payout filter dropdown should include ' . $type_key . '.' );
+$tests['dashboard_filter_payout_type_dropdown_only_shows_current_synced_types'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'gf1' => array( 'id' => 'gf1', 'name' => 'Group Fallback - Generic', 'status' => 'active', 'payout_type' => 'cpa_flat' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'name="payout_type[]" value="multi_cpa"', $html, 'cpa_flat rows should expose multi_cpa.' );
+    tmw_assert_contains( 'name="payout_type[]" value="revshare_lifetime"', $html, 'cpa_flat rows should expose revshare_lifetime.' );
+    tmw_assert_contains( 'name="payout_type[]" value="fallback"', $html, 'Fallback rows should expose fallback type.' );
+    foreach ( array( 'soi', 'doi', 'cpi', 'cpm', 'cpc' ) as $type_key ) {
+        tmw_assert_true( false === strpos( $html, 'name="payout_type[]" value="' . $type_key . '"' ), 'Unrelated payout type should not render: ' . $type_key );
     }
 };
 
@@ -3187,32 +3198,22 @@ $tests['unavailable_account_offers_still_excluded_after_payout_alias_fix'] = fun
 
 
 
-$tests['offers_tab_payout_dropdown_includes_full_cr_set_with_proper_labels'] = function() {
+$tests['offers_tab_payout_dropdown_uses_current_synced_labels_only'] = function() {
     tmw_reset_test_state();
     update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'cr_api_key' => 'secure' ) );
     $_GET = array( 'tab' => 'offers' );
     $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta' );
-    $page = new TMW_CR_Slot_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repository, 'sidebar' );
+    $repository->save_synced_offers( array( 'tp1' => array( 'id' => 'tp1', 'name' => 'Type PPS', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repository, 'sidebar' );
 
     ob_start();
     $page->render_page();
     $html = (string) ob_get_clean();
 
-    $expected = array(
-        'pps' => 'PPS',
-        'soi' => 'SOI',
-        'doi' => 'DOI',
-        'cpi' => 'CPI',
-        'cpm' => 'CPM',
-        'cpc' => 'CPC',
-        'multi_cpa' => 'Multi-CPA',
-        'revshare' => 'Revshare',
-        'revshare_lifetime' => 'Revshare Lifetime',
-    );
-
-    foreach ( $expected as $value => $label ) {
-        tmw_assert_contains( 'value="' . $value . '"', $html, 'Offers payout dropdown should include value=' . $value . '.' );
-        tmw_assert_contains( '>' . $label . '<', $html, 'Offers payout dropdown should include label=' . $label . '.' );
+    tmw_assert_contains( 'name="payout_type[]" value="pps"', $html, 'Offers payout dropdown should include synced PPS value.' );
+    tmw_assert_contains( '>PPS<', $html, 'Offers payout dropdown should include PPS label.' );
+    foreach ( array( 'soi', 'doi', 'cpi', 'cpm', 'cpc' ) as $unsupported ) {
+        tmw_assert_true( false === strpos( $html, 'name="payout_type[]" value="' . $unsupported . '"' ), 'Unsynced payout type should not render: ' . $unsupported );
     }
 };
 
@@ -3821,12 +3822,14 @@ $tests['offers_tab_unavailable_account_badge_shown_for_9647_and_9781'] = functio
 };
 $tests['offers_tab_logo_status_filter_preserves_existing_payout_filter'] = function() {
     tmw_reset_test_state();
-    $_GET = array( 'tab' => 'offers' );
-    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    $_GET = array( 'tab' => 'offers', 'logo_status' => 'missing', 'payout_type' => array( 'pps' ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'lp1' => array( 'id' => 'lp1', 'name' => 'Logo Fixture PPS', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
     ob_start(); $page->render_page(); $html = (string) ob_get_clean();
-    foreach ( array( 'pps', 'soi', 'doi', 'cpi', 'cpm', 'cpc', 'multi_cpa', 'revshare', 'revshare_lifetime' ) as $payout_value ) {
-        tmw_assert_contains( 'value="' . $payout_value . '"', $html, 'Payout filter option missing: ' . $payout_value );
-    }
+    tmw_assert_contains( 'name="payout_type[]" value="pps"', $html, 'Payout filter option should render when fixture supports it.' );
+    tmw_assert_contains( 'name="payout_type[]" value="pps" checked', $html, 'Payout filter selection should remain checked when logo_status filter is also active.' );
+    tmw_assert_contains( 'name="logo_status"', $html, 'Logo status filter should remain rendered with payout filter selection.' );
 };
 $tests['offers_dashboard_empty_filter_params_are_ignored'] = function() {
     tmw_reset_test_state();
@@ -3844,12 +3847,12 @@ $tests['offers_dashboard_payout_type_pps_filter_returns_pps_rows'] = function() 
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
     $repo->save_synced_offers( array(
         'pp1' => array( 'id' => 'pp1', 'name' => 'Only PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
-        'pp2' => array( 'id' => 'pp2', 'name' => 'Not PPS', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+        'pp2' => array( 'id' => 'pp2', 'name' => 'No Match Type', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
     ) );
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
     ob_start(); $page->render_page(); $html = (string) ob_get_clean();
     tmw_assert_contains( 'Only PPS', $html, 'PPS offer should be visible when payout_type=pps.' );
-    tmw_assert_true( false === strpos( $html, 'Not PPS' ), 'Non-PPS offer should be filtered out when payout_type=pps.' );
+    tmw_assert_true( false === strpos( $html, 'No Match Type' ), 'Non-PPS offer should be filtered out when payout_type=pps.' );
 };
 $tests['offers_dashboard_combined_empty_params_with_payout_type_pps_returns_rows'] = function() {
     tmw_reset_test_state();
@@ -3944,6 +3947,55 @@ $tests['offers_dashboard_status_filter_preserves_spaced_status_value'] = functio
     tmw_assert_contains( 'Pending Review Offer', $html, 'Spaced status value should be preserved and match pending review offer.' );
     tmw_assert_true( false === strpos( $html, 'Active Only Offer' ), 'Active fixture should be filtered out by pending review status filter.' );
 };
+
+$tests['offers_dashboard_payout_type_pps_matches_name_even_when_raw_payout_type_cpa_flat'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'pps-fallback' => array( 'id' => 'pps-fallback', 'name' => 'Group Fallback - Dating PPS', 'status' => 'active', 'payout_type' => 'cpa_flat' ) ) );
+    $result = $repo->get_filtered_synced_offers_for_admin( array( 'payout_type' => array( 'pps' ) ), array() );
+    tmw_assert_same( 1, (int) $result['total'], 'PPS should match by offer-name signal even with raw cpa_flat.' );
+};
+
+$tests['offers_dashboard_payout_type_soi_matches_name_even_when_raw_payout_type_cpa_flat'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'soi-fallback' => array( 'id' => 'soi-fallback', 'name' => 'Group Fallback - Example SOI', 'status' => 'active', 'payout_type' => 'cpa_flat' ) ) );
+    $result = $repo->get_filtered_synced_offers_for_admin( array( 'payout_type' => array( 'soi' ) ), array() );
+    tmw_assert_same( 1, (int) $result['total'], 'SOI should match by offer-name signal even with raw cpa_flat.' );
+};
+
+$tests['dashboard_metadata_layer_includes_payout_type'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta', 'dashboard_meta' );
+    $repo->save_synced_offers( array( 'meta-soi' => array( 'id' => 'meta-soi', 'name' => 'Group Fallback - Example SOI', 'status' => 'active', 'payout_type' => 'cpa_flat' ) ) );
+    $meta = (array) get_option( 'dashboard_meta', array() );
+    tmw_assert_true( isset( $meta['meta-soi']['payout_type'] ), 'Dashboard metadata layer should include payout_type key.' );
+    tmw_assert_true( in_array( 'soi', (array) $meta['meta-soi']['payout_type'], true ), 'Metadata payout_type should include normalized SOI.' );
+};
+
+
+$tests['dashboard_metadata_layer_preserves_existing_payout_type_on_resync'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta', 'dashboard_meta' );
+    $repo->save_synced_offers( array( 'meta-preserve' => array( 'id' => 'meta-preserve', 'name' => 'First SOI Signal', 'status' => 'active', 'payout_type' => 'SOI' ) ) );
+    $first = (array) get_option( 'dashboard_meta', array() );
+    tmw_assert_true( in_array( 'soi', (array) ( $first['meta-preserve']['payout_type'] ?? array() ), true ), 'Initial metadata should include soi.' );
+
+    $repo->save_synced_offers( array( 'meta-preserve' => array( 'id' => 'meta-preserve', 'name' => 'Generic Offer Name', 'status' => 'active' ) ) );
+    $second = $repo->get_dashboard_metadata_layer();
+    tmw_assert_true( in_array( 'soi', (array) ( $second['meta-preserve']['payout_type'] ?? array() ), true ), 'Resync should preserve existing payout_type metadata when new signal is missing.' );
+};
+
+$tests['payout_filter_does_not_offer_soi_when_no_soi_rows_exist'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'n1' => array( 'id' => 'n1', 'name' => 'Group Fallback - Generic', 'status' => 'active', 'payout_type' => 'cpa_flat' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_true( false === strpos( $html, 'name="payout_type[]" value="soi"' ), 'SOI should not be shown when no SOI rows exist.' );
+};
+
 $tests['offers_dashboard_payout_type_soi_matches_raw_offer_when_metadata_wrong'] = function() {
     tmw_reset_test_state();
     $_GET = array( 'tab' => 'offers', 'payout_type' => array( 'soi' ) );

@@ -95,6 +95,7 @@ class TMW_CR_Slot_Offer_Repository {
                 'accepted_country' => $this->sanitize_country_codes( isset( $families['accepted_country'] ) ? $families['accepted_country'] : array() ),
                 'niche' => $this->sanitize_list_values( isset( $families['niche'] ) ? $families['niche'] : array() ),
                 'promotion_method' => $this->sanitize_list_values( isset( $families['promotion_method'] ) ? $families['promotion_method'] : array() ),
+                'payout_type' => $this->normalize_query_values( isset( $families['payout_type'] ) ? $families['payout_type'] : array(), 'payout_type' ),
             );
         }
         return $clean;

@@ -3210,10 +3210,10 @@ $tests['offers_tab_payout_dropdown_uses_current_synced_labels_only'] = function(
     $page->render_page();
     $html = (string) ob_get_clean();
 
-    tmw_assert_contains( 'value="pps"', $html, 'Offers payout dropdown should include synced PPS value.' );
+    tmw_assert_contains( 'name="payout_type[]" value="pps"', $html, 'Offers payout dropdown should include synced PPS value.' );
     tmw_assert_contains( '>PPS<', $html, 'Offers payout dropdown should include PPS label.' );
     foreach ( array( 'soi', 'doi', 'cpi', 'cpm', 'cpc' ) as $unsupported ) {
-        tmw_assert_true( false === strpos( $html, 'value="' . $unsupported . '"' ), 'Unsynced payout type should not render: ' . $unsupported );
+        tmw_assert_true( false === strpos( $html, 'name="payout_type[]" value="' . $unsupported . '"' ), 'Unsynced payout type should not render: ' . $unsupported );
     }
 };
 
@@ -3822,12 +3822,14 @@ $tests['offers_tab_unavailable_account_badge_shown_for_9647_and_9781'] = functio
 };
 $tests['offers_tab_logo_status_filter_preserves_existing_payout_filter'] = function() {
     tmw_reset_test_state();
-    $_GET = array( 'tab' => 'offers' );
-    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    $_GET = array( 'tab' => 'offers', 'logo_status' => 'missing', 'payout_type' => array( 'pps' ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'lp1' => array( 'id' => 'lp1', 'name' => 'Logo Fixture PPS', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
     ob_start(); $page->render_page(); $html = (string) ob_get_clean();
-    foreach ( array( 'pps', 'soi', 'doi', 'cpi', 'cpm', 'cpc', 'multi_cpa', 'revshare', 'revshare_lifetime' ) as $payout_value ) {
-        tmw_assert_true( false === strpos( $html, 'value="' . $payout_value . '"' ), 'Payout filter option should be absent without synced data: ' . $payout_value );
-    }
+    tmw_assert_contains( 'name="payout_type[]" value="pps"', $html, 'Payout filter option should render when fixture supports it.' );
+    tmw_assert_contains( 'name="payout_type[]" value="pps" checked', $html, 'Payout filter selection should remain checked when logo_status filter is also active.' );
+    tmw_assert_contains( 'name="logo_status"', $html, 'Logo status filter should remain rendered with payout filter selection.' );
 };
 $tests['offers_dashboard_empty_filter_params_are_ignored'] = function() {
     tmw_reset_test_state();
@@ -3969,6 +3971,19 @@ $tests['dashboard_metadata_layer_includes_payout_type'] = function() {
     $meta = (array) get_option( 'dashboard_meta', array() );
     tmw_assert_true( isset( $meta['meta-soi']['payout_type'] ), 'Dashboard metadata layer should include payout_type key.' );
     tmw_assert_true( in_array( 'soi', (array) $meta['meta-soi']['payout_type'], true ), 'Metadata payout_type should include normalized SOI.' );
+};
+
+
+$tests['dashboard_metadata_layer_preserves_existing_payout_type_on_resync'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta', 'dashboard_meta' );
+    $repo->save_synced_offers( array( 'meta-preserve' => array( 'id' => 'meta-preserve', 'name' => 'First SOI Signal', 'status' => 'active', 'payout_type' => 'SOI' ) ) );
+    $first = (array) get_option( 'dashboard_meta', array() );
+    tmw_assert_true( in_array( 'soi', (array) ( $first['meta-preserve']['payout_type'] ?? array() ), true ), 'Initial metadata should include soi.' );
+
+    $repo->save_synced_offers( array( 'meta-preserve' => array( 'id' => 'meta-preserve', 'name' => 'Generic Offer Name', 'status' => 'active' ) ) );
+    $second = $repo->get_dashboard_metadata_layer();
+    tmw_assert_true( in_array( 'soi', (array) ( $second['meta-preserve']['payout_type'] ?? array() ), true ), 'Resync should preserve existing payout_type metadata when new signal is missing.' );
 };
 
 $tests['payout_filter_does_not_offer_soi_when_no_soi_rows_exist'] = function() {

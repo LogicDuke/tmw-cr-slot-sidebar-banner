@@ -1918,6 +1918,13 @@ class TMW_CR_Slot_Admin_Page {
         echo '</div></div>';
     }
 
+    /**
+     * Read a positive integer page value from the query string.
+     *
+     * @param string $key Query parameter key.
+     * @param int    $default Fallback page number.
+     * @return int
+     */
     protected function get_positive_query_int( $key, $default = 1 ) {
         if ( ! isset( $_GET[ $key ] ) ) {
             return max( 1, (int) $default );
@@ -1932,6 +1939,14 @@ class TMW_CR_Slot_Admin_Page {
         return $value > 0 ? $value : max( 1, (int) $default );
     }
 
+    /**
+     * Paginate an in-memory audit row array for admin rendering.
+     *
+     * @param array<int,array<string,mixed>> $rows Rows to slice.
+     * @param int $page Requested page.
+     * @param int $per_page Rows per page.
+     * @return array<string,mixed>
+     */
     protected function paginate_rows( array $rows, $page, $per_page = 25 ) {
         $total_rows  = count( $rows );
         $per_page    = max( 1, (int) $per_page );
@@ -1948,6 +1963,15 @@ class TMW_CR_Slot_Admin_Page {
         );
     }
 
+    /**
+     * Render Slot Setup audit pagination controls with preserved query args.
+     *
+     * @param int $current_page Current page number.
+     * @param int $total_pages Total available pages.
+     * @param string $page_arg Query key for the paged audit.
+     * @param array<int,string> $preserve_args Extra query args to preserve.
+     * @return void
+     */
     protected function render_audit_pagination( $current_page, $total_pages, $page_arg, $preserve_args = array() ) {
         if ( $total_pages <= 1 ) {
             return;
@@ -1982,6 +2006,14 @@ class TMW_CR_Slot_Admin_Page {
         echo '</div></div>';
     }
 
+    /**
+     * Apply PPS audit filter/search for admin-only reporting rows.
+     *
+     * @param array<int,array<string,mixed>> $rows Full PPS audit rows.
+     * @param string $filter Filter slug.
+     * @param string $search Case-insensitive search token.
+     * @return array<int,array<string,mixed>>
+     */
     protected function apply_pps_audit_filter( array $rows, $filter, $search ) {
         $allowed_filters = array( 'all', 'frontend_ready_only', 'missing_cta', 'missing_country_override', 'missing_logo', 'blocked_by_business_rule', 'override_only', 'synced' );
         if ( ! in_array( $filter, $allowed_filters, true ) ) {

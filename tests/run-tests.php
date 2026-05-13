@@ -3228,6 +3228,45 @@ $tests['manual_audit_pagination_page_2_returns_rows_26_through_50'] = function()
     tmw_assert_true( false === strpos( $html, 'MAN_ROW_051' ), 'Manual page 2 should exclude row 51.' );
 };
 
+$tests['pps_audit_pagination_clamps_invalid_page_values'] = function() {
+    $repo = new TMW_Test_Audit_Repo( 'o', 'm' );
+    $repo->pps_rows = tmw_make_audit_rows( 60, 'PPS' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+
+    tmw_reset_test_state(); $_GET = array( 'tab' => 'slot-setup', 'pps_audit_page' => '-5' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'PPS_ROW_001', $html, 'Negative page should normalize to page 1.' );
+    tmw_assert_true( false === strpos( $html, 'PPS_ROW_026' ), 'Negative page should exclude row 26.' );
+
+    tmw_reset_test_state(); $_GET = array( 'tab' => 'slot-setup', 'pps_audit_page' => 'abc' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'PPS_ROW_025', $html, 'Non numeric page should normalize to page 1.' );
+    tmw_assert_true( false === strpos( $html, 'PPS_ROW_051' ), 'Non numeric page should exclude row 51.' );
+
+    tmw_reset_test_state(); $_GET = array( 'tab' => 'slot-setup', 'pps_audit_page' => '999' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'PPS_ROW_051', $html, 'Too-high page should clamp to last page.' );
+    tmw_assert_contains( 'PPS_ROW_060', $html, 'Last page should include row 60.' );
+    tmw_assert_true( false === strpos( $html, 'PPS_ROW_025' ), 'Clamped last page should exclude early rows.' );
+};
+
+$tests['manual_audit_pagination_independent_from_pps_pagination'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup', 'manual_audit_page' => '3', 'pps_audit_page' => '2' );
+    $repo = new TMW_Test_Audit_Repo( 'o', 'm' );
+    $repo->manual_rows = tmw_make_audit_rows( 60, 'MAN' );
+    $repo->pps_rows = tmw_make_audit_rows( 60, 'PPS' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'MAN_ROW_051', $html, 'Manual page 3 should include row 51.' );
+    tmw_assert_contains( 'MAN_ROW_060', $html, 'Manual page 3 should include row 60.' );
+    tmw_assert_true( false === strpos( $html, 'MAN_ROW_050' ), 'Manual page 3 should exclude row 50.' );
+    tmw_assert_contains( 'PPS_ROW_026', $html, 'PPS page 2 should include row 26.' );
+    tmw_assert_contains( 'PPS_ROW_050', $html, 'PPS page 2 should include row 50.' );
+    tmw_assert_true( false === strpos( $html, 'PPS_ROW_025' ), 'PPS page 2 should exclude row 25.' );
+    tmw_assert_true( false === strpos( $html, 'PPS_ROW_051' ), 'PPS page 2 should exclude row 51.' );
+};
+
 $failures = array();
 $passes   = 0;
 
@@ -3247,4 +3286,3 @@ echo "\nTotal: {$passes} passed, " . count( $failures ) . " failed\n";
 if ( ! empty( $failures ) ) {
     exit( 1 );
 }
-

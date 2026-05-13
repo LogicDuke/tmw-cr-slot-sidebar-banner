@@ -755,7 +755,8 @@ class TMW_CR_Slot_Admin_Page {
             (array) ( $filter_model['supported']['payout_type'] ?? array() ),
             $payout_labels
         );
-        $offers_summary = $this->build_offers_count_summary( $result, $args, $payout_labels );
+        $reconciliation_counts = $this->offer_repository->get_admin_payout_reconciliation_counts();
+        $offers_summary = $this->build_offers_count_summary( $result, $args, $payout_labels, $reconciliation_counts );
         $performs_in_options = $country_options;
         $optimized_for_options = $this->build_filter_option_map( (array) ( $filter_model['supported']['optimized_for'] ?? array() ) );
         $accepted_country_options = $country_options;
@@ -793,6 +794,7 @@ class TMW_CR_Slot_Admin_Page {
             <br />
             <?php esc_html_e( 'Payout filters use normalized detected type keys from synced offers. Raw payout strings (for example cpa_flat) can still appear in the payout display.', 'tmw-cr-slot-sidebar-banner' ); ?>
         </p>
+        <?php $this->render_payout_reconciliation_panel( $reconciliation_counts, $payout_labels ); ?>
 
         <table class="widefat striped">
             <?php if ( ! empty( $result['active_filters'] ) ) : ?>
@@ -2127,7 +2129,7 @@ class TMW_CR_Slot_Admin_Page {
      *
      * @return array<string,string>
      */
-    protected function build_offers_count_summary( $result, $args, $payout_labels ) {
+    protected function build_offers_count_summary( $result, $args, $payout_labels, $reconciliation_counts = array() ) {
         $visible_count = count( (array) ( $result['items'] ?? array() ) );
         $source_total  = isset( $result['source_total'] ) ? (int) $result['source_total'] : (int) $visible_count;
         $matched_total = isset( $result['total'] ) ? (int) $result['total'] : (int) $visible_count;
@@ -2166,7 +2168,21 @@ class TMW_CR_Slot_Admin_Page {
                 $labels[] = isset( $payout_labels[ $value ] ) ? $payout_labels[ $value ] : strtoupper( $value );
             }
             if ( ! empty( $labels ) ) {
-                $context = sprintf( 'Payout Type: %1$s — %2$d matched from %3$d synced offers', implode( ', ', $labels ), $matched_total, $source_total );
+                $context = sprintf( 'Payout Type: %1$s — %2$d admin-filter matched from %3$d synced offers', implode( ', ', $labels ), $matched_total, $source_total );
+                foreach ( $payout_values as $value ) {
+                    $normalized = $this->normalize_payout_summary_value( (string) $value );
+                    if ( '' === $normalized ) {
+                        continue;
+                    }
+                    $label = isset( $payout_labels[ $normalized ] ) ? $payout_labels[ $normalized ] : strtoupper( $normalized );
+                    $raw_count = (int) ( $this->get_reconciliation_family_count( $reconciliation_counts, 'raw', $normalized ) );
+                    $detected_count = (int) ( $this->get_reconciliation_family_count( $reconciliation_counts, 'detected', $normalized ) );
+                    $fallback_group_count = (int) $this->get_reconciliation_group_family_count( $reconciliation_counts, $normalized );
+                    $context .= sprintf( ' | Raw payout_type %1$s rows: %2$d | Detected local %1$s rows: %3$d | Group fallback/local rows in this family: %4$d', $label, $raw_count, $detected_count, $fallback_group_count );
+                    if ( 'revshare_lifetime' === $normalized ) {
+                        $context .= sprintf( ' | Raw cpa_flat rows mapped locally: %d', (int) ( $reconciliation_counts['raw']['cpa_flat'] ?? 0 ) );
+                    }
+                }
             }
         }
 
@@ -2174,6 +2190,72 @@ class TMW_CR_Slot_Admin_Page {
             'headline' => $headline,
             'context'  => $context,
         );
+    }
+
+    protected function get_reconciliation_family_count( $counts, $bucket, $family ) {
+        $bucket = sanitize_key( (string) $bucket );
+        $family = sanitize_key( (string) $family );
+        if ( 'raw' === $bucket ) {
+            $raw_map = array(
+                'multi_cpa' => 'cpa',
+                'revshare' => 'cpa_percentage',
+                'revshare_lifetime' => 'cpa_flat',
+                'smartlink' => 'smartlink',
+                'fallback' => 'fallback',
+            );
+            $raw_key = isset( $raw_map[ $family ] ) ? $raw_map[ $family ] : $family;
+            return (int) ( $counts['raw'][ $raw_key ] ?? 0 );
+        }
+        return (int) ( $counts[ $bucket ][ $family ] ?? 0 );
+    }
+
+    protected function render_payout_reconciliation_panel( $counts, $payout_labels ) {
+        $families = array( 'pps', 'soi', 'doi', 'cpc', 'cpi', 'cpm', 'multi_cpa', 'revshare', 'revshare_lifetime', 'fallback', 'smartlink' );
+        $source_class = (array) ( $counts['source_class'] ?? array() );
+        $group_fallback_rows = (int) ( $source_class['group_fallback'] ?? 0 ) + (int) ( $source_class['fallback'] ?? 0 );
+        ?>
+        <div class="notice notice-info inline">
+            <p><strong><?php esc_html_e( 'Payout count reconciliation', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
+            <p class="description"><?php esc_html_e( 'These counts use local synced data. CrakRevenue website counts may differ because local counts include synced fallback/group rows and normalized detected payout families.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+            <p><?php echo esc_html( sprintf( 'Total synced offers: %d', (int) ( $counts['source_total'] ?? 0 ) ) ); ?></p>
+            <p><?php echo esc_html( sprintf( 'Normal offers: %d', (int) ( $source_class['normal_offer'] ?? 0 ) ) ); ?></p>
+            <p><?php echo esc_html( sprintf( 'Group fallback/fallback rows: %d', $group_fallback_rows ) ); ?></p>
+            <p><?php echo esc_html( sprintf( 'Smartlink rows: %d', (int) ( $source_class['smartlink'] ?? 0 ) ) ); ?></p>
+            <table class="widefat striped">
+                <thead>
+                    <tr>
+                        <th><?php esc_html_e( 'Payout family', 'tmw-cr-slot-sidebar-banner' ); ?></th>
+                        <th><?php esc_html_e( 'Raw payout_type', 'tmw-cr-slot-sidebar-banner' ); ?></th>
+                        <th><?php esc_html_e( 'Detected local type', 'tmw-cr-slot-sidebar-banner' ); ?></th>
+                        <th><?php esc_html_e( 'Admin filter count', 'tmw-cr-slot-sidebar-banner' ); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ( $families as $family ) : ?>
+                        <?php $label = isset( $payout_labels[ $family ] ) ? $payout_labels[ $family ] : strtoupper( $family ); ?>
+                        <tr>
+                            <td><?php echo esc_html( $label ); ?></td>
+                            <td><?php echo esc_html( (string) $this->get_reconciliation_family_count( $counts, 'raw', $family ) ); ?></td>
+                            <td><?php echo esc_html( (string) $this->get_reconciliation_family_count( $counts, 'detected', $family ) ); ?></td>
+                            <td><?php echo esc_html( (string) $this->get_reconciliation_family_count( $counts, 'admin_filter', $family ) ); ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+            <p class="description">
+                <?php esc_html_e( 'Raw CR/API field counts use the synced raw payout_type field only.', 'tmw-cr-slot-sidebar-banner' ); ?><br />
+                <?php esc_html_e( 'Detected local type counts use offer name/type detection.', 'tmw-cr-slot-sidebar-banner' ); ?><br />
+                <?php esc_html_e( 'Admin filter counts use the same normalized families as the Offers filters.', 'tmw-cr-slot-sidebar-banner' ); ?><br />
+                <?php esc_html_e( 'These counts may differ from the CrakRevenue website dashboard.', 'tmw-cr-slot-sidebar-banner' ); ?>
+            </p>
+        </div>
+        <?php
+    }
+
+    protected function get_reconciliation_group_family_count( $counts, $family ) {
+        $family = sanitize_key( (string) $family );
+        $values = (array) ( $counts['group_admin_filter'] ?? array() );
+        return (int) ( $values[ $family ] ?? 0 );
     }
 
     /**

@@ -4109,7 +4109,7 @@ $tests['offers_tab_summary_shows_matched_and_source_count_with_payout_filter'] =
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
     ob_start(); $page->render_page(); $html = (string) ob_get_clean();
     tmw_assert_contains( 'of 2 matched offers from 3 synced offers', $html, 'Summary should show matched total and source synced total.' );
-    tmw_assert_contains( 'Payout Type: PPS — 2 matched from 3 synced offers', $html, 'Summary context should show selected payout labels.' );
+    tmw_assert_contains( 'Payout Type: PPS — 2 admin-filter matched from 3 synced offers', $html, 'Summary context should show selected payout labels.' );
     tmw_assert_true( false === strpos( $html, 'Only CPC' ), 'CPC-only row should not be visible for PPS filter.' );
 };
 $tests['offers_tab_summary_handles_zero_matches'] = function() {
@@ -4148,7 +4148,7 @@ $tests['offers_tab_summary_preserves_filter_badges'] = function() {
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
     ob_start(); $page->render_page(); $html = (string) ob_get_clean();
     tmw_assert_contains( 'tmw-cr-filter-panel__count', $html, 'Existing selected-filter count badges should remain visible.' );
-    tmw_assert_contains( 'Payout Type: PPS — 1 matched from 1 synced offers', $html, 'Summary should render alongside existing badges.' );
+    tmw_assert_contains( 'Payout Type: PPS — 1 admin-filter matched from 1 synced offers', $html, 'Summary should render alongside existing badges.' );
 };
 $tests['offers_tab_payout_clarity_shows_raw_and_detected_meaning'] = function() {
     tmw_reset_test_state();
@@ -4169,6 +4169,125 @@ $tests['offers_tab_summary_normalizes_legacy_payout_alias_labels'] = function() 
     ob_start(); $page->render_page(); $html = (string) ob_get_clean();
     tmw_assert_contains( 'Payout Type: Revshare Lifetime', $html, 'Legacy alias label should render with canonical payout family label.' );
     tmw_assert_true( false === strpos( $html, 'Payout Type: CPA_FLAT' ), 'Legacy alias should not be rendered as raw CPA_FLAT label.' );
+};
+$tests['payout_reconciliation_counts_source_classes'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array(
+        'n1' => array( 'id' => 'n1', 'name' => 'Normal PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+        'g1' => array( 'id' => 'g1', 'name' => 'Group Fallback - Brand PPS', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+        's1' => array( 'id' => 's1', 'name' => 'CR Smartlink - Global', 'status' => 'active', 'payout_type' => 'unknown_type' ),
+        'u1' => array( 'id' => 'u1', 'name' => 'Mystery Offer', 'status' => 'active', 'payout_type' => '' ),
+    ) );
+    $counts = $repo->get_admin_payout_reconciliation_counts();
+    tmw_assert_same( 4, (int) $counts['source_total'], 'Source total should count all synced rows.' );
+    tmw_assert_same( 2, (int) $counts['source_class']['normal_offer'], 'Normal offers should include standard + unknown-non-group rows.' );
+    tmw_assert_same( 1, (int) $counts['source_class']['group_fallback'], 'Group fallback rows should be counted.' );
+    tmw_assert_same( 1, (int) $counts['source_class']['smartlink'], 'Smartlink rows should be counted.' );
+};
+$tests['payout_reconciliation_counts_separate_raw_detected_and_admin_filter'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array(
+        'a' => array( 'id' => 'a', 'name' => 'Brand PPS', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+        'b' => array( 'id' => 'b', 'name' => 'Brand SOI', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+        'c' => array( 'id' => 'c', 'name' => 'Brand Raw PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+    ) );
+    $counts = $repo->get_admin_payout_reconciliation_counts();
+    tmw_assert_same( 2, (int) $counts['raw']['cpa_flat'], 'Raw cpa_flat count should be 2.' );
+    tmw_assert_same( 1, (int) $counts['raw']['pps'], 'Raw PPS count should be 1.' );
+    tmw_assert_same( 2, (int) $counts['detected']['pps'], 'Detected PPS should include Brand PPS and Brand Raw PPS.' );
+    tmw_assert_same( 1, (int) $counts['detected']['soi'], 'Detected SOI should include Brand SOI.' );
+    tmw_assert_same( 2, (int) $counts['admin_filter']['pps'], 'Admin filter PPS should include Brand PPS and Brand Raw PPS.' );
+    tmw_assert_same( 1, (int) $counts['admin_filter']['soi'], 'Admin filter SOI should include Brand SOI.' );
+    tmw_assert_same( 2, (int) $counts['admin_filter']['revshare_lifetime'], 'Admin filter revshare_lifetime should include cpa_flat rows.' );
+    tmw_assert_same( 2, (int) $counts['admin_filter']['multi_cpa'], 'Admin filter multi_cpa should include cpa_flat rows.' );
+};
+$tests['payout_reconciliation_counts_source_total_excludes_malformed_rows'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    update_option(
+        'offers',
+        array(
+            'v1' => array( 'id' => 'v1', 'name' => 'Valid PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+            'bad1' => 'malformed-row',
+        )
+    );
+    $counts = $repo->get_admin_payout_reconciliation_counts();
+    tmw_assert_same( 1, (int) $counts['source_total'], 'source_total should count only processed valid offer rows.' );
+    tmw_assert_same( 1, (int) $counts['raw']['pps'], 'Raw counts should reflect only valid rows.' );
+    tmw_assert_same( 1, (int) $counts['detected']['pps'], 'Detected counts should reflect only valid rows.' );
+    tmw_assert_same( 1, (int) $counts['admin_filter']['pps'], 'Admin filter counts should reflect only valid rows.' );
+    tmw_assert_same( 1, (int) $counts['source_class']['normal_offer'], 'Source class counts should reflect only valid rows.' );
+};
+$tests['offers_tab_renders_payout_reconciliation_panel'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array(
+        'p1' => array( 'id' => 'p1', 'name' => 'PPS One', 'status' => 'active', 'payout_type' => 'PPS' ),
+        's1' => array( 'id' => 's1', 'name' => 'SOI One', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+        'r1' => array( 'id' => 'r1', 'name' => 'Rev Lifetime', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+    ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Payout count reconciliation', $html, 'Panel title should render.' );
+    tmw_assert_contains( 'Raw payout_type', $html, 'Raw header should render.' );
+    tmw_assert_contains( 'Detected local type', $html, 'Detected header should render.' );
+    tmw_assert_contains( 'Admin filter count', $html, 'Admin header should render.' );
+    tmw_assert_contains( 'Group fallback/fallback rows', $html, 'Source class group/fallback summary should render.' );
+    tmw_assert_contains( 'PPS', $html, 'PPS family row should render.' );
+    tmw_assert_contains( 'SOI', $html, 'SOI family row should render.' );
+    tmw_assert_contains( 'Revshare Lifetime', $html, 'Revshare Lifetime family row should render.' );
+};
+$tests['offers_tab_active_payout_summary_shows_raw_detected_admin_counts'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'payout_type' => array( 'pps' ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array(
+        'x1' => array( 'id' => 'x1', 'name' => 'Name PPS only', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+        'x2' => array( 'id' => 'x2', 'name' => 'Raw PPS row', 'status' => 'active', 'payout_type' => 'PPS' ),
+    ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'admin-filter matched', $html, 'Summary should explicitly say admin-filter matched.' );
+    tmw_assert_contains( 'Raw payout_type PPS rows: 1', $html, 'Summary should include raw PPS rows.' );
+    tmw_assert_contains( 'Detected local PPS rows: 2', $html, 'Summary should include detected PPS rows.' );
+};
+$tests['offers_tab_revshare_lifetime_context_mentions_cpa_flat_mapping'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'payout_type' => array( 'revshare_lifetime' ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array(
+        'rv1' => array( 'id' => 'rv1', 'name' => 'Group Fallback - Lifetime', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+    ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Raw cpa_flat rows mapped locally', $html, 'Revshare Lifetime context should mention cpa_flat mapped rows.' );
+};
+$tests['payout_reconciliation_counts_do_not_change_filter_results'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array(
+        'q1' => array( 'id' => 'q1', 'name' => 'Q PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+        'q2' => array( 'id' => 'q2', 'name' => 'Q SOI', 'status' => 'active', 'payout_type' => 'SOI' ),
+        'q3' => array( 'id' => 'q3', 'name' => 'Q CPA Flat PPS', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+    ) );
+    $before = $repo->get_filtered_synced_offers_for_admin( array( 'payout_type' => array( 'pps' ) ), array() );
+    $repo->get_admin_payout_reconciliation_counts();
+    $after = $repo->get_filtered_synced_offers_for_admin( array( 'payout_type' => array( 'pps' ) ), array() );
+    tmw_assert_same( (int) $before['total'], (int) $after['total'], 'Filter totals must remain unchanged.' );
+    tmw_assert_same( wp_json_encode( $before['items'] ), wp_json_encode( $after['items'] ), 'Matched item ordering/content must remain unchanged.' );
+};
+$tests['payout_reconciliation_panel_handles_empty_dataset'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Payout count reconciliation', $html, 'Panel should render even when dataset is empty.' );
+    tmw_assert_contains( 'Total synced offers: 0', $html, 'Panel should show zero total safely.' );
+    tmw_assert_true( false === strpos( strtolower( $html ), 'warning' ), 'Panel rendering should not emit warnings.' );
 };
 $tests['offers_tab_summary_handles_out_of_range_page_without_invalid_range'] = function() {
     tmw_reset_test_state();
@@ -4218,6 +4337,28 @@ $tests['offers_dashboard_changes_do_not_change_frontend_pool'] = function() {
     tmw_assert_true( false !== strpos( wp_json_encode( $us ), '10366' ), '10366 remains eligible for US.' );
     tmw_assert_true( false === strpos( wp_json_encode( $be ), '10366' ), '10366 remains excluded for BE.' );
     tmw_assert_true( false === strpos( wp_json_encode( $us ), '9647' ) && false === strpos( wp_json_encode( $us ), '9781' ), 'Unavailable offers remain excluded.' );
+};
+$tests['frontend_pool_unchanged_after_payout_reconciliation_counts'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        '8780' => array( 'id' => '8780', 'name' => 'Jerkmate', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '10366' => array( 'id' => '10366', 'name' => 'NaughtyCharm', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '9647' => array( 'id' => '9647', 'name' => 'Group Fallback - Tapyn - PPS - Mobile - Android', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '9781' => array( 'id' => '9781', 'name' => 'Group Fallback - Dating.com PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+        'x-soi' => array( 'id' => 'x-soi', 'name' => 'SOI Offer', 'status' => 'active', 'payout_type' => 'SOI' ),
+    ) );
+    $repo->save_offer_overrides( array(
+        '8780' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/a', 'allowed_countries' => 'Belgium' ),
+        '10366' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/b', 'allowed_countries' => 'United States' ),
+    ) );
+    $be = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '8780', '10366', '9647', '9781', 'x-soi' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    $us = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '8780', '10366', '9647', '9781', 'x-soi' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'United States', array() );
+    tmw_assert_true( false !== strpos( wp_json_encode( $be ), '8780' ), '8780 remains eligible for BE.' );
+    tmw_assert_true( false !== strpos( wp_json_encode( $us ), '10366' ), '10366 remains eligible for US.' );
+    tmw_assert_true( false === strpos( wp_json_encode( $be ), '10366' ), '10366 remains excluded for BE.' );
+    tmw_assert_true( false === strpos( wp_json_encode( $us ), '9647' ) && false === strpos( wp_json_encode( $us ), '9781' ), 'Unavailable offers remain excluded.' );
+    tmw_assert_true( false === strpos( wp_json_encode( $us ), 'x-soi' ), 'SOI should not be admitted under default PPS-only allowlist.' );
 };
 $tests['frontend_pool_unchanged_after_offers_count_ui'] = function() {
     tmw_reset_test_state();

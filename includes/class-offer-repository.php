@@ -1474,6 +1474,9 @@ class TMW_CR_Slot_Offer_Repository {
      */
     public function get_logo_coverage_report_for_type( $type, $settings ) {
         $report_type = sanitize_key( (string) $type );
+        if ( ! in_array( $report_type, self::ALLOWED_OFFER_TYPES, true ) ) {
+            $report_type = 'pps';
+        }
         $synced      = $this->get_synced_offers();
         $report      = array(
             'pps_candidates_total' => 0,

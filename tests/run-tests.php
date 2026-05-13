@@ -462,6 +462,25 @@ $tests['logo_coverage_report_for_type_cpi_uses_type_specific_keys'] = function()
     tmw_assert_true( isset( $report['pps_candidates_total'] ), 'Legacy PPS keys should remain present for compatibility.' );
 };
 
+
+$tests['logo_coverage_report_for_type_invalid_type_falls_back_to_pps'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repository->save_synced_offers( array(
+        'a' => array( 'id' => 'a', 'name' => 'Jerkmate - PPS', 'status' => 'active' ),
+    ) );
+    $settings = array( 'allowed_offer_types' => array( 'pps' ) );
+
+    $empty_report = $repository->get_logo_coverage_report_for_type( '', $settings );
+    tmw_assert_true( ! isset( $empty_report['_candidates_total'] ), 'Empty type should not produce malformed _candidates_total key.' );
+    tmw_assert_true( isset( $empty_report['pps_candidates_total'] ), 'Empty type should fall back to pps report keys.' );
+
+    $bad_report = $repository->get_logo_coverage_report_for_type( 'bad-type', $settings );
+    tmw_assert_true( ! isset( $bad_report['bad-type_candidates_total'] ), 'Invalid type should not produce bad-type_candidates_total key.' );
+    tmw_assert_true( ! isset( $bad_report['_candidates_total'] ), 'Invalid type should not produce malformed _candidates_total key.' );
+    tmw_assert_true( isset( $bad_report['pps_candidates_total'] ), 'Invalid type should fall back to pps report keys.' );
+};
+
 $tests['sanitize_allowed_offer_types_accepts_cpi_and_cpm'] = function() {
     tmw_reset_test_state();
     tmw_assert_same( array( 'cpi', 'cpm' ), TMW_CR_Slot_Offer_Repository::sanitize_allowed_offer_types( array( 'cpi', 'cpm' ) ), 'CPI and CPM should be accepted by sanitizer.' );

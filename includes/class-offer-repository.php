@@ -1138,6 +1138,69 @@ class TMW_CR_Slot_Offer_Repository {
         );
     }
 
+    /**
+     * Admin observability helper for payout-type reconciliation.
+     * Raw = normalized raw payout_type field only.
+     * Detected = get_offer_type_keys output.
+     * Admin filter = merged payout_type values used by admin filters.
+     * Frontend eligible intentionally stays zero-filled in this PR to avoid
+     * changing/duplicating frontend pool behavior in an admin diagnostics path.
+     *
+     * @return array<string,mixed>
+     */
+    public function get_admin_payout_reconciliation_counts() {
+        $offers = array_values( $this->get_synced_offers() );
+        $families = array( 'pps', 'soi', 'doi', 'cpc', 'cpi', 'cpm', 'multi_cpa', 'revshare', 'revshare_lifetime', 'fallback', 'smartlink' );
+
+        $raw = array(
+            'pps' => 0, 'soi' => 0, 'doi' => 0, 'cpc' => 0, 'cpi' => 0, 'cpm' => 0, 'cpa_flat' => 0,
+            'cpa_percentage' => 0, 'revshare' => 0, 'revshare_lifetime' => 0, 'empty' => 0, 'unknown' => 0,
+        );
+        $detected = array_fill_keys( $families, 0 );
+        $admin_filter = array_fill_keys( $families, 0 );
+        $frontend_eligible = array_fill_keys( $families, 0 );
+
+        foreach ( $offers as $offer ) {
+            if ( ! is_array( $offer ) ) {
+                continue;
+            }
+
+            $raw_key = sanitize_key( strtolower( trim( (string) ( $offer['payout_type'] ?? '' ) ) ) );
+            if ( '' === $raw_key ) {
+                ++$raw['empty'];
+            } elseif ( isset( $raw[ $raw_key ] ) ) {
+                ++$raw[ $raw_key ];
+            } else {
+                ++$raw['unknown'];
+            }
+
+            foreach ( (array) $this->get_offer_type_keys( $offer ) as $type_key ) {
+                $normalized = $this->normalize_filter_family_value( 'payout_type', (string) $type_key );
+                if ( isset( $detected[ $normalized ] ) ) {
+                    ++$detected[ $normalized ];
+                }
+            }
+
+            $offer_id = (string) ( $offer['id'] ?? '' );
+            $meta = '' !== $offer_id ? $this->get_offer_dashboard_metadata( $offer_id, $offer ) : array();
+            $admin_values = (array) ( $this->get_admin_offer_filter_values( $offer, $meta )['payout_type'] ?? array() );
+            foreach ( $admin_values as $type_key ) {
+                $normalized = $this->normalize_filter_family_value( 'payout_type', (string) $type_key );
+                if ( isset( $admin_filter[ $normalized ] ) ) {
+                    ++$admin_filter[ $normalized ];
+                }
+            }
+        }
+
+        return array(
+            'source_total' => count( $offers ),
+            'raw' => $raw,
+            'detected' => $detected,
+            'admin_filter' => $admin_filter,
+            'frontend_eligible' => $frontend_eligible, // TODO(PR#61): add safe precomputed frontend-eligible counters if needed.
+        );
+    }
+
     protected function get_admin_offer_filter_values( $offer, $offer_meta ) {
         $families = array( 'tag', 'vertical', 'performs_in', 'optimized_for', 'accepted_country', 'niche', 'promotion_method', 'payout_type' );
         $values = array();

@@ -125,6 +125,62 @@ function tmw_reset_test_state() {
     $_POST = array();
 }
 
+/**
+ * Temporarily writes a logo fixture file, runs a callback, then restores original file state.
+ *
+ * @param string   $relative_filename Relative filename under assets/logos.
+ * @param string   $temporary_contents Temporary file contents.
+ * @param callable $callback Callback executed while temp file state is active.
+ *
+ * @return mixed
+ */
+function tmw_with_temp_logo_file( $relative_filename, $temporary_contents, $callback ) {
+    $logo_path = TMW_CR_SLOT_BANNER_PATH . 'assets/logos/' . ltrim( (string) $relative_filename, '/\\' );
+    $logo_dir  = dirname( $logo_path );
+    if ( ! is_dir( $logo_dir ) ) {
+        mkdir( $logo_dir, 0777, true );
+    }
+    $existed_before  = file_exists( $logo_path );
+    $original_binary = $existed_before ? file_get_contents( $logo_path ) : null;
+    file_put_contents( $logo_path, (string) $temporary_contents );
+
+    try {
+        return $callback( $logo_path );
+    } finally {
+        if ( $existed_before ) {
+            file_put_contents( $logo_path, (string) $original_binary );
+        } elseif ( file_exists( $logo_path ) ) {
+            unlink( $logo_path );
+        }
+    }
+}
+
+/**
+ * Temporarily removes a logo fixture file, runs a callback, then restores original file state.
+ *
+ * @param string   $relative_filename Relative filename under assets/logos.
+ * @param callable $callback Callback executed while file is removed.
+ *
+ * @return mixed
+ */
+function tmw_without_logo_file( $relative_filename, $callback ) {
+    $logo_path = TMW_CR_SLOT_BANNER_PATH . 'assets/logos/' . ltrim( (string) $relative_filename, '/\\' );
+    $existed_before  = file_exists( $logo_path );
+    $original_binary = $existed_before ? file_get_contents( $logo_path ) : null;
+    if ( $existed_before ) {
+        unlink( $logo_path );
+    }
+    try {
+        return $callback( $logo_path );
+    } finally {
+        if ( $existed_before ) {
+            file_put_contents( $logo_path, (string) $original_binary );
+        } elseif ( file_exists( $logo_path ) ) {
+            unlink( $logo_path );
+        }
+    }
+}
+
 $tests = array();
 
 
@@ -3470,6 +3526,220 @@ $tests['audit_pagination_does_not_change_frontend_pool'] = function() {
     tmw_assert_true( false !== strpos( wp_json_encode( $us ), '10366' ), '10366 should be eligible for US.' );
     tmw_assert_true( false === strpos( wp_json_encode( $be ), '10366' ), '10366 should be excluded for Belgium.' );
     tmw_assert_true( false === strpos( wp_json_encode( $us ), '9647' ) && false === strpos( wp_json_encode( $us ), '9781' ), 'Unavailable offers should remain excluded.' );
+};
+$tests['logo_status_mapped_local_when_file_exists_for_known_brand'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    tmw_with_temp_logo_file(
+        'sex-messenger-80x80-transparent.png',
+        'fixture',
+        static function () use ( $repo ) {
+            $offer = array( 'id' => 'x1', 'name' => 'Sex Messenger' );
+            tmw_assert_same( 'mapped_local', $repo->get_logo_status_for_offer_any( 'x1', $offer ), 'Known local brand should resolve mapped local logo.' );
+        }
+    );
+};
+$tests['logo_status_manual_override_when_image_url_override_set'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_offer_overrides( array( 'x2' => array( 'image_url_override' => 'https://cdn.example.test/logo.png' ) ) );
+    tmw_assert_same( 'manual_override', $repo->get_logo_status_for_offer_any( 'x2', array( 'id' => 'x2', 'name' => 'Unknown Name' ) ), 'Manual override should win.' );
+};
+$tests['logo_status_placeholder_only_when_no_brand_match_and_no_override'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    tmw_assert_same( 'placeholder_only', $repo->get_logo_status_for_offer_any( 'x3', array( 'id' => 'x3', 'name' => 'No Brand Fixture' ) ), 'Unknown offer should be placeholder only.' );
+};
+$tests['logo_status_missing_when_brand_match_but_no_file_on_disk'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    tmw_without_logo_file(
+        'jerkmate-80x80-transparent.png',
+        static function () use ( $repo ) {
+            $status = $repo->get_logo_status_for_offer_any( 'x4', array( 'id' => 'x4', 'name' => 'Jerkmate' ) );
+            tmw_assert_same( 'missing', $status, 'Known mapped brand without disk file should return missing.' );
+        }
+    );
+};
+$tests['logo_status_filter_filters_offers_correctly'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    tmw_with_temp_logo_file( 'jerkmate-80x80-transparent.png', 'fixture', static function () use ( $repo ) {
+        $repo->save_synced_offers(
+            array(
+                '20001' => array( 'id' => '20001', 'name' => 'Unique Manual Offer', 'status' => 'active', 'payout_type' => 'PPS' ),
+                '20002' => array( 'id' => '20002', 'name' => 'Jerkmate', 'status' => 'active', 'payout_type' => 'PPS' ),
+                '20003' => array( 'id' => '20003', 'name' => 'No Brand Placeholder', 'status' => 'active', 'payout_type' => 'PPS' ),
+            )
+        );
+        $repo->save_offer_overrides( array( '20001' => array( 'image_url_override' => 'https://cdn.example.test/20001.png' ) ) );
+        $filtered = $repo->get_filtered_synced_offers_for_admin( array( 'logo_status' => 'manual_override', 'per_page' => 50 ), array() );
+        $json = wp_json_encode( $filtered['items'] );
+        tmw_assert_true( false !== strpos( $json, '20001' ), 'Manual override offer should remain after logo_status filter.' );
+        tmw_assert_true( false === strpos( $json, '20002' ) && false === strpos( $json, '20003' ), 'Non-matching offers should be excluded by logo_status filter.' );
+    } );
+};
+$tests['frontend_eligibility_summary_returns_valid_for_8780_be'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    tmw_with_temp_logo_file( 'jerkmate-80x80-transparent.png', 'fixture', static function () use ( $repo ) {
+        $offer = array( 'id' => '8780', 'name' => 'Jerkmate', 'status' => 'active', 'payout_type' => 'PPS', 'thumbnail' => 'https://cdn.example.test/jerkmate.png' );
+        $repo->save_offer_overrides( array( '8780' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/a', 'allowed_countries' => 'Belgium' ) ) );
+        $summary = $repo->get_offer_frontend_eligibility_summary( $offer, array( 'allowed_offer_types' => array( 'pps' ) ), 'BE', array() );
+        tmw_assert_true( true === $summary['is_eligible'] && 'valid' === $summary['block_reason'], '8780 should be valid for BE.' );
+    } );
+};
+$tests['frontend_eligibility_summary_returns_country_not_allowed_for_10366_be'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $offer = array( 'id' => '10366', 'name' => 'NaughtyCharm', 'status' => 'active', 'payout_type' => 'PPS' );
+    $repo->save_offer_overrides( array( '10366' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/b', 'allowed_countries' => 'United States' ) ) );
+    $summary = $repo->get_offer_frontend_eligibility_summary( $offer, array( 'allowed_offer_types' => array( 'pps' ) ), 'BE', array() );
+    tmw_assert_same( 'country_not_allowed', $summary['block_reason'], '10366 should be blocked for BE.' );
+};
+$tests['frontend_eligibility_summary_returns_valid_for_10366_us'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    tmw_with_temp_logo_file( 'naughtycharm-80x80-transparent.png', 'fixture', static function () use ( $repo ) {
+        $offer = array( 'id' => '10366', 'name' => 'NaughtyCharm', 'status' => 'active', 'payout_type' => 'PPS' );
+        $repo->save_offer_overrides( array( '10366' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/b', 'allowed_countries' => 'United States' ) ) );
+        $summary = $repo->get_offer_frontend_eligibility_summary( $offer, array( 'allowed_offer_types' => array( 'pps' ) ), 'US', array() );
+        tmw_assert_true( true === $summary['is_eligible'] && 'valid' === $summary['block_reason'], '10366 should be valid for US.' );
+    } );
+};
+$tests['frontend_eligibility_summary_returns_business_rule_blocked_for_male_targeted_offer'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $offer = array( 'id' => '2492', 'name' => 'Gay Dating Offer', 'status' => 'active', 'payout_type' => 'PPS', 'tag' => 'gay' );
+    $summary = $repo->get_offer_frontend_eligibility_summary( $offer, array( 'allowed_offer_types' => array( 'pps' ) ), 'US', array() );
+    tmw_assert_same( 'business_rule_blocked', $summary['block_reason'], 'Male targeted offer should be blocked by business rule.' );
+};
+$tests['frontend_eligibility_summary_returns_unavailable_account_offer_for_9647_and_9781'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    foreach ( array( '9647' => 'Group Fallback - Tapyn - PPS - Mobile - Android', '9781' => 'Group Fallback - Dating.com PPS' ) as $id => $name ) {
+        $summary = $repo->get_offer_frontend_eligibility_summary( array( 'id' => $id, 'name' => $name, 'status' => 'active', 'payout_type' => 'PPS' ), array( 'allowed_offer_types' => array( 'pps' ) ), 'US', array() );
+        tmw_assert_same( 'unavailable_account_offer', $summary['block_reason'], 'Unavailable offer should be flagged for ' . $id );
+    }
+};
+$tests['frontend_eligibility_summary_returns_missing_valid_cta'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $offer = array( 'id' => '24001', 'name' => 'CTA Missing Fixture', 'status' => 'active', 'payout_type' => 'PPS' );
+    $summary = $repo->get_offer_frontend_eligibility_summary( $offer, array( 'allowed_offer_types' => array( 'pps' ), 'cta_url' => '' ), 'US', array() );
+    tmw_assert_same( 'missing_valid_cta', $summary['block_reason'], 'Missing CTA should block eligibility.' );
+};
+$tests['frontend_eligibility_summary_matches_frontend_pool_inclusion_for_8780_be'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    tmw_with_temp_logo_file( 'jerkmate-80x80-transparent.png', 'fixture', static function () use ( $repo ) {
+        $offer = array( 'id' => '8780', 'name' => 'Jerkmate', 'status' => 'active', 'payout_type' => 'PPS' );
+        $repo->save_synced_offers( array( '8780' => $offer ) );
+        $repo->save_offer_overrides( array( '8780' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/a', 'allowed_countries' => 'Belgium' ) ) );
+        $summary = $repo->get_offer_frontend_eligibility_summary( $offer, array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '8780' ) ), 'Belgium', array() );
+        $pool = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '8780' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+        tmw_assert_true( true === $summary['is_eligible'], 'Summary should mark 8780 eligible for BE.' );
+        tmw_assert_true( false !== strpos( wp_json_encode( $pool ), '8780' ), 'Frontend pool should include 8780 for BE.' );
+    } );
+};
+$tests['logo_status_tests_restore_logo_fixture_files'] = function() {
+    tmw_reset_test_state();
+    $files = array(
+        'sex-messenger-80x80-transparent.png',
+        'jerkmate-80x80-transparent.png',
+        'naughtycharm-80x80-transparent.png',
+    );
+    $before = array();
+    foreach ( $files as $file ) {
+        $path = TMW_CR_SLOT_BANNER_PATH . 'assets/logos/' . $file;
+        $before[ $file ] = array(
+            'exists' => file_exists( $path ),
+            'hash' => file_exists( $path ) ? md5_file( $path ) : '',
+        );
+    }
+    tmw_with_temp_logo_file( 'sex-messenger-80x80-transparent.png', 'tmp1', static function () {
+    } );
+    tmw_without_logo_file( 'jerkmate-80x80-transparent.png', static function () {
+    } );
+    tmw_with_temp_logo_file( 'naughtycharm-80x80-transparent.png', 'tmp2', static function () {
+    } );
+    foreach ( $files as $file ) {
+        $path = TMW_CR_SLOT_BANNER_PATH . 'assets/logos/' . $file;
+        $exists_now = file_exists( $path );
+        $hash_now = $exists_now ? md5_file( $path ) : '';
+        tmw_assert_same( $before[ $file ]['exists'], $exists_now, 'File exists state should be restored for ' . $file );
+        tmw_assert_same( $before[ $file ]['hash'], $hash_now, 'File hash should be restored for ' . $file );
+    }
+};
+$tests['offers_tab_renders_logo_source_frontend_eligible_and_block_reason_columns'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Logo source', $html, 'Offers tab should render logo source column.' );
+    tmw_assert_contains( 'Frontend eligible', $html, 'Offers tab should render frontend eligible column.' );
+    tmw_assert_contains( 'Block reason', $html, 'Offers tab should render block reason column.' );
+};
+$tests['offers_tab_logo_status_filter_dropdown_renders_expected_options'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    foreach ( array( 'manual_override', 'mapped_local', 'auto_remote', 'placeholder_only', 'missing' ) as $opt ) {
+        tmw_assert_contains( 'value="' . $opt . '"', $html, 'Missing logo status filter option: ' . $opt );
+    }
+};
+$tests['offers_tab_unavailable_account_badge_shown_for_9647_and_9781'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array(
+        '9647' => array( 'id' => '9647', 'name' => 'UQ-9647-Offer', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '9781' => array( 'id' => '9781', 'name' => 'UQ-9781-Offer', 'status' => 'active', 'payout_type' => 'PPS' ),
+    ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'UQ-9647-Offer', $html, 'Expected 9647 row in offers table.' );
+    tmw_assert_contains( 'UQ-9781-Offer', $html, 'Expected 9781 row in offers table.' );
+    tmw_assert_true( substr_count( $html, 'Unavailable for account' ) >= 2, 'Unavailable badge should appear for both unavailable offers.' );
+};
+$tests['offers_tab_logo_status_filter_preserves_existing_payout_filter'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    foreach ( array( 'pps', 'soi', 'doi', 'cpi', 'cpm', 'cpc', 'multi_cpa', 'revshare', 'revshare_lifetime' ) as $payout_value ) {
+        tmw_assert_contains( 'value="' . $payout_value . '"', $html, 'Payout filter option missing: ' . $payout_value );
+    }
+};
+$tests['offers_tab_does_not_readd_removed_standalone_import_sections'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_true( false === strpos( $html, '<h3>Import Allowed Country Overrides</h3>' ), 'Standalone allowed-country heading must stay hidden.' );
+    tmw_assert_true( false === strpos( $html, '<h3>Import Final URL Overrides</h3>' ), 'Standalone final-url heading must stay hidden.' );
+    tmw_assert_contains( '<h3>Import Both Override CSVs</h3>', $html, 'Combined import section must remain visible.' );
+};
+$tests['offers_dashboard_changes_do_not_change_frontend_pool'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        '8780' => array( 'id' => '8780', 'name' => 'Jerkmate', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '10366' => array( 'id' => '10366', 'name' => 'NaughtyCharm', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '9647' => array( 'id' => '9647', 'name' => 'Group Fallback - Tapyn - PPS - Mobile - Android', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '9781' => array( 'id' => '9781', 'name' => 'Group Fallback - Dating.com PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+    ) );
+    $repo->save_offer_overrides( array(
+        '8780' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/a', 'allowed_countries' => 'Belgium' ),
+        '10366' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/b', 'allowed_countries' => 'United States' ),
+    ) );
+    $be = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '8780', '10366', '9647', '9781' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    $us = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '8780', '10366', '9647', '9781' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'United States', array() );
+    tmw_assert_true( false !== strpos( wp_json_encode( $be ), '8780' ), '8780 remains eligible for BE.' );
+    tmw_assert_true( false !== strpos( wp_json_encode( $us ), '10366' ), '10366 remains eligible for US.' );
+    tmw_assert_true( false === strpos( wp_json_encode( $be ), '10366' ), '10366 remains excluded for BE.' );
+    tmw_assert_true( false === strpos( wp_json_encode( $us ), '9647' ) && false === strpos( wp_json_encode( $us ), '9781' ), 'Unavailable offers remain excluded.' );
 };
 
 $failures = array();

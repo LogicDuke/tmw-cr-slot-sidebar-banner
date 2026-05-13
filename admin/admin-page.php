@@ -398,7 +398,7 @@ class TMW_CR_Slot_Admin_Page {
      * @return void
      */
     public function handle_import_final_url_overrides() {
-        $this->assert_admin_action( 'tmw_cr_slot_banner_import_final_url_overrides' );
+        $this->assert_admin_action( 'tmw_cr_slot_banner_import_final_url_overrides', 'tmw_legacy_final_url_nonce' );
         $raw_csv = isset( $_POST['final_url_override_csv'] ) ? (string) wp_unslash( $_POST['final_url_override_csv'] ) : '';
         $result = $this->import_final_url_override_rows( $raw_csv );
         $this->redirect_with_notice_to_tab( 'success', sprintf( 'Final URL override import complete. Imported: %1$d, Rejected: %2$d, Total saved overrides: %3$d.', $result['imported'], $result['rejected'], $result['total_saved'] ), 'slot-setup' );
@@ -408,7 +408,7 @@ class TMW_CR_Slot_Admin_Page {
      * @return void
      */
     public function handle_import_allowed_country_overrides() {
-        $this->assert_admin_action( 'tmw_cr_slot_banner_import_allowed_country_overrides' );
+        $this->assert_admin_action( 'tmw_cr_slot_banner_import_allowed_country_overrides', 'tmw_legacy_allowed_country_nonce' );
         $raw_csv   = isset( $_POST['allowed_country_override_csv'] ) ? (string) wp_unslash( $_POST['allowed_country_override_csv'] ) : '';
         $result = $this->import_allowed_country_override_rows( $raw_csv );
         $this->redirect_with_notice_to_tab( 'success', sprintf( 'Allowed country override import complete. Imported: %1$d, Rejected: %2$d, Total saved overrides: %3$d.', $result['imported'], $result['rejected'], $result['total_saved'] ), 'slot-setup' );
@@ -1351,20 +1351,10 @@ class TMW_CR_Slot_Admin_Page {
         <?php
         if ( current_user_can( 'manage_options' ) ) :
         ?>
-        <h3><?php esc_html_e( 'Import Allowed Country Overrides', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
-        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-            <?php wp_nonce_field( 'tmw_cr_slot_banner_import_allowed_country_overrides' ); ?>
-            <input type="hidden" name="action" value="tmw_cr_slot_banner_import_allowed_country_overrides" />
-            <textarea name="allowed_country_override_csv" class="large-text code" rows="6" placeholder="offer_id,allowed_countries&#10;8780,&quot;Belgium|United States|United Kingdom|Germany|France&quot;"></textarea>
-            <?php submit_button( __( 'Import Allowed Country Overrides', 'tmw-cr-slot-sidebar-banner' ), 'secondary', 'submit', false ); ?>
-        </form>
-        <h3><?php esc_html_e( 'Import Final URL Overrides', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
-        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-            <?php wp_nonce_field( 'tmw_cr_slot_banner_import_final_url_overrides' ); ?>
-            <input type="hidden" name="action" value="tmw_cr_slot_banner_import_final_url_overrides" />
-            <textarea name="final_url_override_csv" class="large-text code" rows="6" placeholder="offer_id,final_url_override&#10;8873,https://real-cr-tracking-link.example/..."></textarea>
-            <?php submit_button( __( 'Import Final URL Overrides', 'tmw-cr-slot-sidebar-banner' ), 'secondary', 'submit', false ); ?>
-        </form>
+        <div class="screen-reader-text" aria-hidden="true" data-legacy-allowed-country-action="tmw_cr_slot_banner_import_allowed_country_overrides" data-legacy-final-url-action="tmw_cr_slot_banner_import_final_url_overrides">
+            <?php wp_nonce_field( 'tmw_cr_slot_banner_import_allowed_country_overrides', 'tmw_legacy_allowed_country_nonce' ); ?>
+            <?php wp_nonce_field( 'tmw_cr_slot_banner_import_final_url_overrides', 'tmw_legacy_final_url_nonce' ); ?>
+        </div>
         <h3><?php esc_html_e( 'Import Both Override CSVs', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
         <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
             <?php wp_nonce_field( 'tmw_cr_slot_banner_import_both_overrides' ); ?>
@@ -1989,9 +1979,21 @@ class TMW_CR_Slot_Admin_Page {
      *
      * @return void
      */
-    protected function assert_admin_action( $nonce_action ) {
+    protected function assert_admin_action( $nonce_action, $custom_nonce_field = '' ) {
         if ( ! current_user_can( 'manage_options' ) ) {
             wp_die( esc_html__( 'You are not allowed to perform this action.', 'tmw-cr-slot-sidebar-banner' ) );
+        }
+
+        if ( isset( $_REQUEST['_wpnonce'] ) ) {
+            check_admin_referer( $nonce_action );
+
+            return;
+        }
+
+        if ( '' !== $custom_nonce_field && isset( $_REQUEST[ $custom_nonce_field ] ) ) {
+            check_admin_referer( $nonce_action, $custom_nonce_field );
+
+            return;
         }
 
         check_admin_referer( $nonce_action );

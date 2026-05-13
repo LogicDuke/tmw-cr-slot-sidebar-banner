@@ -94,8 +94,22 @@ class TMW_Test_Admin_Page extends TMW_CR_Slot_Admin_Page {
         );
     }
 
-    protected function assert_admin_action( $nonce_action ) {
+    protected function assert_admin_action( $nonce_action, $custom_nonce_field = '' ) {
         unset( $nonce_action );
+
+        if ( '' === $custom_nonce_field ) {
+            return;
+        }
+
+        if ( isset( $_POST['_wpnonce'] ) ) {
+            return;
+        }
+
+        if ( isset( $_POST[ $custom_nonce_field ] ) && '' !== (string) $_POST[ $custom_nonce_field ] ) {
+            return;
+        }
+
+        throw new RuntimeException( 'Missing nonce payload for admin action test.' );
     }
 }
 
@@ -154,7 +168,7 @@ $tests['slot_setup_url_uses_correct_menu_slug'] = function() {
     tmw_assert_contains( 'options-general.php?page=tmw-cr-slot-sidebar-banner&tab=slot-setup', $html, 'Slot Setup tab links should use the stable options-general.php menu slug URL.' );
 };
 
-$tests['slot_setup_renders_override_import_sections'] = function() {
+$tests['slot_setup_renders_only_combined_import_section'] = function() {
     tmw_reset_test_state();
     $_GET = array( 'tab' => 'slot-setup' );
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
@@ -163,11 +177,33 @@ $tests['slot_setup_renders_override_import_sections'] = function() {
     $page->render_page();
     $html = (string) ob_get_clean();
 
-    tmw_assert_contains( 'Import Allowed Country Overrides', $html, 'Slot Setup should render allowed country import section.' );
-    tmw_assert_contains( 'Import Final URL Overrides', $html, 'Slot Setup should render final URL import section.' );
-    tmw_assert_contains( 'Import Both Override CSVs', $html, 'Slot Setup should render combined override import action.' );
+    tmw_assert_contains( '<h3>Import Both Override CSVs</h3>', $html, 'Slot Setup should render combined override import heading.' );
+    tmw_assert_true( false === strpos( $html, '<h3>Import Allowed Country Overrides</h3>' ), 'Slot Setup should not render standalone allowed country heading.' );
+    tmw_assert_true( false === strpos( $html, '<h3>Import Final URL Overrides</h3>' ), 'Slot Setup should not render standalone final URL heading.' );
+    tmw_assert_contains( 'name="allowed_country_override_csv"', $html, 'Slot Setup should keep allowed country textarea in combined form.' );
+    tmw_assert_contains( 'name="final_url_override_csv"', $html, 'Slot Setup should keep final URL textarea in combined form.' );
+    tmw_assert_contains( 'action" value="tmw_cr_slot_banner_import_both_overrides"', $html, 'Slot Setup should keep combined import form action.' );
+    tmw_assert_contains( 'data-legacy-allowed-country-action="tmw_cr_slot_banner_import_allowed_country_overrides"', $html, 'Slot Setup should include hidden compatibility nonce source for legacy allowed-country importer.' );
+    tmw_assert_contains( 'data-legacy-final-url-action="tmw_cr_slot_banner_import_final_url_overrides"', $html, 'Slot Setup should include hidden compatibility nonce source for legacy final-url importer.' );
+    tmw_assert_true( false === strpos( $html, 'name="action" value="tmw_cr_slot_banner_import_allowed_country_overrides"' ), 'Slot Setup should not restore legacy standalone allowed-country form action.' );
+    tmw_assert_true( false === strpos( $html, 'name="action" value="tmw_cr_slot_banner_import_final_url_overrides"' ), 'Slot Setup should not restore legacy standalone final-url form action.' );
 };
 
+
+$tests['legacy_import_nonce_compatibility_markup_is_hidden'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+
+    ob_start();
+    $page->render_page();
+    $html = (string) ob_get_clean();
+
+    tmw_assert_contains( 'class="screen-reader-text"', $html, 'Slot Setup should render hidden legacy nonce compatibility container.' );
+    tmw_assert_true( false === strpos( $html, '<h3>Import Allowed Country Overrides</h3>' ), 'Hidden compatibility should not restore legacy allowed-country heading.' );
+    tmw_assert_true( false === strpos( $html, '<h3>Import Final URL Overrides</h3>' ), 'Hidden compatibility should not restore legacy final-url heading.' );
+    tmw_assert_contains( '<h3>Import Both Override CSVs</h3>', $html, 'Hidden compatibility should preserve combined UI visibility.' );
+};
 
 $tests['slot_setup_renders_safe_skipped_offers_import_section'] = function() {
     tmw_reset_test_state();
@@ -2457,6 +2493,7 @@ $tests['manual_final_url_override_importer_accepts_and_preserves'] = function() 
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
     $repo->save_offer_overrides( array( '999' => array( 'custom_cta_text' => 'keep me' ) ) );
+    $_POST['_wpnonce'] = 'legacy-standard';
     $_POST['final_url_override_csv'] = "offer_id,final_url_override\n1234,https://trk.example.com/?tid=abc\n";
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
     $page->handle_import_final_url_overrides();
@@ -2468,6 +2505,7 @@ $tests['manual_final_url_override_importer_accepts_and_preserves'] = function() 
 $tests['manual_final_url_override_importer_rejects_invalid_patterns'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $_POST['_wpnonce'] = 'legacy-standard';
     $_POST['final_url_override_csv'] = "offer_id,final_url_override\n1,https://preview.example.com/path\n2,https://ads.advertisingpolicies.com/path\n3,https://trk.example.com/?transaction_id=preview\n4,https://trk.example.com/?affiliate_id=affiliate_id\n";
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
     $page->handle_import_final_url_overrides();
@@ -2491,6 +2529,7 @@ $tests['manual_allowed_country_override_importer_accepts_pipe_separated'] = func
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $_POST['_wpnonce'] = 'legacy-standard';
     $_POST['allowed_country_override_csv'] = "offer_id,allowed_countries\n8780,\"Belgium|United States|Belgium\"\n";
     $page->handle_import_allowed_country_overrides();
     $saved = $repo->get_offer_overrides();
@@ -2502,6 +2541,7 @@ $tests['allowed_country_override_preserves_existing_final_url_override'] = funct
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
     $repo->save_offer_overrides( array( '8780' => array( 'final_url_override' => 'https://trk.example.com/x' ) ) );
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $_POST['_wpnonce'] = 'legacy-standard';
     $_POST['allowed_country_override_csv'] = "offer_id,allowed_countries\n8780,\"Belgium|United States\"\n";
     $page->handle_import_allowed_country_overrides();
     $saved = $repo->get_offer_overrides();
@@ -2511,6 +2551,7 @@ $tests['allowed_country_override_preserves_existing_final_url_override'] = funct
 $tests['individual_final_url_import_redirects_to_slot_setup'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $_POST['_wpnonce'] = 'legacy-standard';
     $_POST['final_url_override_csv'] = "offer_id,final_url_override\n1234,https://trk.example.com/?tid=abc\n";
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
     $page->handle_import_final_url_overrides();
@@ -2520,6 +2561,7 @@ $tests['individual_final_url_import_redirects_to_slot_setup'] = function() {
 $tests['individual_allowed_country_import_redirects_to_slot_setup'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $_POST['_wpnonce'] = 'legacy-standard';
     $_POST['allowed_country_override_csv'] = "offer_id,allowed_countries\n8780,\"Belgium|United States\"\n";
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
     $page->handle_import_allowed_country_overrides();
@@ -2529,6 +2571,7 @@ $tests['individual_allowed_country_import_redirects_to_slot_setup'] = function()
 $tests['combined_override_import_processes_both_payloads'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $_POST['_wpnonce'] = 'legacy-standard';
     $_POST['allowed_country_override_csv'] = "offer_id,allowed_countries\n8780,\"Belgium|United States\"\n";
     $_POST['final_url_override_csv'] = "offer_id,final_url_override\n8873,https://trk.example.com/?tid=combo\n";
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
@@ -2539,7 +2582,22 @@ $tests['combined_override_import_processes_both_payloads'] = function() {
     tmw_assert_same( 'slot-setup', (string) $page->notice['tab'], 'Combined import should redirect back to slot-setup tab.' );
 };
 
-$tests['combined_override_import_allows_one_empty_textarea'] = function() {
+
+$tests['slot_setup_combined_import_accepts_one_empty_textarea_country_only'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $_POST['_wpnonce'] = 'legacy-standard';
+    $_POST['allowed_country_override_csv'] = "offer_id,allowed_countries\n8780,\"Belgium|United States\"\n";
+    $_POST['final_url_override_csv'] = '';
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $page->handle_import_both_overrides();
+    $saved = $repo->get_offer_overrides();
+    tmw_assert_same( 'slot-setup', (string) $page->notice['tab'], 'Combined import should redirect back to slot-setup tab for country-only payloads.' );
+    tmw_assert_true( isset( $saved['8780'] ), 'Combined import should create country override row when country textarea is provided.' );
+    tmw_assert_same( array( 'Belgium', 'United States' ), array_values( (array) ( $saved['8780']['allowed_countries'] ?? array() ) ), 'Combined import should save country overrides when final URL textarea is empty.' );
+};
+
+$tests['slot_setup_combined_import_accepts_one_empty_textarea_final_url_only'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
     $_POST['allowed_country_override_csv'] = '';
@@ -2547,10 +2605,11 @@ $tests['combined_override_import_allows_one_empty_textarea'] = function() {
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
     $page->handle_import_both_overrides();
     $saved = $repo->get_offer_overrides();
-    tmw_assert_same( 'https://trk.example.com/?tid=solo', (string) $saved['8873']['final_url_override'], 'Combined import should process the non-empty textarea only.' );
+    tmw_assert_true( isset( $saved['8873'] ), 'Combined import should create final URL override row when final URL textarea is provided.' );
+    tmw_assert_same( 'https://trk.example.com/?tid=solo', (string) ( $saved['8873']['final_url_override'] ?? '' ), 'Combined import should process the non-empty textarea only.' );
 };
 
-$tests['combined_override_import_with_both_empty_shows_notice'] = function() {
+$tests['slot_setup_combined_import_rejects_both_empty'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
     $_POST['allowed_country_override_csv'] = '';
@@ -2559,6 +2618,57 @@ $tests['combined_override_import_with_both_empty_shows_notice'] = function() {
     $page->handle_import_both_overrides();
     tmw_assert_same( 'No override rows were submitted.', (string) $page->notice['message'], 'Combined import should show a safe notice when both textareas are empty.' );
 };
+
+
+$tests['legacy_final_url_import_accepts_custom_hidden_nonce_field'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $_POST['tmw_legacy_final_url_nonce'] = 'legacy-custom';
+    $_POST['final_url_override_csv'] = "offer_id,final_url_override\n1234,https://trk.example.com/?tid=abc\n";
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $page->handle_import_final_url_overrides();
+    $saved = $repo->get_offer_overrides();
+    tmw_assert_true( isset( $saved['1234'] ), 'Legacy final URL importer should create override row when custom hidden nonce field is used.' );
+    tmw_assert_same( 'https://trk.example.com/?tid=abc', (string) ( $saved['1234']['final_url_override'] ?? '' ), 'Legacy final URL importer should save data when custom hidden nonce field is used.' );
+    tmw_assert_same( 'slot-setup', (string) $page->notice['tab'], 'Legacy final URL importer should redirect to slot-setup when custom hidden nonce field is used.' );
+};
+
+$tests['legacy_allowed_country_import_accepts_custom_hidden_nonce_field'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $_POST['tmw_legacy_allowed_country_nonce'] = 'legacy-custom';
+    $_POST['allowed_country_override_csv'] = "offer_id,allowed_countries\n8780,\"Belgium|United States\"\n";
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $page->handle_import_allowed_country_overrides();
+    $saved = $repo->get_offer_overrides();
+    tmw_assert_true( isset( $saved['8780'] ), 'Legacy allowed-country importer should create override row when custom hidden nonce field is used.' );
+    tmw_assert_same( array( 'Belgium', 'United States' ), array_values( (array) ( $saved['8780']['allowed_countries'] ?? array() ) ), 'Legacy allowed-country importer should save data when custom hidden nonce field is used.' );
+    tmw_assert_same( 'slot-setup', (string) $page->notice['tab'], 'Legacy allowed-country importer should redirect to slot-setup when custom hidden nonce field is used.' );
+};
+
+$tests['legacy_import_handlers_still_accept_standard_wpnonce_for_compat'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+
+    $_POST['_wpnonce'] = 'legacy-standard';
+    $_POST['final_url_override_csv'] = "offer_id,final_url_override\n1234,https://trk.example.com/?tid=abc\n";
+    $final_url_page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $final_url_page->handle_import_final_url_overrides();
+    tmw_assert_same( 'slot-setup', (string) $final_url_page->notice['tab'], 'Legacy final URL importer should redirect to slot-setup.' );
+
+    $_POST['_wpnonce'] = 'legacy-standard';
+    $_POST['allowed_country_override_csv'] = "offer_id,allowed_countries\n8780,\"Belgium|United States\"\n";
+    $country_page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $country_page->handle_import_allowed_country_overrides();
+    tmw_assert_same( 'slot-setup', (string) $country_page->notice['tab'], 'Legacy allowed country importer should redirect to slot-setup.' );
+
+    $saved = $repo->get_offer_overrides();
+    tmw_assert_true( isset( $saved['1234'] ), 'Legacy final URL importer should create the target offer override row.' );
+    tmw_assert_true( isset( $saved['8780'] ), 'Legacy allowed country importer should create the target offer override row.' );
+    tmw_assert_same( 'https://trk.example.com/?tid=abc', (string) ( $saved['1234']['final_url_override'] ?? '' ), 'Legacy final URL importer should still save data.' );
+    tmw_assert_same( array( 'Belgium', 'United States' ), array_values( (array) ( $saved['8780']['allowed_countries'] ?? array() ) ), 'Legacy allowed country importer should still save data.' );
+};
+
 
 $tests['offer_without_tracking_or_manual_override_remains_excluded'] = function() {
     tmw_reset_test_state();

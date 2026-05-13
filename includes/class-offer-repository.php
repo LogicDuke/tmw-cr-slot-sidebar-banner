@@ -181,6 +181,26 @@ class TMW_CR_Slot_Offer_Repository {
         $offer_id = trim( (string) $offer_id );
         return '' !== $offer_id && isset( $skipped_offer_ids[ $offer_id ] );
     }
+
+    /**
+     * @param string                               $offer_id Offer id.
+     * @param array<string,array<string,string>>   $skipped_offer_ids Skipped set.
+     * @param int                                  $excluded_during_pool_build Excluded counter.
+     *
+     * @return bool
+     */
+    protected function should_exclude_skipped_frontend_offer( $offer_id, $skipped_offer_ids, &$excluded_during_pool_build ) {
+        $offer_id = trim( (string) $offer_id );
+        if ( '' === $offer_id || ! isset( $skipped_offer_ids[ $offer_id ] ) ) {
+            return false;
+        }
+        ++$excluded_during_pool_build;
+        if ( function_exists( 'error_log' ) ) {
+            $skip = $skipped_offer_ids[ $offer_id ];
+            error_log( sprintf( '[TMW-BANNER-SKIP] skipped_offer_excluded offer_id=%s decision=%s reason="%s"', sanitize_text_field( $offer_id ), sanitize_key( (string) ( $skip['decision'] ?? 'skip' ) ), sanitize_text_field( (string) ( $skip['reason'] ?? '' ) ) ) );
+        }
+        return true;
+    }
     public function get_skipped_offer( $offer_id ) {
         $offer_id = sanitize_text_field( (string) $offer_id );
         if ( '' === $offer_id ) { return null; }
@@ -1250,12 +1270,7 @@ class TMW_CR_Slot_Offer_Repository {
             $selected_id = (string) $selected_id;
 
             if ( isset( $synced_offers[ $selected_id ] ) ) {
-                if ( $this->is_offer_skipped_for_frontend( $selected_id, $skipped_offer_ids ) ) {
-                    ++$excluded_during_pool_build;
-                    if ( function_exists( 'error_log' ) ) {
-                        $skip = $skipped_offer_ids[ trim( (string) $selected_id ) ];
-                        error_log( sprintf( '[TMW-BANNER-SKIP] skipped_offer_excluded offer_id=%s decision=%s reason="%s"', sanitize_text_field( trim( (string) $selected_id ) ), sanitize_key( (string) ( $skip['decision'] ?? '' ) ), sanitize_text_field( (string) ( $skip['reason'] ?? '' ) ) ) );
-                    }
+                if ( $this->should_exclude_skipped_frontend_offer( $selected_id, $skipped_offer_ids, $excluded_during_pool_build ) ) {
                     continue;
                 }
                 if ( ! $this->is_offer_type_allowed( $synced_offers[ $selected_id ], $settings ) ) {
@@ -1306,7 +1321,7 @@ class TMW_CR_Slot_Offer_Repository {
                     continue;
                 }
 
-                if ( $this->is_offer_skipped_for_frontend( $offer_id, $skipped_offer_ids ) ) { ++$excluded_during_pool_build; continue; }
+                if ( $this->should_exclude_skipped_frontend_offer( $offer_id, $skipped_offer_ids, $excluded_during_pool_build ) ) { continue; }
                 $override = isset( $overrides_map[ $offer_id ] ) ? $overrides_map[ $offer_id ] : array();
                 if ( ! $this->is_offer_allowed_for_country( $offer_id, $country, $override, $synced_offer, $legacy_catalog ) ) {
                     continue;
@@ -1343,7 +1358,7 @@ class TMW_CR_Slot_Offer_Repository {
                     continue;
                 }
 
-                if ( $this->is_offer_skipped_for_frontend( $offer_id, $skipped_offer_ids ) ) { ++$excluded_during_pool_build; continue; }
+                if ( $this->should_exclude_skipped_frontend_offer( $offer_id, $skipped_offer_ids, $excluded_during_pool_build ) ) { continue; }
                 $effective = $this->get_override_only_effective_offer_record( $offer_id, $override, $settings, $banner_data, $country, $legacy_catalog );
                 if ( empty( $effective ) ) {
                     continue;

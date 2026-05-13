@@ -1154,10 +1154,18 @@ class TMW_CR_Slot_Offer_Repository {
 
         $raw = array(
             'pps' => 0, 'soi' => 0, 'doi' => 0, 'cpc' => 0, 'cpi' => 0, 'cpm' => 0, 'cpa_flat' => 0,
-            'cpa_percentage' => 0, 'revshare' => 0, 'revshare_lifetime' => 0, 'empty' => 0, 'unknown' => 0,
+            'cpa_percentage' => 0, 'revshare' => 0, 'revshare_lifetime' => 0, 'multi_cpa' => 0, 'empty' => 0, 'unknown' => 0,
+        );
+        $source_class = array(
+            'normal_offer' => 0,
+            'group_fallback' => 0,
+            'fallback' => 0,
+            'smartlink' => 0,
+            'unknown' => 0,
         );
         $detected = array_fill_keys( $families, 0 );
         $admin_filter = array_fill_keys( $families, 0 );
+        $group_admin_filter = array_fill_keys( $families, 0 );
         $frontend_eligible = array_fill_keys( $families, 0 );
 
         foreach ( $offers as $offer ) {
@@ -1174,29 +1182,51 @@ class TMW_CR_Slot_Offer_Repository {
                 ++$raw['unknown'];
             }
 
+            $detected_keys = array();
             foreach ( (array) $this->get_offer_type_keys( $offer ) as $type_key ) {
                 $normalized = $this->normalize_filter_family_value( 'payout_type', (string) $type_key );
                 if ( isset( $detected[ $normalized ] ) ) {
                     ++$detected[ $normalized ];
                 }
+                $detected_keys[] = $normalized;
+            }
+            $detected_keys = array_values( array_unique( $detected_keys ) );
+
+            $name_haystack = strtolower( (string) ( $offer['name'] ?? '' ) );
+            if ( false !== strpos( $name_haystack, 'group fallback' ) ) {
+                ++$source_class['group_fallback'];
+            } elseif ( in_array( 'fallback', $detected_keys, true ) ) {
+                ++$source_class['fallback'];
+            } elseif ( in_array( 'smartlink', $detected_keys, true ) ) {
+                ++$source_class['smartlink'];
+            } elseif ( ! empty( $offer['id'] ) ) {
+                ++$source_class['normal_offer'];
+            } else {
+                ++$source_class['unknown'];
             }
 
             $offer_id = (string) ( $offer['id'] ?? '' );
             $meta = '' !== $offer_id ? $this->get_offer_dashboard_metadata( $offer_id, $offer ) : array();
             $admin_values = (array) ( $this->get_admin_offer_filter_values( $offer, $meta )['payout_type'] ?? array() );
+            $is_group_like = ( false !== strpos( $name_haystack, 'group fallback' ) ) || in_array( 'fallback', $detected_keys, true );
             foreach ( $admin_values as $type_key ) {
                 $normalized = $this->normalize_filter_family_value( 'payout_type', (string) $type_key );
                 if ( isset( $admin_filter[ $normalized ] ) ) {
                     ++$admin_filter[ $normalized ];
+                    if ( $is_group_like ) {
+                        ++$group_admin_filter[ $normalized ];
+                    }
                 }
             }
         }
 
         return array(
             'source_total' => count( $offers ),
+            'source_class' => $source_class,
             'raw' => $raw,
             'detected' => $detected,
             'admin_filter' => $admin_filter,
+            'group_admin_filter' => $group_admin_filter,
             'frontend_eligible' => $frontend_eligible, // TODO(PR#61): add safe precomputed frontend-eligible counters if needed.
         );
     }

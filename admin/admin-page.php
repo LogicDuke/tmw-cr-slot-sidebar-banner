@@ -2177,7 +2177,11 @@ class TMW_CR_Slot_Admin_Page {
                     $label = isset( $payout_labels[ $normalized ] ) ? $payout_labels[ $normalized ] : strtoupper( $normalized );
                     $raw_count = (int) ( $this->get_reconciliation_family_count( $reconciliation_counts, 'raw', $normalized ) );
                     $detected_count = (int) ( $this->get_reconciliation_family_count( $reconciliation_counts, 'detected', $normalized ) );
-                    $context .= sprintf( ' | Raw payout_type %1$s rows: %2$d | Detected local %1$s rows: %3$d', $label, $raw_count, $detected_count );
+                    $fallback_group_count = (int) $this->get_reconciliation_group_family_count( $reconciliation_counts, $normalized );
+                    $context .= sprintf( ' | Raw payout_type %1$s rows: %2$d | Detected local %1$s rows: %3$d | Group fallback/local rows in this family: %4$d', $label, $raw_count, $detected_count, $fallback_group_count );
+                    if ( 'revshare_lifetime' === $normalized ) {
+                        $context .= sprintf( ' | Raw cpa_flat rows mapped locally: %d', (int) ( $reconciliation_counts['raw']['cpa_flat'] ?? 0 ) );
+                    }
                 }
             }
         }
@@ -2207,15 +2211,21 @@ class TMW_CR_Slot_Admin_Page {
 
     protected function render_payout_reconciliation_panel( $counts, $payout_labels ) {
         $families = array( 'pps', 'soi', 'doi', 'cpc', 'cpi', 'cpm', 'multi_cpa', 'revshare', 'revshare_lifetime', 'fallback', 'smartlink' );
+        $source_class = (array) ( $counts['source_class'] ?? array() );
+        $group_fallback_rows = (int) ( $source_class['group_fallback'] ?? 0 ) + (int) ( $source_class['fallback'] ?? 0 );
         ?>
         <div class="notice notice-info inline">
             <p><strong><?php esc_html_e( 'Payout count reconciliation', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
+            <p class="description"><?php esc_html_e( 'These counts use local synced data. CrakRevenue website counts may differ because local counts include synced fallback/group rows and normalized detected payout families.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
             <p><?php echo esc_html( sprintf( 'Total synced offers: %d', (int) ( $counts['source_total'] ?? 0 ) ) ); ?></p>
+            <p><?php echo esc_html( sprintf( 'Normal offers: %d', (int) ( $source_class['normal_offer'] ?? 0 ) ) ); ?></p>
+            <p><?php echo esc_html( sprintf( 'Group fallback/fallback rows: %d', $group_fallback_rows ) ); ?></p>
+            <p><?php echo esc_html( sprintf( 'Smartlink rows: %d', (int) ( $source_class['smartlink'] ?? 0 ) ) ); ?></p>
             <table class="widefat striped">
                 <thead>
                     <tr>
                         <th><?php esc_html_e( 'Payout family', 'tmw-cr-slot-sidebar-banner' ); ?></th>
-                        <th><?php esc_html_e( 'Raw CR/API field', 'tmw-cr-slot-sidebar-banner' ); ?></th>
+                        <th><?php esc_html_e( 'Raw payout_type', 'tmw-cr-slot-sidebar-banner' ); ?></th>
                         <th><?php esc_html_e( 'Detected local type', 'tmw-cr-slot-sidebar-banner' ); ?></th>
                         <th><?php esc_html_e( 'Admin filter count', 'tmw-cr-slot-sidebar-banner' ); ?></th>
                     </tr>
@@ -2240,6 +2250,12 @@ class TMW_CR_Slot_Admin_Page {
             </p>
         </div>
         <?php
+    }
+
+    protected function get_reconciliation_group_family_count( $counts, $family ) {
+        $family = sanitize_key( (string) $family );
+        $values = (array) ( $counts['group_admin_filter'] ?? array() );
+        return (int) ( $values[ $family ] ?? 0 );
     }
 
     /**

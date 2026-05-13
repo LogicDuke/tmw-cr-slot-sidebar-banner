@@ -794,8 +794,8 @@ class TMW_CR_Slot_Admin_Page {
             <br />
             <?php esc_html_e( 'Payout filters use normalized detected type keys from synced offers. Raw payout strings (for example cpa_flat) can still appear in the payout display.', 'tmw-cr-slot-sidebar-banner' ); ?>
         </p>
-        <?php $this->render_payout_reconciliation_panel( $reconciliation_counts, $payout_labels ); ?>
         <?php $this->render_cr_scope_explainer_panel(); ?>
+        <?php $this->render_payout_reconciliation_panel( $reconciliation_counts, $payout_labels ); ?>
         <?php $this->render_cr_fixture_reconciliation_panel( (array) ( $result['active_filters'] ?? array() ) ); ?>
 
         <table class="widefat striped">

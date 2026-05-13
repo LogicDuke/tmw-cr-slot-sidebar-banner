@@ -152,36 +152,25 @@ class TMW_CR_Slot_Offer_Repository {
      * @return array<string,array<string,string>>
      */
     public function get_skipped_offer_ids_for_frontend() {
-        $rows = get_option( $this->skipped_offers_option_key, array() );
         $set = array();
-        foreach ( (array) $rows as $key => $row ) {
-            if ( ! is_array( $row ) ) {
+
+        foreach ( $this->get_skipped_offers() as $offer_id => $row ) {
+            $offer_id = trim( sanitize_text_field( (string) $offer_id ) );
+            if ( '' === $offer_id || ! is_array( $row ) ) {
                 continue;
             }
-            if ( array_key_exists( 'offer_id', $row ) ) {
-                $resolved_offer_id = (string) $row['offer_id'];
-                if ( '' === trim( $resolved_offer_id ) ) {
-                    continue;
-                }
-            } else {
-                $resolved_offer_id = (string) $key;
-            }
-            $offer_id = trim( sanitize_text_field( $resolved_offer_id ) );
-            $decision = sanitize_key( (string) ( $row['decision'] ?? '' ) );
-            if ( ! array_key_exists( 'decision', $row ) ) {
-                $decision = 'skip';
-            }
-            if ( ! in_array( $decision, array( 'skip', 'review_later', 'keep' ), true ) ) {
+
+            $decision = sanitize_key( (string) ( $row['decision'] ?? 'skip' ) );
+            if ( 'skip' !== $decision ) {
                 continue;
             }
-            if ( '' === $offer_id || 'skip' !== $decision ) {
-                continue;
-            }
+
             $set[ $offer_id ] = array(
-                'reason' => sanitize_text_field( (string) ( $row['reason'] ?? '' ) ),
+                'reason'   => sanitize_text_field( (string) ( $row['reason'] ?? '' ) ),
                 'decision' => 'skip',
             );
         }
+
         return $set;
     }
 

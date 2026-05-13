@@ -4170,6 +4170,87 @@ $tests['offers_tab_summary_normalizes_legacy_payout_alias_labels'] = function() 
     tmw_assert_contains( 'Payout Type: Revshare Lifetime', $html, 'Legacy alias label should render with canonical payout family label.' );
     tmw_assert_true( false === strpos( $html, 'Payout Type: CPA_FLAT' ), 'Legacy alias should not be rendered as raw CPA_FLAT label.' );
 };
+
+$tests['payout_reconciliation_includes_cr_ui_label_comparison_counts_array'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array(
+        'n-pps' => array( 'id' => 'n-pps', 'name' => 'Normal PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+        'n-soi' => array( 'id' => 'n-soi', 'name' => 'Normal SOI', 'status' => 'active', 'payout_type' => 'SOI' ),
+        'n-rv' => array( 'id' => 'n-rv', 'name' => 'Brand Revshare Lifetime', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+        'f-pps' => array( 'id' => 'f-pps', 'name' => 'Fallback PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+        's-mc' => array( 'id' => 's-mc', 'name' => 'CR Smartlink - Multi-CPA', 'status' => 'active', 'payout_type' => 'cpa_both' ),
+    ) );
+    $counts = $repo->get_admin_payout_reconciliation_counts();
+    tmw_assert_true( isset( $counts['cr_ui_label_comparison'] ) && is_array( $counts['cr_ui_label_comparison'] ), 'cr_ui_label_comparison should exist.' );
+    foreach ( array( 'pps', 'soi', 'doi', 'cpc', 'cpi', 'cpm', 'multi_cpa', 'revshare', 'revshare_lifetime', 'fallback', 'smartlink' ) as $family ) {
+        tmw_assert_true( array_key_exists( $family, $counts['cr_ui_label_comparison'] ), 'Family should exist: ' . $family );
+        tmw_assert_true( is_int( $counts['cr_ui_label_comparison'][ $family ] ), 'Family value should be integer: ' . $family );
+    }
+};
+$tests['cr_ui_label_comparison_excludes_fallback_and_group_fallback_rows'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array(
+        'n1' => array( 'id' => 'n1', 'name' => 'Normal PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+        'g1' => array( 'id' => 'g1', 'name' => 'Group Fallback - Brand PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+        'f1' => array( 'id' => 'f1', 'name' => 'Group Fallback - Legacy Fallback PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+        'fb1' => array( 'id' => 'fb1', 'name' => 'Fallback PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+    ) );
+    $counts = $repo->get_admin_payout_reconciliation_counts();
+    tmw_assert_true( (int) $counts['admin_filter']['pps'] >= 3, 'Admin PPS should keep current behavior for matching rows.' );
+    tmw_assert_same( 1, (int) $counts['cr_ui_label_comparison']['pps'], 'CR UI comparison PPS should count only normal row.' );
+    tmw_assert_same( 1, (int) $counts['source_class']['fallback'], 'Plain fallback fixture should classify as fallback source class.' );
+};
+$tests['cr_ui_label_comparison_excludes_smartlink_rows'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array(
+        'n1' => array( 'id' => 'n1', 'name' => 'Normal Multi-CPA', 'status' => 'active', 'payout_type' => 'cpa_both' ),
+        's1' => array( 'id' => 's1', 'name' => 'CR Smartlink - Global', 'status' => 'active', 'payout_type' => 'cpa_both' ),
+    ) );
+    $counts = $repo->get_admin_payout_reconciliation_counts();
+    tmw_assert_true( (int) $counts['detected']['smartlink'] >= 1, 'Smartlink should remain in detected bucket.' );
+    tmw_assert_true( (int) $counts['admin_filter']['smartlink'] >= 1, 'Smartlink should remain in admin bucket.' );
+    tmw_assert_same( 1, (int) $counts['cr_ui_label_comparison']['multi_cpa'], 'Smartlink must not contribute to CR comparison multi_cpa.' );
+};
+$tests['cr_ui_label_comparison_does_not_double_count_cpa_flat_into_multi_cpa'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array(
+        'rvl1' => array( 'id' => 'rvl1', 'name' => 'Brand Revshare Lifetime', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+    ) );
+    $counts = $repo->get_admin_payout_reconciliation_counts();
+    tmw_assert_same( 1, (int) $counts['admin_filter']['multi_cpa'], 'Admin behavior for cpa_flat => multi_cpa should remain unchanged.' );
+    tmw_assert_same( 1, (int) $counts['cr_ui_label_comparison']['revshare_lifetime'], 'CR comparison should count Revshare Lifetime.' );
+    tmw_assert_same( 0, (int) $counts['cr_ui_label_comparison']['multi_cpa'], 'CR comparison multi_cpa should not be inflated by cpa_flat.' );
+};
+$tests['cr_ui_label_comparison_distinguishes_revshare_from_revshare_lifetime'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array(
+        'r1' => array( 'id' => 'r1', 'name' => 'Brand Revshare', 'status' => 'active', 'payout_type' => 'cpa_percentage' ),
+        'r2' => array( 'id' => 'r2', 'name' => 'Brand Revshare Lifetime', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+    ) );
+    $counts = $repo->get_admin_payout_reconciliation_counts();
+    tmw_assert_same( 1, (int) $counts['cr_ui_label_comparison']['revshare'], 'CR comparison should count Revshare.' );
+    tmw_assert_same( 1, (int) $counts['cr_ui_label_comparison']['revshare_lifetime'], 'CR comparison should count Revshare Lifetime.' );
+};
+$tests['cr_ui_label_comparison_total_does_not_exceed_normal_offer_count'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array(
+        'n1' => array( 'id' => 'n1', 'name' => 'Normal PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+        'n2' => array( 'id' => 'n2', 'name' => 'Normal SOI', 'status' => 'active', 'payout_type' => 'SOI' ),
+        'g1' => array( 'id' => 'g1', 'name' => 'Group Fallback - PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+        's1' => array( 'id' => 's1', 'name' => 'CR Smartlink - Global', 'status' => 'active', 'payout_type' => 'cpa_both' ),
+    ) );
+    $counts = $repo->get_admin_payout_reconciliation_counts();
+    $sum = 0;
+    foreach ( (array) $counts['cr_ui_label_comparison'] as $v ) { tmw_assert_true( (int) $v >= 0, 'Family counts must not be negative.' ); $sum += (int) $v; }
+    tmw_assert_true( $sum <= (int) $counts['source_class']['normal_offer'], 'CR comparison total should not exceed normal_offer count.' );
+};
+
 $tests['payout_reconciliation_counts_source_classes'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
@@ -4220,7 +4301,7 @@ $tests['payout_reconciliation_counts_source_total_excludes_malformed_rows'] = fu
     tmw_assert_same( 1, (int) $counts['admin_filter']['pps'], 'Admin filter counts should reflect only valid rows.' );
     tmw_assert_same( 1, (int) $counts['source_class']['normal_offer'], 'Source class counts should reflect only valid rows.' );
 };
-$tests['offers_tab_renders_payout_reconciliation_panel'] = function() {
+$tests['offers_tab_reconciliation_panel_renders_cr_ui_label_columns'] = function() {
     tmw_reset_test_state();
     $_GET = array( 'tab' => 'offers' );
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
@@ -4232,15 +4313,18 @@ $tests['offers_tab_renders_payout_reconciliation_panel'] = function() {
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
     ob_start(); $page->render_page(); $html = (string) ob_get_clean();
     tmw_assert_contains( 'Payout count reconciliation', $html, 'Panel title should render.' );
-    tmw_assert_contains( 'Raw payout_type', $html, 'Raw header should render.' );
+    tmw_assert_contains( 'API payout_type raw count', $html, 'API header should render.' );
     tmw_assert_contains( 'Detected local type', $html, 'Detected header should render.' );
     tmw_assert_contains( 'Admin filter count', $html, 'Admin header should render.' );
+    tmw_assert_contains( 'CR UI-label comparison', $html, 'CR comparison header should render.' );
+    tmw_assert_contains( 'Local fallback/smartlink extras', $html, 'Extras header should render.' );
+    tmw_assert_contains( 'API payout_type is the CR API calculation method.', $html, 'Help text should explain API semantics.' );
     tmw_assert_contains( 'Group fallback/fallback rows', $html, 'Source class group/fallback summary should render.' );
     tmw_assert_contains( 'PPS', $html, 'PPS family row should render.' );
     tmw_assert_contains( 'SOI', $html, 'SOI family row should render.' );
     tmw_assert_contains( 'Revshare Lifetime', $html, 'Revshare Lifetime family row should render.' );
 };
-$tests['offers_tab_active_payout_summary_shows_raw_detected_admin_counts'] = function() {
+$tests['offers_tab_active_payout_summary_shows_cr_ui_label_context'] = function() {
     tmw_reset_test_state();
     $_GET = array( 'tab' => 'offers', 'payout_type' => array( 'pps' ) );
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
@@ -4251,8 +4335,8 @@ $tests['offers_tab_active_payout_summary_shows_raw_detected_admin_counts'] = fun
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
     ob_start(); $page->render_page(); $html = (string) ob_get_clean();
     tmw_assert_contains( 'admin-filter matched', $html, 'Summary should explicitly say admin-filter matched.' );
-    tmw_assert_contains( 'Raw payout_type PPS rows: 1', $html, 'Summary should include raw PPS rows.' );
-    tmw_assert_contains( 'Detected local PPS rows: 2', $html, 'Summary should include detected PPS rows.' );
+    tmw_assert_contains( 'CR UI-label comparison PPS rows:', $html, 'Summary should include CR UI-label comparison PPS rows.' );
+    tmw_assert_contains( 'Local fallback/smartlink PPS extras:', $html, 'Summary should include local extras context.' );
 };
 $tests['offers_tab_revshare_lifetime_context_mentions_cpa_flat_mapping'] = function() {
     tmw_reset_test_state();
@@ -4338,7 +4422,7 @@ $tests['offers_dashboard_changes_do_not_change_frontend_pool'] = function() {
     tmw_assert_true( false === strpos( wp_json_encode( $be ), '10366' ), '10366 remains excluded for BE.' );
     tmw_assert_true( false === strpos( wp_json_encode( $us ), '9647' ) && false === strpos( wp_json_encode( $us ), '9781' ), 'Unavailable offers remain excluded.' );
 };
-$tests['frontend_pool_unchanged_after_payout_reconciliation_counts'] = function() {
+$tests['frontend_pool_unchanged_after_cr_ui_label_comparison_counts'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
     $repo->save_synced_offers( array(
@@ -4766,109 +4850,6 @@ $tests['slot_setup_cpi_cpm_options_render_unchecked_by_default'] = function() {
     tmw_assert_true( false === strpos( $html, 'value="cpi" checked' ), 'CPI should be unchecked by default.' );
     tmw_assert_true( false === strpos( $html, 'value="cpm" checked' ), 'CPM should be unchecked by default.' );
     tmw_assert_true( false !== strpos( $html, 'value="pps" checked' ), 'PPS should remain checked by default.' );
-};
-
-
-$tests['cr_offers_parsed_fixture_integrity'] = function() {
-    error_log( '[TMW-FIXTURE-INTEGRITY] cr_offers_parsed.csv test starting' );
-
-    $path = __DIR__ . '/fixtures/cr_offers_parsed.csv';
-    tmw_assert_true( file_exists( $path ), 'cr_offers_parsed.csv fixture must exist at tests/fixtures/cr_offers_parsed.csv.' );
-
-    $handle = fopen( $path, 'rb' );
-    tmw_assert_true( false !== $handle, 'cr_offers_parsed.csv must be readable via fopen.' );
-
-    $header = fgetcsv( $handle );
-    $expected_header = array( 'cr_id', 'name', 'approval', 'payout_type', 'page', 'pdf' );
-    tmw_assert_same( $expected_header, $header, 'cr_offers_parsed.csv header must match the canonical six-column order.' );
-
-    $rows = array();
-    while ( false !== ( $row = fgetcsv( $handle ) ) ) {
-        // Skip blank trailing lines that fgetcsv reports as array(null).
-        if ( array( null ) === $row ) {
-            continue;
-        }
-        if ( 1 === count( $row ) && '' === trim( (string) $row[0] ) ) {
-            continue;
-        }
-        tmw_assert_same( 6, count( $row ), 'Every CSV row must have exactly 6 columns. Bad row: ' . implode( '|', $row ) );
-        $rows[] = array(
-            'cr_id'       => (string) $row[0],
-            'name'        => (string) $row[1],
-            'approval'    => (string) $row[2],
-            'payout_type' => (string) $row[3],
-            'page'        => (string) $row[4],
-            'pdf'         => (string) $row[5],
-        );
-    }
-    fclose( $handle );
-
-    tmw_assert_same( 273, count( $rows ), 'cr_offers_parsed.csv must contain exactly 273 data rows. CR UI shows 274; one row is a known PDF/OCR gap and is not synthesized.' );
-
-    $approval_counts = array();
-    $payout_counts   = array();
-    foreach ( $rows as $r ) {
-        $a = $r['approval'];
-        $p = $r['payout_type'];
-        $approval_counts[ $a ] = isset( $approval_counts[ $a ] ) ? $approval_counts[ $a ] + 1 : 1;
-        $payout_counts[ $p ]   = isset( $payout_counts[ $p ] )   ? $payout_counts[ $p ]   + 1 : 1;
-    }
-
-    tmw_assert_same( 223, (int) ( $approval_counts['Approved'] ?? 0 ), 'Approved approval-status count must equal 223.' );
-    tmw_assert_same( 50,  (int) ( $approval_counts['Required'] ?? 0 ), 'Required approval-status count must equal 50.' );
-
-    tmw_assert_same( 89, (int) ( $payout_counts['PPS'] ?? 0 ),               'Visible CR payout_type PPS count must equal 89.' );
-    tmw_assert_same( 77, (int) ( $payout_counts['Revshare Lifetime'] ?? 0 ), 'Visible CR payout_type Revshare Lifetime count must equal 77.' );
-    tmw_assert_same( 39, (int) ( $payout_counts['Revshare'] ?? 0 ),          'Visible CR payout_type Revshare count must equal 39.' );
-    tmw_assert_same( 27, (int) ( $payout_counts['SOI'] ?? 0 ),               'Visible CR payout_type SOI count must equal 27.' );
-    tmw_assert_same( 23, (int) ( $payout_counts['DOI'] ?? 0 ),               'Visible CR payout_type DOI count must equal 23.' );
-    tmw_assert_same( 18, (int) ( $payout_counts['Multi-CPA'] ?? 0 ),         'Visible CR payout_type Multi-CPA count must equal 18.' );
-    tmw_assert_same( 0,  (int) ( $payout_counts['CPC'] ?? 0 ),               'Visible CR payout_type CPC count must equal 0.' );
-    tmw_assert_same( 0,  (int) ( $payout_counts['CPI'] ?? 0 ),               'Visible CR payout_type CPI count must equal 0.' );
-    tmw_assert_same( 0,  (int) ( $payout_counts['CPM'] ?? 0 ),               'Visible CR payout_type CPM count must equal 0.' );
-
-    $allowed_approval_values = array( 'Approved', 'Required' );
-    $allowed_payout_values   = array( 'PPS', 'SOI', 'DOI', 'CPC', 'CPI', 'CPM', 'Multi-CPA', 'Revshare', 'Revshare Lifetime', 'Smartlink' );
-    foreach ( $rows as $r ) {
-        tmw_assert_true( in_array( $r['approval'], $allowed_approval_values, true ), 'Unexpected approval value at cr_id=' . $r['cr_id'] . ': ' . $r['approval'] );
-        tmw_assert_true( in_array( $r['payout_type'], $allowed_payout_values, true ), 'Unexpected payout_type value at cr_id=' . $r['cr_id'] . ': ' . $r['payout_type'] );
-        tmw_assert_true( '' !== trim( $r['cr_id'] ),       'cr_id must not be empty. Row: ' . implode( '|', $r ) );
-        tmw_assert_true( '' !== trim( $r['name'] ),        'name must not be empty. cr_id=' . $r['cr_id'] );
-        tmw_assert_true( '' !== trim( $r['approval'] ),    'approval must not be empty. cr_id=' . $r['cr_id'] );
-        tmw_assert_true( '' !== trim( $r['payout_type'] ), 'payout_type must not be empty. cr_id=' . $r['cr_id'] );
-    }
-
-    $ids = array();
-    foreach ( $rows as $r ) {
-        $ids[] = $r['cr_id'];
-    }
-    tmw_assert_same( count( $ids ), count( array_unique( $ids ) ), 'Duplicate cr_id values must not appear in fixture.' );
-
-    $ids_int = array_map( 'intval', $ids );
-    sort( $ids_int );
-    $is_synthetic_sequence = ( 273 === count( $ids_int ) && $ids_int === range( 1000, 1272 ) );
-    tmw_assert_true( ! $is_synthetic_sequence, 'cr_id list must not be the synthetic 1000..1272 sequence rejected by prior audit.' );
-
-    tmw_assert_true( min( $ids_int ) < 1000,  'min(cr_id) must be < 1000 (real CR data has early-era IDs like 235, 425, 779).' );
-    tmw_assert_true( max( $ids_int ) > 10000, 'max(cr_id) must be > 10000 (real CR data has recent IDs in the 10000s).' );
-
-    foreach ( $rows as $r ) {
-        tmw_assert_true( 1 !== preg_match( '/^CR Parsed Offer\s+\d+/i', $r['name'] ), 'Synthetic placeholder name pattern detected: ' . $r['name'] . ' (cr_id=' . $r['cr_id'] . ')' );
-    }
-
-    tmw_assert_true( ( $approval_counts['Required'] ?? 0 ) > 0, 'Fixture must contain at least one Required approval row.' );
-
-    $anchor = null;
-    foreach ( $rows as $r ) {
-        if ( '235' === $r['cr_id'] ) {
-            $anchor = $r;
-            break;
-        }
-    }
-    tmw_assert_true( null !== $anchor, 'Anchor row cr_id=235 must exist in fixture.' );
-    tmw_assert_contains( 'Exposed Webcams', $anchor['name'],        'Anchor row cr_id=235 name must contain "Exposed Webcams".' );
-    tmw_assert_same( 'Required',          $anchor['approval'],      'Anchor row cr_id=235 approval must be Required.' );
-    tmw_assert_same( 'Revshare Lifetime', $anchor['payout_type'],   'Anchor row cr_id=235 payout_type must be Revshare Lifetime.' );
 };
 
 

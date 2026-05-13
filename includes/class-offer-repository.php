@@ -891,9 +891,10 @@ class TMW_CR_Slot_Offer_Repository {
 
         foreach ( $offers as $offer_id => $offer ) {
             $meta = $this->get_offer_dashboard_metadata( (string) $offer_id, $offer );
+            $combined = $this->get_admin_offer_filter_values( $offer, $meta );
 
             foreach ( $supported as $field_key => $values ) {
-                $field_values = isset( $meta[ $field_key ] ) ? (array) $meta[ $field_key ] : array();
+                $field_values = isset( $combined[ $field_key ] ) ? (array) $combined[ $field_key ] : array();
                 foreach ( $field_values as $value ) {
                     $value = $this->normalize_filter_family_value( $field_key, $value );
                     if ( '' === $value ) {
@@ -966,10 +967,7 @@ class TMW_CR_Slot_Offer_Repository {
         $promotion_values = $this->normalize_query_values( $query['promotion_method'], 'promotion_method' );
         $image       = strtolower( trim( (string) $query['image_status'] ) );
         $logo_status = strtolower( trim( (string) $query['logo_status'] ) );
-        $payout_filter_active = ! empty( $payout_values );
-        $payout_total_count = 0;
-        $payout_matched_count = 0;
-        $payout_metadata_fallback_used = 0;
+        $active_filters = array();
         $offers         = array_values( $this->get_synced_offers() );
         $legacy_catalog = $this->get_default_legacy_catalog();
         $filtered       = array();
@@ -992,17 +990,18 @@ class TMW_CR_Slot_Offer_Repository {
                 }
             }
 
-            $offer_status = strtolower( (string) ( $offer['status'] ?? '' ) );
+            $offer_status = strtolower( trim( (string) ( $offer['status'] ?? '' ) ) );
             if ( ! empty( $status_values ) && ! in_array( $offer_status, $status_values, true ) ) {
                 continue;
             }
             $offer_meta = $this->get_offer_dashboard_metadata( $offer_id, $offer );
+            $filter_values = $this->get_admin_offer_filter_values( $offer, $offer_meta );
 
-            if ( ! empty( $tag_values ) && ! $this->values_intersect_filter_set( $tag_values, (array) ( $offer_meta['tag'] ?? array() ) ) ) {
+            if ( ! empty( $tag_values ) && ! $this->values_intersect_filter_set( $tag_values, (array) ( $filter_values['tag'] ?? array() ) ) ) {
                 continue;
             }
 
-            if ( ! empty( $vertical_values ) && ! $this->values_intersect_filter_set( $vertical_values, (array) ( $offer_meta['vertical'] ?? array() ) ) ) {
+            if ( ! empty( $vertical_values ) && ! $this->values_intersect_filter_set( $vertical_values, (array) ( $filter_values['vertical'] ?? array() ) ) ) {
                 continue;
             }
 
@@ -1020,51 +1019,22 @@ class TMW_CR_Slot_Offer_Repository {
                 }
             }
 
-            if ( $payout_filter_active ) {
-                ++$payout_total_count;
-                $offer_payout_types = (array) ( $offer_meta['payout_type'] ?? array() );
-                if ( empty( $offer_payout_types ) ) {
-                    $fallback_types = (array) $this->get_offer_type_keys( $offer );
-                    $fallback_aliases = array(
-                        'cpa' => 'multi_cpa',
-                        'cpa_flat' => 'multi_cpa',
-                    );
-                    $offer_payout_types = array();
-                    foreach ( $fallback_types as $fallback_type ) {
-                        $fallback_type = strtolower( trim( (string) $fallback_type ) );
-                        if ( '' === $fallback_type ) {
-                            continue;
-                        }
-                        $mapped_type = isset( $fallback_aliases[ $fallback_type ] ) ? $fallback_aliases[ $fallback_type ] : $fallback_type;
-                        $normalized_type = $this->normalize_filter_family_value( 'payout_type', $mapped_type );
-                        if ( '' === $normalized_type ) {
-                            continue;
-                        }
-                        $offer_payout_types[] = $normalized_type;
-                    }
-                    $offer_payout_types = array_values( array_unique( $offer_payout_types ) );
-                    if ( ! empty( $offer_payout_types ) ) {
-                        ++$payout_metadata_fallback_used;
-                    }
-                }
-                if ( ! $this->values_intersect_filter_set( $payout_values, $offer_payout_types ) ) {
-                    continue;
-                }
-                ++$payout_matched_count;
-            }
-            if ( ! empty( $performs_values ) && ! $this->values_intersect_filter_set( $performs_values, (array) ( $offer_meta['performs_in'] ?? array() ), true ) ) {
+            if ( ! empty( $payout_values ) && ! $this->values_intersect_filter_set( $payout_values, (array) ( $filter_values['payout_type'] ?? array() ) ) ) {
                 continue;
             }
-            if ( ! empty( $optimized_values ) && ! $this->values_intersect_filter_set( $optimized_values, (array) ( $offer_meta['optimized_for'] ?? array() ) ) ) {
+            if ( ! empty( $performs_values ) && ! $this->values_intersect_filter_set( $performs_values, (array) ( $filter_values['performs_in'] ?? array() ), true ) ) {
                 continue;
             }
-            if ( ! empty( $accepted_values ) && ! $this->values_intersect_filter_set( $accepted_values, (array) ( $offer_meta['accepted_country'] ?? array() ), true ) ) {
+            if ( ! empty( $optimized_values ) && ! $this->values_intersect_filter_set( $optimized_values, (array) ( $filter_values['optimized_for'] ?? array() ) ) ) {
                 continue;
             }
-            if ( ! empty( $niche_values ) && ! $this->values_intersect_filter_set( $niche_values, (array) ( $offer_meta['niche'] ?? array() ) ) ) {
+            if ( ! empty( $accepted_values ) && ! $this->values_intersect_filter_set( $accepted_values, (array) ( $filter_values['accepted_country'] ?? array() ), true ) ) {
                 continue;
             }
-            if ( ! empty( $promotion_values ) && ! $this->values_intersect_filter_set( $promotion_values, (array) ( $offer_meta['promotion_method'] ?? array() ) ) ) {
+            if ( ! empty( $niche_values ) && ! $this->values_intersect_filter_set( $niche_values, (array) ( $filter_values['niche'] ?? array() ) ) ) {
+                continue;
+            }
+            if ( ! empty( $promotion_values ) && ! $this->values_intersect_filter_set( $promotion_values, (array) ( $filter_values['promotion_method'] ?? array() ) ) ) {
                 continue;
             }
 
@@ -1137,9 +1107,21 @@ class TMW_CR_Slot_Offer_Repository {
 
         $offset = ( $page - 1 ) * $per_page;
 
-        if ( $payout_filter_active ) {
-            $requested = implode( ',', array_map( 'sanitize_key', $payout_values ) );
-            error_log( sprintf( '[TMW-BANNER-OFFERS-FILTER] payout_type_filter requested=%s total=%d matched=%d metadata_fallback_used=%d', $requested, $payout_total_count, $payout_matched_count, $payout_metadata_fallback_used ) );
+        $family_filters = array(
+            'payout_type' => $payout_values, 'tag' => $tag_values, 'vertical' => $vertical_values, 'performs_in' => $performs_values,
+            'optimized_for' => $optimized_values, 'accepted_country' => $accepted_values, 'niche' => $niche_values, 'promotion_method' => $promotion_values,
+        );
+        foreach ( array( 'search' => $search, 'status' => $status_values, 'featured' => $featured, 'approval_required' => $approval, 'image_status' => $image, 'logo_status' => $logo_status ) as $k => $v ) {
+            if ( ! empty( $v ) ) { $active_filters[] = sanitize_key( $k ); }
+        }
+        foreach ( $family_filters as $family => $requested_values ) {
+            if ( empty( $requested_values ) ) { continue; }
+            $active_filters[] = sanitize_key( $family );
+        }
+        $active_filters = array_values( array_unique( $active_filters ) );
+        if ( ! empty( $active_filters ) ) {
+            $zero_reason = 0 === $total ? 'no_matches' : 'n/a';
+            error_log( sprintf( '[TMW-BANNER-OFFERS-FILTER] active=%s total=%d matched=%d zero_reason=%s', implode( ',', $active_filters ), count( $offers ), $total, sanitize_key( $zero_reason ) ) );
         }
 
         return array(
@@ -1150,7 +1132,46 @@ class TMW_CR_Slot_Offer_Repository {
             'pages'    => $pages,
             'sort_by'  => $sort_by,
             'order'    => $sort_order,
+            'active_filters' => $active_filters,
+            'source_total' => count( $offers ),
         );
+    }
+
+    protected function get_admin_offer_filter_values( $offer, $offer_meta ) {
+        $families = array( 'tag', 'vertical', 'performs_in', 'optimized_for', 'accepted_country', 'niche', 'promotion_method', 'payout_type' );
+        $values = array();
+        foreach ( $families as $family ) {
+            $meta_values = $this->normalize_query_values( (array) ( $offer_meta[ $family ] ?? array() ), $family );
+            $raw_values  = $this->extract_admin_raw_filter_values( $offer, $family );
+            $values[ $family ] = array_values( array_unique( array_merge( $meta_values, $raw_values ) ) );
+        }
+        return $values;
+    }
+
+    protected function extract_admin_raw_filter_values( $offer, $family ) {
+        $raw_map = array(
+            'tag' => array( 'tag', 'tags' ), 'vertical' => array( 'vertical', 'verticals' ), 'performs_in' => array( 'performs_in', 'countries_performs_in' ),
+            'optimized_for' => array( 'optimized_for' ), 'accepted_country' => array( 'accepted_country', 'accepted_countries', 'countries' ),
+            'niche' => array( 'niche' ), 'promotion_method' => array( 'promotion_method' ), 'payout_type' => array( 'payout_type' ),
+        );
+        $raw_values = array();
+        foreach ( (array) ( $raw_map[ $family ] ?? array() ) as $key ) {
+            $raw_source = $offer[ $key ] ?? array();
+            if ( is_string( $raw_source ) && ( false !== strpos( $raw_source, '|' ) || false !== strpos( $raw_source, ',' ) ) ) {
+                $raw_source = preg_split( '/[|,]/', $raw_source );
+            }
+            $raw_values = array_merge( $raw_values, $this->normalize_query_values( $raw_source, $family ) );
+        }
+        if ( 'payout_type' === $family ) {
+            $has_direct_payout = '' !== trim( (string) ( $offer['payout_type'] ?? '' ) );
+            if ( ! $has_direct_payout ) {
+                $raw_values = array_merge( $raw_values, $this->normalize_query_values( $this->get_offer_type_keys( $offer ), 'payout_type' ) );
+            }
+            $name = strtolower( (string) ( $offer['name'] ?? '' ) );
+            if ( false !== strpos( $name, 'cpa' ) ) { $raw_values[] = 'multi_cpa'; }
+            if ( 'cpa_flat' === strtolower( trim( (string) ( $offer['payout_type'] ?? '' ) ) ) ) { $raw_values[] = 'multi_cpa'; }
+        }
+        return array_values( array_unique( $raw_values ) );
     }
 
     /**
@@ -3333,7 +3354,7 @@ class TMW_CR_Slot_Offer_Repository {
         }
 
         if ( in_array( $family, array( 'performs_in', 'accepted_country' ), true ) ) {
-            return strtoupper( $value );
+            return $this->normalize_country_filter_value( $value );
         }
 
         $normalized_key = str_replace( '-', '_', sanitize_key( $value ) );
@@ -3343,6 +3364,7 @@ class TMW_CR_Slot_Offer_Repository {
                 'cpa_percentage' => 'revshare',
                 'revshare' => 'revshare',
                 'revenue_share' => 'revshare',
+                'cpa' => 'multi_cpa',
                 'cpa_flat' => 'revshare_lifetime',
                 'revshare_lifetime' => 'revshare_lifetime',
                 'pps' => 'pps',
@@ -3373,6 +3395,24 @@ class TMW_CR_Slot_Offer_Repository {
         }
 
         return strtolower( $value );
+    }
+
+    protected function normalize_country_filter_value( $value ) {
+        $value = strtolower( trim( (string) $value ) );
+        $map = array(
+            'be' => 'BE', 'belgium' => 'BE',
+            'us' => 'US', 'usa' => 'US', 'united states' => 'US', 'united_states' => 'US',
+            'united kingdom' => 'GB', 'uk' => 'GB', 'great britain' => 'GB',
+            'germany' => 'DE', 'france' => 'FR', 'canada' => 'CA', 'australia' => 'AU',
+            'netherlands' => 'NL', 'spain' => 'ES', 'italy' => 'IT', 'austria' => 'AT',
+            'switzerland' => 'CH', 'sweden' => 'SE', 'norway' => 'NO', 'denmark' => 'DK',
+            'finland' => 'FI', 'ireland' => 'IE', 'portugal' => 'PT', 'poland' => 'PL',
+            'brazil' => 'BR', 'mexico' => 'MX',
+        );
+        if ( isset( $map[ $value ] ) ) {
+            return $map[ $value ];
+        }
+        return strtoupper( sanitize_text_field( (string) $value ) );
     }
 
     /**

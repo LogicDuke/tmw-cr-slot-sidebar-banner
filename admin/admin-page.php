@@ -801,6 +801,9 @@ class TMW_CR_Slot_Admin_Page {
         </form>
 
         <table class="widefat striped">
+            <?php if ( ! empty( $result['active_filters'] ) ) : ?>
+                <!-- TMW-BANNER-OFFERS-FILTER active="<?php echo esc_attr( implode( ',', array_map( 'sanitize_key', (array) $result['active_filters'] ) ) ); ?>" total="<?php echo esc_attr( (string) (int) ( $result['source_total'] ?? 0 ) ); ?>" matched="<?php echo esc_attr( (string) (int) $result['total'] ); ?>" -->
+            <?php endif; ?>
             <thead>
                 <tr>
                     <?php $this->render_sort_link_header( 'name', __( 'Name', 'tmw-cr-slot-sidebar-banner' ), $args ); ?>

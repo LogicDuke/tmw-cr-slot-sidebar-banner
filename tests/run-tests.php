@@ -3930,6 +3930,39 @@ $tests['offers_dashboard_status_filter_preserves_spaced_status_value'] = functio
     tmw_assert_contains( 'Pending Review Offer', $html, 'Spaced status value should be preserved and match pending review offer.' );
     tmw_assert_true( false === strpos( $html, 'Active Only Offer' ), 'Active fixture should be filtered out by pending review status filter.' );
 };
+$tests['offers_dashboard_payout_type_soi_matches_raw_offer_when_metadata_wrong'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers', 'payout_type' => array( 'soi' ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'so1' => array( 'id' => 'so1', 'name' => 'SOI Fast Flow', 'status' => 'active', 'payout_type' => 'SOI' ) ) );
+    update_option( 'tmw_cr_slot_banner_offer_dashboard_meta', array( 'so1' => array( 'payout_type' => array( 'pps' ), 'tag' => array( 'wrong' ), 'vertical' => array( 'wrong' ), 'performs_in' => array( 'US' ), 'optimized_for' => array(), 'accepted_country' => array( 'US' ), 'niche' => array( 'wrong' ), 'promotion_method' => array( 'wrong' ) ) ) );
+    $result = $repo->get_filtered_synced_offers_for_admin( array( 'payout_type' => array( 'soi' ) ), array() );
+    tmw_assert_same( 1, (int) $result['total'], 'SOI raw type should match even with stale metadata payout_type.' );
+};
+$tests['offers_dashboard_tag_vertical_niche_promotion_match_raw_when_metadata_wrong'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'rv1' => array( 'id' => 'rv1', 'name' => 'Raw Families', 'status' => 'active', 'payout_type' => 'PPS', 'tag' => 'cam', 'vertical' => 'dating', 'niche' => 'adult', 'promotion_method' => 'seo' ) ) );
+    update_option( 'tmw_cr_slot_banner_offer_dashboard_meta', array( 'rv1' => array( 'tag' => array( 'wrong' ), 'vertical' => array( 'wrong' ), 'performs_in' => array(), 'optimized_for' => array(), 'accepted_country' => array(), 'niche' => array( 'wrong' ), 'promotion_method' => array( 'wrong' ) ) ) );
+    tmw_assert_same( 1, (int) $repo->get_filtered_synced_offers_for_admin( array( 'tag' => array( 'cam' ) ), array() )['total'], 'Tag should match raw row.' );
+    tmw_assert_same( 1, (int) $repo->get_filtered_synced_offers_for_admin( array( 'vertical' => array( 'dating' ) ), array() )['total'], 'Vertical should match raw row.' );
+    tmw_assert_same( 1, (int) $repo->get_filtered_synced_offers_for_admin( array( 'niche' => array( 'adult' ) ), array() )['total'], 'Niche should match raw row.' );
+    tmw_assert_same( 1, (int) $repo->get_filtered_synced_offers_for_admin( array( 'promotion_method' => array( 'seo' ) ), array() )['total'], 'Promotion method should match raw row.' );
+};
+$tests['offers_dashboard_performs_and_accepted_country_match_code_and_name'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( 'c1' => array( 'id' => 'c1', 'name' => 'Country Offer', 'status' => 'active', 'payout_type' => 'PPS', 'performs_in' => 'Belgium', 'accepted_country' => 'US|Belgium' ) ) );
+    tmw_assert_same( 1, (int) $repo->get_filtered_synced_offers_for_admin( array( 'performs_in' => array( 'BE' ) ), array() )['total'], 'BE code should match Belgium name.' );
+    tmw_assert_same( 1, (int) $repo->get_filtered_synced_offers_for_admin( array( 'accepted_country' => array( 'usa' ) ), array() )['total'], 'USA should normalize to US.' );
+};
+$tests['offers_dashboard_combined_live_url_shape_with_payout_type_soi_returns_rows'] = function() {
+    tmw_reset_test_state(); $_GET = array( 'tab' => 'offers', 'search' => '', 'payout_type' => array( 'soi' ), 'status' => '', 'featured' => '', 'approval_required' => '', 'image_status' => '', 'logo_status' => '' );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ); $repo->save_synced_offers( array( 's01' => array( 'id' => 's01', 'name' => 'SOI URL Shape', 'status' => 'active', 'payout_type' => 'SOI' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'SOI URL Shape', $html, 'SOI row should render for live URL shape params.' );
+    tmw_assert_contains( 'TMW-BANNER-OFFERS-FILTER', $html, 'Debug comment should render when filters are active.' );
+};
 $tests['offers_dashboard_clear_all_link_has_clean_base_url'] = function() {
     tmw_reset_test_state();
     $_GET = array( 'tab' => 'offers', 'search' => '', 'payout_type' => array( 'pps' ), 'featured' => '', 'approval_required' => '', 'image_status' => '', 'logo_status' => '' );

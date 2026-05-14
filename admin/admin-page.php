@@ -44,8 +44,8 @@ class TMW_CR_Slot_Admin_Page {
      */
     public function register_menu() {
         add_options_page(
-            __( 'TMW CR Slot Banner', 'tmw-cr-slot-sidebar-banner' ),
-            __( 'TMW Slot Banner', 'tmw-cr-slot-sidebar-banner' ),
+            __( 'TMW CR Offer Banner', 'tmw-cr-slot-sidebar-banner' ),
+            __( 'TMW Offer Banner', 'tmw-cr-slot-sidebar-banner' ),
             'manage_options',
             'tmw-cr-slot-sidebar-banner',
             array( $this, 'render_page' )
@@ -581,8 +581,8 @@ class TMW_CR_Slot_Admin_Page {
         }
         ?>
         <div class="wrap tmw-cr-slot-banner-dashboard">
-            <h1><?php esc_html_e( 'TMW CrakRevenue Slot Operations Dashboard', 'tmw-cr-slot-sidebar-banner' ); ?></h1>
-            <p><?php esc_html_e( 'Manage synced offers, slot selection, priorities, image overrides, and sync health at scale.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+            <h1><?php esc_html_e( 'TMW CrakRevenue Offer Operations Dashboard', 'tmw-cr-slot-sidebar-banner' ); ?></h1>
+            <p><?php esc_html_e( 'Manage synced offers, display selection, priorities, image overrides, and sync health at scale.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
 
             <?php if ( '' !== $notice_text ) : ?>
                 <div class="notice notice-<?php echo 'success' === $notice_type ? 'success' : 'error'; ?> is-dismissible"><p><?php echo esc_html( $notice_text ); ?></p></div>
@@ -620,7 +620,7 @@ class TMW_CR_Slot_Admin_Page {
             'overview'   => __( 'Overview', 'tmw-cr-slot-sidebar-banner' ),
             'offers'     => __( 'Offers', 'tmw-cr-slot-sidebar-banner' ),
             'performance'=> __( 'Performance', 'tmw-cr-slot-sidebar-banner' ),
-            'slot-setup' => __( 'Slot Setup', 'tmw-cr-slot-sidebar-banner' ),
+            'slot-setup' => __( 'Offer Setup', 'tmw-cr-slot-sidebar-banner' ),
             'settings'   => __( 'Settings', 'tmw-cr-slot-sidebar-banner' ),
         );
     }
@@ -664,7 +664,7 @@ class TMW_CR_Slot_Admin_Page {
 
         <div class="tmw-cr-card-grid">
             <?php $this->render_summary_card( __( 'Stored offers', 'tmw-cr-slot-sidebar-banner' ), (string) (int) $summary['stored_offers'] ); ?>
-            <?php $this->render_summary_card( __( 'Selected slot offers', 'tmw-cr-slot-sidebar-banner' ), (string) (int) $summary['selected_slot_offers'] ); ?>
+            <?php $this->render_summary_card( __( 'Selected display offers', 'tmw-cr-slot-sidebar-banner' ), (string) (int) $summary['selected_slot_offers'] ); ?>
             <?php $this->render_summary_card( __( 'Active synced offers', 'tmw-cr-slot-sidebar-banner' ), (string) (int) $summary['active_synced_offers'] ); ?>
             <?php $this->render_summary_card( __( 'Featured synced offers', 'tmw-cr-slot-sidebar-banner' ), (string) (int) $summary['featured_synced_offers'] ); ?>
             <?php $this->render_summary_card( __( 'Offers requiring approval', 'tmw-cr-slot-sidebar-banner' ), (string) (int) $summary['approval_required_offers'] ); ?>
@@ -877,7 +877,7 @@ class TMW_CR_Slot_Admin_Page {
                             <td><?php $this->render_badge( (string) ( $logo_status_labels[ (string) ( $offer['logo_status'] ?? '' ) ] ?? 'Unknown' ), 'status' ); ?></td>
                             <td><?php $this->render_badge( ! empty( $eligibility_summary['is_eligible'] ) ? 'Eligible' : 'Excluded', ! empty( $eligibility_summary['is_eligible'] ) ? 'selected' : 'muted' ); ?></td>
                             <td><?php $this->render_badge( (string) ( $block_reason_labels[ (string) ( $eligibility_summary['block_reason'] ?? '' ) ] ?? 'Unknown' ), 'muted' ); ?></td>
-                            <td><?php $this->render_badge( ! empty( $offer['is_selected_for_slot'] ) ? 'Selected for slot' : 'Not selected', ! empty( $offer['is_selected_for_slot'] ) ? 'selected' : 'muted' ); ?></td>
+                            <td><?php $this->render_badge( ! empty( $offer['is_selected_for_slot'] ) ? 'Selected for offer display' : 'Not selected', ! empty( $offer['is_selected_for_slot'] ) ? 'selected' : 'muted' ); ?></td>
                             <td><?php $this->render_badge( ( $is_active && $allowed ) ? 'Eligible' : 'Excluded', ( $is_active && $allowed ) ? 'selected' : 'muted' ); ?></td>
                             <td><?php $this->render_badge( $allowed ? 'Allowed' : 'Blocked', $allowed ? 'featured' : 'muted' ); ?></td>
                         </tr>
@@ -973,7 +973,7 @@ class TMW_CR_Slot_Admin_Page {
         <form method="post" action="options.php">
             <?php settings_fields( 'tmw_cr_slot_banner' ); ?>
             <h3><?php esc_html_e( 'Allowed offer types for live banner', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
-            <p class="description"><?php esc_html_e( 'Choose which offer types may appear in the frontend slot/sidebar banner. Logo display in admin is brand-level and remains unaffected.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+            <p class="description"><?php esc_html_e( 'Choose which offer types may appear in the frontend offer/sidebar banner. Logo display in admin is brand-level and remains unaffected.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
             <?php
             $synced_offers = $this->offer_repository->get_synced_offers();
             $type_allowed_count = 0;
@@ -1366,7 +1366,7 @@ class TMW_CR_Slot_Admin_Page {
                 </tbody>
             </table>
 
-            <?php submit_button( __( 'Save Slot Setup', 'tmw-cr-slot-sidebar-banner' ) ); ?>
+            <?php submit_button( __( 'Save Offer Setup', 'tmw-cr-slot-sidebar-banner' ) ); ?>
         </form>
 
         <h3><?php esc_html_e( 'Current final display pool order', 'tmw-cr-slot-sidebar-banner' ); ?></h3>

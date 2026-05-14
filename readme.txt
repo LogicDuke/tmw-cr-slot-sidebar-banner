@@ -10,7 +10,7 @@ License URI: https://www.gnu.org/licenses/gpl-2.0.html
 == Description ==
 TMW CR Offer Sidebar Banner renders an interactive CrackRevenue offer recommendation banner in any sidebar or widget area. It detects the visitor country, rotates through a curated catalog of partner offers, and appends a configurable SubID tracking parameter to the call-to-action URL.
 
-Use the `[tmw_cr_slot_banner]` shortcode inside any widget, sidebar, or post content to output the banner. The plugin bundles high-resolution offer assets and a animated offer selector so everything renders instantly without external ad tags.
+Use the `[tmw_cr_slot_banner]` shortcode inside any widget, sidebar, or post content to output the banner. The plugin bundles high-resolution offer assets and an animated offer selector so everything renders instantly without external ad tags.
 
 == Features ==
 * Geo-targeted banner logic with per-country overrides and filters.
@@ -75,18 +75,18 @@ Yes. Version 1.3.0 ships with optimized PNG assets inside `assets/img/offers/` s
 = 1.6.0 =
 * [TMW-CR-CTRL] Added a persistent per-offer control layer via `tmw_cr_slot_banner_offer_overrides` (enabled, final URL, image URL, countries, CTA text, label, notes).
 * [TMW-CR-CTRL] Added effective synced-offer resolution with layered URL/image/CTA fallback rules and country eligibility filtering.
-* [TMW-CR-DASH] Extended Offers and Slot Setup admin views with per-offer enablement, destination/image controls, country controls, and effective status indicators.
+* [TMW-CR-DASH] Extended Offers and Offer Setup admin views with per-offer enablement, destination/image controls, country controls, and effective status indicators.
 * [TMW-CR-CTRL] Added automated coverage for override resolution, country filtering, legacy fallback behavior, admin override save/render path, and API-key safety.
 
 = 1.7.0 =
 * [TMW-CR-IMG] Added synced-offer automatic image resolver chain (manual override → legacy override → local alias match → explicit remote map → placeholder fallback).
 * [TMW-CR-IMG] Added local catalog alias strategy for normalized brand-name matching without frontend API/image discovery calls.
 * [TMW-CR-DASH] Added admin image-source badges (manual, auto-local, auto-remote, placeholder) and wired offer setup preview to the effective image source.
-* [TMW-CR-IMG] Expanded tests to cover resolver order, alias normalization, remote-map fallback, placeholder fallback, and frontend slot normalization compatibility.
+* [TMW-CR-IMG] Expanded tests to cover resolver order, alias normalization, remote-map fallback, placeholder fallback, and frontend offer normalization compatibility.
 
 = 1.5.0 =
-* [TMW-CR-DASH] Rebuilt admin into a WordPress-native dashboard with Overview, Offers, Slot Setup, and Settings tabs.
-* [TMW-CR-ADMIN] Added synced-offer explorer filtering, sorting, server-side pagination, and selected-for-slot indicators.
+* [TMW-CR-DASH] Rebuilt admin into a WordPress-native dashboard with Overview, Offers, Offer Setup, and Settings tabs.
+* [TMW-CR-ADMIN] Added synced-offer explorer filtering, sorting, server-side pagination, and selected-for-offer-display indicators.
 * [TMW-CR-ADMIN] Added operations summary cards, offer setup workflow improvements, and dedicated admin dashboard styling.
 
 = 1.4.2 =
@@ -99,7 +99,7 @@ Yes. Version 1.3.0 ships with optimized PNG assets inside `assets/img/offers/` s
 * [TMW-CR-SYNC] Added sync diagnostics, soft-failure preservation, and richer admin notices.
 
 = 1.3.0 =
-* Replaced the static banner with a animated offer selector and heartbeat CTA.
+* Replaced the static banner with an animated offer selector and heartbeat CTA.
 * Added an offer catalog with bundled PNG assets and geo filtering.
 * Ensured CSS/JS load using `plugins_url()` for consistent paths.
 * Prevented empty shortcode output when no geo offers are available.

@@ -202,7 +202,7 @@ $tests['admin_menu_registers_tmw_slot_banner_page'] = function() {
 
     tmw_assert_same( 1, count( $GLOBALS['tmw_test_added_options_pages'] ), 'Admin menu should register exactly one options page entry.' );
     $entry = $GLOBALS['tmw_test_added_options_pages'][0];
-    tmw_assert_same( 'TMW Slot Banner', (string) $entry['menu_title'], 'Admin menu title should be visible as TMW Slot Banner.' );
+    tmw_assert_same( 'TMW Offer Banner', (string) $entry['menu_title'], 'Admin menu title should be visible as TMW Offer Banner.' );
     tmw_assert_same( 'manage_options', (string) $entry['capability'], 'Admin page capability should require manage_options.' );
     tmw_assert_same( 'tmw-cr-slot-sidebar-banner', (string) $entry['menu_slug'], 'Admin menu slug should remain stable.' );
 };
@@ -218,8 +218,8 @@ $tests['slot_setup_page_accessible_for_manage_options_user'] = function() {
     $page->render_page();
     $html = (string) ob_get_clean();
 
-    tmw_assert_contains( 'TMW CrakRevenue Slot Operations Dashboard', $html, 'Manage options users should be able to load the admin dashboard page.' );
-    tmw_assert_contains( 'Slot Setup', $html, 'Slot Setup tab should render for manage_options users.' );
+    tmw_assert_contains( 'TMW CrakRevenue Offer Operations Dashboard', $html, 'Manage options users should be able to load the admin dashboard page.' );
+    tmw_assert_contains( 'Offer Setup', $html, 'Offer Setup tab should render for manage_options users.' );
 };
 
 $tests['slot_setup_url_uses_correct_menu_slug'] = function() {
@@ -1003,7 +1003,7 @@ $tests['public_docs_and_ui_text_omit_forbidden_phrases'] = function() {
     $readmetxt = file_get_contents( __DIR__ . '/../readme.txt' );
     $combined = strtolower( (string) $readme . "
 " . (string) $readmetxt );
-    $forbidden = array( 'spin the reels', 'try your free spins', 'winner!', 'free spins', 'slot experience', 'slot promotion', 'slot machine', 'spin game', 'casino', 'gambling', 'jackpot' );
+    $forbidden = array( 'tmw slot banner', 'tmw cr slot banner', 'save slot setup', 'slot setup', 'spin the reels', 'try your free spins', 'winner!', 'free spins', 'slot experience', 'slot promotion', 'slot machine', 'casino', 'gambling', 'jackpot' );
     foreach ( $forbidden as $needle ) {
         tmw_assert_true( false === strpos( $combined, $needle ), 'Forbidden public phrase found in docs: ' . $needle );
     }
@@ -1898,7 +1898,7 @@ $tests['render_page_shows_dashboard_tabs_and_sections'] = function() {
     tmw_assert_contains( 'Overview', $html, 'Dashboard should render Overview tab.' );
     tmw_assert_contains( 'Offers', $html, 'Dashboard should render Offers tab.' );
     tmw_assert_contains( 'Performance', $html, 'Dashboard should render Performance tab.' );
-    tmw_assert_contains( 'Slot Setup', $html, 'Dashboard should render Slot Setup tab.' );
+    tmw_assert_contains( 'Offer Setup', $html, 'Dashboard should render Offer Setup tab.' );
     tmw_assert_contains( 'Settings', $html, 'Dashboard should render Settings tab.' );
     tmw_assert_contains( 'Last raw/imported/skipped', $html, 'Overview cards should render sync count summary.' );
     tmw_assert_true( false === strpos( $html, 'hidden-api-key' ), 'Overview should never leak API key.' );

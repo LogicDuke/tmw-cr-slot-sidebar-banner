@@ -389,7 +389,7 @@ class TMW_CR_Slot_Sidebar_Banner {
             </div>
 
             <?php if ( empty( $slot_data['offers'] ) ) : ?>
-                <p class="tmw-cr-slot-banner__empty-message"><?php esc_html_e( 'No active CrackRevenue offers were detected for this slot. Sync offers or update the fallback CTA.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+                <p class="tmw-cr-slot-banner__empty-message"><?php esc_html_e( 'No active CrackRevenue offers were detected for this banner. Sync offers or update the fallback CTA.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
             <?php endif; ?>
         </aside>
         <?php

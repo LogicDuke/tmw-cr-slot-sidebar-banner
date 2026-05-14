@@ -5225,6 +5225,8 @@ $tests['frontend_banner_wording_v191'] = function() {
     tmw_assert_true( false === strpos( $plugin_file . $js_file, 'Winner!' ), 'Banner should not include Winner wording.' );
     tmw_assert_true( false === strpos( $plugin_file . $js_file, 'Spin the Reels' ), 'Banner should not include Spin the Reels wording.' );
     tmw_assert_true( false === strpos( $plugin_file . $js_file, 'Free Spins' ), 'Banner should not include Free Spins wording.' );
+    tmw_assert_true( false === strpos( $plugin_file, 'for this slot' ), 'Public-facing frontend PHP text should not contain "for this slot".' );
+    tmw_assert_true( false === strpos( $plugin_file, 'No active CrackRevenue offers were detected for this slot' ), 'Frontend empty message should not contain slot wording.' );
 };
 
 $tests['plugin_version_bumped_to_191'] = function() {

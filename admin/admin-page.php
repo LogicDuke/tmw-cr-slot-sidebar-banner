@@ -1801,10 +1801,16 @@ class TMW_CR_Slot_Admin_Page {
                 <?php if ( ! $audit_enabled ) : ?>
                     <p><em><?php esc_html_e( 'Audit mode is disabled. Enable WP_DEBUG or define TMW_CR_API_AUDIT as true, then run the audit.', 'tmw-cr-slot-sidebar-banner' ); ?></em></p>
                 <?php endif; ?>
+                <?php
+                $button_attrs = array();
+                if ( ! $audit_enabled ) {
+                    $button_attrs['disabled'] = 'disabled';
+                }
+                ?>
                 <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
                     <input type="hidden" name="action" value="tmw_cr_slot_banner_audit_api" />
                     <?php wp_nonce_field( 'tmw_cr_slot_banner_audit_api' ); ?>
-                    <?php submit_button( __( 'Run API Audit', 'tmw-cr-slot-sidebar-banner' ), 'secondary', 'submit', false, array( 'disabled' => ! $audit_enabled ) ); ?>
+                    <?php submit_button( __( 'Run API Audit', 'tmw-cr-slot-sidebar-banner' ), 'secondary', 'submit', false, $button_attrs ); ?>
                 </form>
             </div>
         <?php endif; ?>

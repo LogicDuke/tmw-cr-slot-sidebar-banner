@@ -1701,7 +1701,7 @@ class TMW_CR_Slot_Admin_Page {
                         <td>
                             <label for="tmw-cr-open-new-tab">
                                 <input type="checkbox" id="tmw-cr-open-new-tab" name="<?php echo esc_attr( $this->option_key ); ?>[open_in_new_tab]" value="1" <?php checked( $settings['open_in_new_tab'], 1 ); ?> />
-                                <?php esc_html_e( 'Open the CTA in a new browser tab.', 'tmw-cr-slot-sidebar-banner' ); ?>
+                                <?php esc_html_e( 'Affiliate CTA links always open in a new tab for tracking and safety.', 'tmw-cr-slot-sidebar-banner' ); ?>
                             </label>
                         </td>
                     </tr>

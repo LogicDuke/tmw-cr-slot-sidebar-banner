@@ -203,6 +203,38 @@
         }
     }
 
+
+    function renderFinalSelection(state, selectedOffer, prepareForSpin) {
+        if (!selectedOffer) {
+            return [];
+        }
+
+        var results = [];
+
+        state.columns.forEach(function(reel) {
+            if (!reel.items.length) {
+                results.push(null);
+                return;
+            }
+
+            results.push(selectedOffer);
+            applyOffer(reel.items[0], selectedOffer);
+            copyTopIconsToClones(reel);
+
+            if (prepareForSpin) {
+                prepareColumnForSpin(reel);
+            } else {
+                reel.col.style.transform = 'translateY(0)';
+            }
+        });
+
+        if (state.debugEnabled && window.console && typeof window.console.debug === 'function') {
+            window.console.debug('[TMW-BANNER-MOBILE] final_selection offer_id=' + (selectedOffer.id || '') + ' reels=' + state.columns.length);
+        }
+
+        return results;
+    }
+
     function setResult(state, prepareForSpin) {
         var results = [];
         var winner = null;
@@ -216,25 +248,14 @@
             }
         }
 
-        state.columns.forEach(function(reel) {
-            if (!winner || !reel.items.length) {
+        if (!winner) {
+            state.columns.forEach(function() {
                 results.push(null);
-                return;
-            }
+            });
+            return results;
+        }
 
-            results.push(winner);
-
-            applyOffer(reel.items[0], winner);
-            copyTopIconsToClones(reel);
-
-            if (prepareForSpin) {
-                prepareColumnForSpin(reel);
-            } else {
-                reel.col.style.transform = 'translateY(0)';
-            }
-        });
-
-        return results;
+        return renderFinalSelection(state, winner, prepareForSpin);
     }
 
     function applyDefaultState(state) {

@@ -5229,12 +5229,51 @@ $tests['frontend_banner_wording_v191'] = function() {
     tmw_assert_true( false === strpos( $plugin_file, 'No active CrackRevenue offers were detected for this slot' ), 'Frontend empty message should not contain slot wording.' );
 };
 
-$tests['plugin_version_bumped_to_191'] = function() {
+$tests['plugin_version_bumped_to_192'] = function() {
     $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
-    tmw_assert_contains( 'Version: 1.9.1', $plugin_file, 'Plugin header version should be 1.9.1.' );
-    tmw_assert_contains( "define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.1' );", $plugin_file, 'Asset version constant should be 1.9.1.' );
+    tmw_assert_contains( 'Version: 1.9.2', $plugin_file, 'Plugin header version should be 1.9.1.' );
+    tmw_assert_contains( "define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.2' );", $plugin_file, 'Asset version constant should be 1.9.1.' );
 };
 
+
+
+$tests['readme_stable_tag_bumped_to_192'] = function() {
+    $readme_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'readme.txt' );
+    tmw_assert_contains( 'Stable tag: 1.9.2', $readme_file, 'Readme stable tag should be 1.9.2.' );
+};
+
+$tests['frontend_cta_forces_new_tab_and_rel_attributes'] = function() {
+    $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
+    tmw_assert_contains( 'target="_blank"', $plugin_file, 'Frontend CTA should force target _blank.' );
+    tmw_assert_contains( 'rel="noopener noreferrer nofollow sponsored"', $plugin_file, 'Frontend CTA should force hardened rel attributes.' );
+    tmw_assert_true( false === strpos( $plugin_file, '! empty( $settings[\'open_in_new_tab\'] ) ?' ), 'CTA new tab behavior should not depend on open_in_new_tab.' );
+};
+
+$tests['mobile_css_forces_single_row_three_columns'] = function() {
+    $css_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/css/slot-banner.css' );
+    tmw_assert_contains( 'flex-wrap: nowrap;', $css_file, 'Selector container should not wrap.' );
+    tmw_assert_contains( 'overflow: hidden;', $css_file, 'Selector container should clip overflow.' );
+    tmw_assert_contains( 'flex: 0 0 calc((100% - 16px) / 3);', $css_file, 'Mobile reels should enforce 3 columns in one row.' );
+};
+
+$tests['js_final_selection_renders_same_offer_for_three_columns'] = function() {
+    $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );
+    tmw_assert_contains( 'function renderFinalSelection(state, selectedOffer, prepareForSpin)', $js_file, 'JS should include explicit final selection renderer.' );
+    tmw_assert_contains( 'return renderFinalSelection(state, winner, prepareForSpin);', $js_file, 'Final result should render the selected offer in every reel.' );
+};
+
+$tests['frontend_banner_wording_still_avoids_banned_terms_v192'] = function() {
+    $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
+    $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );
+    $combined = strtolower( $plugin_file . $js_file );
+    tmw_assert_true( false === strpos( $combined, 'winner!' ), 'Visible wording should not contain winner wording.' );
+    tmw_assert_true( false === strpos( $combined, 'free spins' ), 'Visible wording should not contain free spins.' );
+    tmw_assert_true( false === strpos( $combined, 'spin the reels' ), 'Visible wording should not contain spin the reels.' );
+    tmw_assert_true( false === strpos( $combined, 'jackpot' ), 'Visible wording should not contain jackpot.' );
+    tmw_assert_true( false === strpos( $combined, 'casino' ), 'Visible wording should not contain casino.' );
+    tmw_assert_true( false === strpos( $combined, 'gambling' ), 'Visible wording should not contain gambling.' );
+    tmw_assert_true( false === strpos( $combined, 'slot machine' ), 'Visible wording should not contain slot machine.' );
+};
 $tests['register_assets_uses_filemtime_version_suffix'] = function() {
     $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
     tmw_assert_contains( "filemtime( \$css_path )", $plugin_file, 'CSS registration should include filemtime in version.' );

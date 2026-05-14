@@ -2461,25 +2461,12 @@ class TMW_CR_Slot_Offer_Repository {
      */
     public function get_effective_cta_url( $offer_id, $settings, $banner_data, $synced_offer, $override ) {
         unset( $settings );
+        unset( $banner_data );
+        unset( $synced_offer );
 
         if ( ! empty( $override['final_url_override'] ) ) {
             $this->log_frontend_cta_source( $offer_id, 'final_url_override' );
             return esc_url_raw( (string) $override['final_url_override'] );
-        }
-
-        $tracking_url = isset( $synced_offer['tracking_url'] ) ? esc_url_raw( (string) $synced_offer['tracking_url'] ) : '';
-        if ( '' !== $tracking_url && 'tracking_url' === $this->classify_url_audit_reason( $tracking_url ) ) {
-            $this->log_tracking_url_synced( $offer_id, $tracking_url );
-            $this->log_frontend_cta_source( $offer_id, 'tracking_url' );
-            return $tracking_url;
-        }
-
-        $this->log_tracking_url_missing( $offer_id, '' === $tracking_url ? 'api_field_missing' : 'invalid_tracking_url' );
-
-        $fallback = $this->build_cta_url( $banner_data, $synced_offer );
-        if ( '' !== $fallback && $this->is_valid_frontend_winner_cta_url( $fallback ) ) {
-            $this->log_frontend_cta_source( $offer_id, 'global_cta_url' );
-            return $fallback;
         }
 
         $this->log_frontend_cta_source( $offer_id, 'none' );
@@ -2757,10 +2744,6 @@ class TMW_CR_Slot_Offer_Repository {
             if ( ! empty( $override['final_url_override'] ) ) {
                 $cta_source = $this->is_valid_manual_final_url_override( (string) $override['final_url_override'] ) ? 'final_url_override' : 'invalid';
                 $cta_url    = (string) $override['final_url_override'];
-            } elseif ( ! empty( $offer['tracking_url'] ) ) {
-                $tracking_reason = $this->classify_url_audit_reason( (string) $offer['tracking_url'] );
-                $cta_source      = 'tracking_url' === $tracking_reason ? 'tracking_url' : 'invalid';
-                $cta_url         = (string) $offer['tracking_url'];
             }
 
             $allowed_countries   = $this->sanitize_country_names( isset( $override['allowed_countries'] ) ? $override['allowed_countries'] : array() );
@@ -2772,7 +2755,7 @@ class TMW_CR_Slot_Offer_Repository {
             $country_ready       = $be_valid || $us_valid;
             $logo_filename       = $this->get_offer_logo_filename( $offer );
             $logo_resolved       = '' !== $logo_filename;
-            $has_valid_cta       = in_array( $cta_source, array( 'final_url_override', 'tracking_url' ), true );
+            $has_valid_cta       = 'final_url_override' === $cta_source;
             $frontend_ready      = $pps_detected && ! $blocked && $has_allowed && $logo_resolved && $has_valid_cta && $country_ready && $has_identity;
             $block_reason        = 'valid';
             if ( ! $has_identity && 'manual_override_only' === $source ) {

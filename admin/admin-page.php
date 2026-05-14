@@ -1264,8 +1264,9 @@ class TMW_CR_Slot_Admin_Page {
             </table>
             <?php $this->render_audit_pagination( (int) $pps_audit_pagination['current_page'], (int) $pps_audit_pagination['total_pages'], 'pps_audit_page', array( 'manual_audit_page', 'pps_audit_filter', 'pps_audit_search' ) ); ?>
             <?php if ( 0 === count( $eligible_winner_offers ) ) : ?>
-                <p class="description" style="color:#b32d2e;"><strong><?php esc_html_e( 'No eligible display offers. Add valid final URL overrides or sync real tracking URLs.', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
+                <p class="description" style="color:#b32d2e;"><strong><?php esc_html_e( 'No eligible display offers. Add valid manual final URL overrides for selected offers.', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
             <?php endif; ?>
+            <p class="description" style="color:#b32d2e;"><strong><?php esc_html_e( 'CrackRevenue API does not provide usable final CTA URLs in the current offer response. Add the affiliate tracking URL manually as final_url_override.', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
             <p class="description"><?php esc_html_e( 'Selection mode: forced three-logo match', 'tmw-cr-slot-sidebar-banner' ); ?></p>
             <p class="description"><?php esc_html_e( 'Final display behavior: one selected offer shown across the animated selector', 'tmw-cr-slot-sidebar-banner' ); ?></p>
             <?php if ( current_user_can( 'manage_options' ) ) : ?>
@@ -1355,7 +1356,10 @@ class TMW_CR_Slot_Admin_Page {
                                     <input type="url" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][image_url_override]" value="<?php echo esc_attr( (string) ( $override['image_url_override'] ?? '' ) ); ?>" placeholder="<?php esc_attr_e( 'Per-offer image override', 'tmw-cr-slot-sidebar-banner' ); ?>" />
                                     <p class="description"><?php esc_html_e( 'Optional. Leave blank to use automatic resolver chain (local/remote/placeholder).', 'tmw-cr-slot-sidebar-banner' ); ?></p>
                                 </td>
-                                <td><input type="url" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][final_url_override]" value="<?php echo esc_attr( (string) ( $override['final_url_override'] ?? '' ) ); ?>" placeholder="https://..." /></td>
+                                <td>
+                                    <input type="url" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][final_url_override]" value="<?php echo esc_attr( (string) ( $override['final_url_override'] ?? '' ) ); ?>" placeholder="https://..." />
+                                    <p class="description"><?php esc_html_e( 'Manual final_url_override is required for frontend CTA eligibility.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+                                </td>
                                 <td>
                                     <?php $generated_slogan = $this->offer_repository->generate_offer_slogan( is_array( $offer ) ? $offer : array() ); ?>
                                     <?php $generated_cta = $this->offer_repository->generate_offer_cta_text( is_array( $offer ) ? $offer : array() ); ?>

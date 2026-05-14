@@ -3,7 +3,7 @@
  * Plugin Name: TMW CR Offer Sidebar Banner
  * Plugin URI: https://themilisofialtd.com/
  * Description: Displays a geo-targeted CrackRevenue offer recommendation banner with an animated offer selector in sidebar areas via shortcode or template tag.
- * Version: 1.9.2
+ * Version: 1.9.3
  * Author: The Milisofia LTD
  * Author URI: https://themilisofialtd.com/
  * License: GPL2
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.2' );
+define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.3' );
 define( 'TMW_CR_SLOT_BANNER_PATH', plugin_dir_path( __FILE__ ) );
 define( 'TMW_CR_SLOT_BANNER_URL', plugin_dir_url( __FILE__ ) );
 
@@ -32,7 +32,7 @@ require_once TMW_CR_SLOT_BANNER_PATH . 'admin/admin-page.php';
 class TMW_CR_Slot_Sidebar_Banner {
     const DEFAULT_HEADLINE = 'Discover Adult Offers';
     const DEFAULT_SUBHEADLINE = 'Cam, Dating, AI & More';
-    const DEFAULT_SPIN_BUTTON_TEXT = 'Reveal My Offer';
+    const DEFAULT_SPIN_BUTTON_TEXT = 'SPIN NOW';
     const DEFAULT_CTA_TEXT = 'View Offer';
     /**
      * Option key used to persist settings.
@@ -212,8 +212,11 @@ class TMW_CR_Slot_Sidebar_Banner {
         $settings = is_array( $settings ) ? $settings : array();
 
         $settings = wp_parse_args( $settings, $defaults );
-        if ( isset( $settings['spin_button_text'] ) && 'Show Best Offer' === trim( (string) $settings['spin_button_text'] ) ) {
-            $settings['spin_button_text'] = self::DEFAULT_SPIN_BUTTON_TEXT;
+        if ( isset( $settings['spin_button_text'] ) ) {
+            $legacy_spin_text = trim( (string) $settings['spin_button_text'] );
+            if ( in_array( $legacy_spin_text, array( 'Show Best Offer', 'Reveal My Offer' ), true ) ) {
+                $settings['spin_button_text'] = self::DEFAULT_SPIN_BUTTON_TEXT;
+            }
         }
         $settings['slot_offer_ids']        = is_array( $settings['slot_offer_ids'] ) ? array_values( $settings['slot_offer_ids'] ) : array();
         $settings['slot_offer_priority']   = is_array( $settings['slot_offer_priority'] ) ? $settings['slot_offer_priority'] : array();

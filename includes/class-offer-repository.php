@@ -2310,6 +2310,9 @@ class TMW_CR_Slot_Offer_Repository {
         if ( ! empty( $override['label_override'] ) ) {
             $name = (string) $override['label_override'];
         }
+        $public_offer = $synced_offer;
+        $public_offer['name'] = $name;
+        $name = $this->get_public_offer_name( $public_offer );
 
         return array(
             'id'       => $offer_id,
@@ -3143,6 +3146,33 @@ class TMW_CR_Slot_Offer_Repository {
         return $this->generate_offer_cta_text( $synced_offer );
     }
 
+
+
+    public function get_public_offer_name( array $offer ): string {
+        $raw_name = trim( (string) ( $offer['name'] ?? '' ) );
+        if ( '' === $raw_name ) {
+            return '';
+        }
+
+        if ( preg_match( '/^\s*alt\s*-\s*pps\b/i', $raw_name ) ) {
+            $brand_key = $this->get_offer_brand_key( $raw_name );
+            if ( 'alt-com' === $brand_key ) {
+                return 'ALT.com';
+            }
+            return 'ALT';
+        }
+
+        $clean_name = preg_replace( '/\s*-\s*(pps|tier\s*[0-9]+|us|lq|soi|doi|cpa|cpl|revshare|smartlink)\b[^-]*/i', '', $raw_name );
+        $clean_name = preg_replace( '/\s{2,}/', ' ', (string) $clean_name );
+        $clean_name = trim( (string) $clean_name, " \t\n\r\0\x0B-" );
+
+        if ( preg_match( '/^joi\b/i', $clean_name ) ) {
+            return 'JOI';
+        }
+
+        return '' !== $clean_name ? $clean_name : $raw_name;
+    }
+
     public function get_effective_slogan_text( $offer_id, $synced_offer, $override ) {
         unset( $offer_id );
         if ( ! empty( $override['custom_slogan'] ) ) {
@@ -3154,7 +3184,7 @@ class TMW_CR_Slot_Offer_Repository {
     public function classify_offer_vertical( array $offer ): string {
         $haystack = strtolower( trim( (string) ( ( $offer['name'] ?? '' ) . ' ' . ( $offer['description'] ?? '' ) ) ) );
         if ( preg_match( '/jerkmate|oranum|livejasmin|stripchat|streamate|chaturbate|bonga|myfreecams|\bcam\b|webcam|live performer|chat performer/', $haystack ) ) { return 'cam'; }
-        if ( preg_match( '/vixen|blacked|tushy|deeper|raw|plus|studio|premium video|scenes/', $haystack ) ) { return 'video'; }
+        if ( preg_match( '/vixen|blacked|tushy|deeper|raw|plus|studio|premium video|scenes|\bjoi\b|joi gaming|milfy|faphouse/', $haystack ) ) { return 'video'; }
         if ( preg_match( '/dating|hookup|match|friendfinder|singles|casual dating/', $haystack ) ) { return 'dating'; }
         if ( preg_match( '/\bai\b|gpt|chatbot|virtual girlfriend|companion|fantasy ai/', $haystack ) ) { return 'ai'; }
         if ( preg_match( '/\blive\b|\bcam\b|webcam|performer/', $haystack ) ) { return 'cam'; }
@@ -3163,11 +3193,11 @@ class TMW_CR_Slot_Offer_Repository {
 
     public function generate_offer_slogan( array $offer ): string {
         switch ( $this->classify_offer_vertical( $offer ) ) {
-            case 'ai': return 'Adult AI chat';
+            case 'ai': return 'AI fantasy chat';
             case 'cam': return 'Live cam shows';
-            case 'video': return 'Premium adult videos';
-            case 'dating': return 'Adult dating matches';
-            default: return 'Recommended adult offer';
+            case 'video': return 'Premium videos';
+            case 'dating': return 'Dating matches';
+            default: return 'Recommended offer';
         }
     }
 

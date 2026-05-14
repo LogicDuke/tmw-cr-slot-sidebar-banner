@@ -176,6 +176,39 @@ class TMW_CR_Slot_CR_API_Client {
         return $this->request( $query );
     }
 
+
+    public function audit_request( $target, $method, $params = array() ) {
+        if ( ! $this->has_api_key() ) {
+            return new WP_Error( 'tmw_cr_slot_missing_api_key', __( 'CrakRevenue API key is missing.', 'tmw-cr-slot-sidebar-banner' ) );
+        }
+
+        $target = trim( (string) $target );
+        $method = trim( (string) $method );
+
+        if ( '' === $target || '' === $method ) {
+            return new WP_Error( 'tmw_cr_slot_audit_invalid_request', __( '[TMW-CR-AUDIT] Target and Method are required.', 'tmw-cr-slot-sidebar-banner' ) );
+        }
+
+        $query = array(
+            'Target'  => $target,
+            'Method'  => $method,
+            'api_key' => $this->api_key,
+        );
+
+        foreach ( (array) $params as $key => $value ) {
+            if ( in_array( (string) $key, array( 'Target', 'Method', 'api_key' ), true ) ) {
+                continue;
+            }
+            $query[ $key ] = $value;
+        }
+
+        return $this->request( $query );
+    }
+
+    public static function redact_url_for_log( $url ) {
+        return (string) preg_replace( '/(api_key=)([^&]+)/i', '$1[redacted]', (string) $url );
+    }
+
     /**
      * @param array<string,mixed> $query Query arguments.
      *

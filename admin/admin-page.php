@@ -32,6 +32,7 @@ class TMW_CR_Slot_Admin_Page {
         add_action( 'admin_post_tmw_cr_slot_banner_test_connection', array( $this, 'handle_test_connection' ) );
         add_action( 'admin_post_tmw_cr_slot_banner_sync_offers', array( $this, 'handle_sync_offers' ) );
         add_action( 'admin_post_tmw_cr_slot_banner_sync_stats', array( $this, 'handle_sync_stats' ) );
+        add_action( 'admin_post_tmw_cr_slot_banner_audit_api', array( $this, 'handle_audit_api' ) );
         add_action( 'admin_post_tmw_cr_slot_banner_import_final_url_overrides', array( $this, 'handle_import_final_url_overrides' ) );
         add_action( 'admin_post_tmw_cr_slot_banner_import_allowed_country_overrides', array( $this, 'handle_import_allowed_country_overrides' ) );
         add_action( 'admin_post_tmw_cr_slot_banner_import_both_overrides', array( $this, 'handle_import_both_overrides' ) );
@@ -292,6 +293,29 @@ class TMW_CR_Slot_Admin_Page {
                 $response_shape
             )
         );
+    }
+
+
+    /**
+     * @return void
+     */
+    public function handle_audit_api() {
+        $this->assert_admin_action( 'tmw_cr_slot_banner_audit_api' );
+
+        if ( ! TMW_CR_Slot_CR_API_Inspector::is_enabled() ) {
+            $this->redirect_with_notice( 'error', __( '[TMW-CR-AUDIT] Audit mode is disabled. Enable WP_DEBUG or TMW_CR_API_AUDIT.', 'tmw-cr-slot-sidebar-banner' ) );
+        }
+
+        $client = $this->build_api_client();
+        if ( ! $client->has_api_key() ) {
+            $this->redirect_with_notice( 'error', __( '[TMW-CR-AUDIT] CrakRevenue API key is required.', 'tmw-cr-slot-sidebar-banner' ) );
+        }
+
+        $inspector = new TMW_CR_Slot_CR_API_Inspector( $client );
+        $report = $inspector->run_full_audit( 3 );
+        error_log( '[TMW-CR-AUDIT] Completed via admin-post summary=' . wp_json_encode( $inspector->summarize_keys( $report, 3 ) ) );
+
+        $this->redirect_with_notice( 'success', __( '[TMW-CR-AUDIT] Audit complete. Check debug.log for details.', 'tmw-cr-slot-sidebar-banner' ) );
     }
 
     /**

@@ -199,6 +199,25 @@ function tmw_without_logo_file( $relative_filename, $callback ) {
 $tests = array();
 
 
+function tmw_audit_build_remote_get_stub( $routes ) {
+    return static function( $url ) use ( $routes ) {
+        $normalized = str_replace( array( 'fields%5B%5D=', 'fields[]=' ), 'fields[]=', (string) $url );
+        foreach ( (array) $routes as $pattern => $response ) {
+            if ( false === strpos( $normalized, (string) $pattern ) ) {
+                continue;
+            }
+            if ( $response instanceof WP_Error ) {
+                return $response;
+            }
+            $code = isset( $response['code'] ) ? (int) $response['code'] : 200;
+            $body = isset( $response['body'] ) ? $response['body'] : array();
+            return array( 'response' => array( 'code' => $code ), 'body' => is_string( $body ) ? $body : wp_json_encode( $body ) );
+        }
+        return new WP_Error( 'no_route', 'no route' );
+    };
+}
+
+
 $tests['admin_menu_registers_tmw_slot_banner_page'] = function() {
     tmw_reset_test_state();
     $GLOBALS['tmw_test_added_options_pages'] = array();
@@ -5231,15 +5250,15 @@ $tests['frontend_banner_wording_v191'] = function() {
 
 $tests['plugin_version_bumped_to_192'] = function() {
     $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
-    tmw_assert_contains( 'Version: 1.9.2', $plugin_file, 'Plugin header version should be 1.9.1.' );
-    tmw_assert_contains( "define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.2' );", $plugin_file, 'Asset version constant should be 1.9.1.' );
+    tmw_assert_contains( 'Version: 1.9.6', $plugin_file, 'Plugin header version should be 1.9.1.' );
+    tmw_assert_contains( "define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.6' );", $plugin_file, 'Asset version constant should be 1.9.1.' );
 };
 
 
 
-$tests['readme_stable_tag_bumped_to_192'] = function() {
+$tests['readme_stable_tag_bumped_to_196'] = function() {
     $readme_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'readme.txt' );
-    tmw_assert_contains( 'Stable tag: 1.9.2', $readme_file, 'Readme stable tag should be 1.9.2.' );
+    tmw_assert_contains( 'Stable tag: 1.9.6', $readme_file, 'Readme stable tag should be 1.9.2.' );
 };
 
 $tests['frontend_cta_forces_new_tab_and_rel_attributes'] = function() {
@@ -5297,6 +5316,63 @@ $tests['fallback_visual_rules_non_ai_vs_ai'] = function() {
     tmw_assert_true( false === strpos( $js_file, "'🤖 AI' : getOfferAbbreviation(offer)" ), 'Non-AI fallback should not use generic abbreviation/robot path.' );
 };
 
+
+
+$tests['audit_request_rejects_empty_target_method'] = function() {
+    $client = new TMW_CR_Slot_CR_API_Client( 'key' );
+    $result = $client->audit_request( '', '' );
+    tmw_assert_true( is_wp_error( $result ), 'Empty target/method should error.' );
+};
+$tests['audit_request_rejects_missing_api_key'] = function() {
+    $client = new TMW_CR_Slot_CR_API_Client( '' );
+    $result = $client->audit_request( 'Affiliate_Offer', 'findAll' );
+    tmw_assert_true( is_wp_error( $result ), 'Missing key should error.' );
+};
+$tests['redact_url_for_log_masks_api_key'] = function() {
+    $out = TMW_CR_Slot_CR_API_Client::redact_url_for_log( 'https://x.test?api_key=SECRET&foo=1' );
+    tmw_assert_true( false === strpos( $out, 'SECRET' ), 'Should redact API key.' );
+};
+$tests['audit_inspector_gate_rules'] = function() {
+    tmw_assert_true( ! TMW_CR_Slot_CR_API_Inspector::is_enabled(), 'Audit should be disabled without debug/audit flag.' );
+    if ( ! defined( 'TMW_CR_API_AUDIT' ) ) {
+        define( 'TMW_CR_API_AUDIT', true );
+    }
+    tmw_assert_true( TMW_CR_Slot_CR_API_Inspector::is_enabled(), 'Audit should enable when TMW_CR_API_AUDIT is true.' );
+};
+$tests['scrub_and_iso_and_summary_helpers'] = function() {
+    $ins = new TMW_CR_Slot_CR_API_Inspector( new TMW_CR_Slot_CR_API_Client( 'k' ) );
+    tmw_assert_true( false === strpos( $ins->scrub_string( 'api_key=abc' ), 'abc' ), 'Scrub should hide keys.' );
+    $iso = $ins->extract_iso_country_candidates( array( 'x' => array( 'us', 'CA', 'bad1' ) ) );
+    tmw_assert_true( in_array( 'US', $iso, true ) && in_array( 'CA', $iso, true ), 'ISO extraction should recurse.' );
+    $sum = $ins->summarize_keys( array( 'a' => array( 'b' => 'value' ) ), 3 );
+    tmw_assert_same( '[scalar]', $sum['a']['b'], 'Summary should not expose values.' );
+};
+$tests['audit_probe_handles_errors_and_empty_offers'] = function() {
+    tmw_reset_test_state();
+    $GLOBALS['tmw_test_remote_get'] = tmw_audit_build_remote_get_stub( array(
+        'Method=findAll&' => array( 'body' => array( 'data' => array() ) ),
+        'Method=getTrackingUrl' => array( 'code' => 400, 'body' => array( 'error' => 'bad method' ) ),
+        'Method=generateTrackingLink' => array( 'code' => 400, 'body' => array( 'error' => 'bad method' ) ),
+        'Method=findOneTrackingLink' => array( 'code' => 400, 'body' => array( 'error' => 'bad method' ) ),
+        'Method=getTrackingLink' => array( 'code' => 400, 'body' => array( 'error' => 'bad method' ) ),
+    ) );
+    $ins = new TMW_CR_Slot_CR_API_Inspector( new TMW_CR_Slot_CR_API_Client( 'k' ) );
+    $report = $ins->run_full_audit( 1 );
+    tmw_assert_true( isset( $report['offers'], $report['targeting'], $report['tracking_url'] ), 'Full report should be structured.' );
+};
+
+
+$tests['api_client_request_has_no_global_request_url_logging'] = function() {
+    $client_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'includes/class-cr-api-client.php' );
+    tmw_assert_true( false === strpos( $client_file, "[TMW-CR-API] Request URL:" ), 'Global request() logging must remain disabled.' );
+};
+
+$tests['audit_logging_tag_exists_and_api_key_not_logged_raw'] = function() {
+    $inspector_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'includes/class-cr-api-inspector.php' );
+    $client_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'includes/class-cr-api-client.php' );
+    tmw_assert_contains( '[TMW-CR-AUDIT]', $inspector_file, 'Audit mode should still log with [TMW-CR-AUDIT] tag.' );
+    tmw_assert_contains( 'redact_url_for_log', $client_file, 'API key redaction helper must remain available.' );
+};
 
 foreach ( $tests as $name => $test ) {
     try {

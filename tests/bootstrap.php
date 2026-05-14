@@ -157,6 +157,7 @@ function tmw_assert_contains( $needle, $haystack, $message ) { if ( false === st
 require_once dirname( __DIR__ ) . '/includes/class-offer-repository.php';
 require_once dirname( __DIR__ ) . '/includes/geo-helper.php';
 require_once dirname( __DIR__ ) . '/includes/class-cr-api-client.php';
+require_once dirname( __DIR__ ) . '/includes/class-cr-api-inspector.php';
 require_once dirname( __DIR__ ) . '/includes/class-offer-sync-service.php';
 require_once dirname( __DIR__ ) . '/includes/class-stats-sync-service.php';
 require_once dirname( __DIR__ ) . '/admin/admin-page.php';

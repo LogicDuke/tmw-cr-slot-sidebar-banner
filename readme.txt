@@ -3,7 +3,7 @@ Contributors: themilisofia
 Tags: affiliate marketing, crackrevenue, sidebar, banner, shortcode
 Requires at least: 5.8
 Tested up to: 6.4
-Stable tag: 1.9.5
+Stable tag: 1.9.6
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -118,3 +118,8 @@ Yes. Version 1.3.0 ships with optimized PNG assets inside `assets/img/offers/` s
 
 = 1.2.0 =
 * Initial code-only release for CrackRevenue offer recommendation banner integration.
+
+= 1.9.6 =
+* Added admin-only CrakRevenue API audit tooling to inspect offer targeting, country-code response shapes, and tracking URL method availability.
+* Added debug-only [TMW-CR-AUDIT] logging for API response shape discovery.
+* No frontend banner, CTA, layout, offer eligibility, or manual override behavior changed.

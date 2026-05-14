@@ -5393,7 +5393,52 @@ $tests['scrub_and_iso_and_summary_helpers'] = function() {
     $iso = $ins->extract_iso_country_candidates( array( 'x' => array( 'us', 'CA', 'bad1' ) ) );
     tmw_assert_true( in_array( 'US', $iso, true ) && in_array( 'CA', $iso, true ), 'ISO extraction should recurse.' );
     $sum = $ins->summarize_keys( array( 'a' => array( 'b' => 'value' ) ), 3 );
-    tmw_assert_same( '[scalar]', $sum['a']['b'], 'Summary should not expose values.' );
+    tmw_assert_same( 'value', $sum['a']['b'], 'Summary should preserve safe scalar values.' );
+};
+$tests['api_audit_preserves_safe_top_level_keys'] = function() {
+    $ins = new TMW_CR_Slot_CR_API_Inspector( new TMW_CR_Slot_CR_API_Client( 'k' ) );
+    $sum = $ins->summarize_keys( array( 'offers' => array( 'top_level_keys' => array( 'data', 'pagination' ) ) ), 4 );
+    tmw_assert_same( 'data', (string) $sum['offers']['top_level_keys'][0], 'Top-level key names should be preserved.' );
+    tmw_assert_same( 'pagination', (string) $sum['offers']['top_level_keys'][1], 'Top-level key names should be preserved.' );
+};
+$tests['api_audit_preserves_safe_row_keys'] = function() {
+    $ins = new TMW_CR_Slot_CR_API_Inspector( new TMW_CR_Slot_CR_API_Client( 'k' ) );
+    $sum = $ins->summarize_keys( array( 'offers' => array( 'row_keys' => array( 'id', 'name', 'countries' ) ) ), 4 );
+    tmw_assert_same( 'id', (string) $sum['offers']['row_keys'][0], 'Row key names should be preserved.' );
+};
+$tests['api_audit_preserves_boolean_success_and_counts'] = function() {
+    $ins = new TMW_CR_Slot_CR_API_Inspector( new TMW_CR_Slot_CR_API_Client( 'k' ) );
+    $sum = $ins->summarize_keys( array( 'offers' => array( 'success' => true, 'row_count' => 438 ) ), 4 );
+    tmw_assert_true( true === $sum['offers']['success'], 'Boolean success should be preserved.' );
+    tmw_assert_same( 438, (int) $sum['offers']['row_count'], 'Row counts should be preserved.' );
+};
+$tests['api_audit_redacts_full_urls'] = function() {
+    $ins = new TMW_CR_Slot_CR_API_Inspector( new TMW_CR_Slot_CR_API_Client( 'k' ) );
+    $sum = $ins->summarize_keys( array( 'tracking_url' => 'https://example.test/path?api_key=123' ), 2 );
+    tmw_assert_same( '[redacted_url]', (string) $sum['tracking_url'], 'Full URLs should be redacted.' );
+};
+$tests['api_audit_redacts_secret_like_values'] = function() {
+    $ins = new TMW_CR_Slot_CR_API_Inspector( new TMW_CR_Slot_CR_API_Client( 'k' ) );
+    $sum = $ins->summarize_keys( array( 'secret' => 'Bearer abcdef' ), 2 );
+    tmw_assert_same( '[redacted_secret]', (string) $sum['secret'], 'Secret-like values should be redacted.' );
+};
+$tests['api_audit_logs_human_readable_summary'] = function() {
+    $inspector_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'includes/class-cr-api-inspector.php' );
+    tmw_assert_contains( 'offers success=', $inspector_file, 'Audit should log compact human-readable summary.' );
+    tmw_assert_contains( 'tracking_url=', $inspector_file, 'Summary should include tracking_url status.' );
+};
+$tests['api_audit_admin_post_redirects_with_success_notice'] = function() {
+    if ( ! defined( 'TMW_CR_API_AUDIT' ) ) {
+        define( 'TMW_CR_API_AUDIT', true );
+    }
+    tmw_reset_test_state();
+    $GLOBALS['tmw_test_options'][ TMW_CR_Slot_Sidebar_Banner::OPTION_KEY ] = array( 'cr_api_key' => 'k' );
+    $GLOBALS['tmw_test_remote_get'] = tmw_audit_build_remote_get_stub( array( 'Method=findAll&' => array( 'body' => array( 'data' => array() ) ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( TMW_CR_SLOT_BANNER_PATH . 'assets/logos', TMW_CR_SLOT_BANNER_PATH . 'assets/default-logo.png' ), TMW_CR_Slot_Sidebar_Banner::OPTION_KEY );
+    $_POST = array( '_wpnonce' => 'ok' );
+    $page->handle_audit_api();
+    tmw_assert_same( 'success', (string) $page->notice['type'], 'Audit admin-post should redirect with success notice.' );
+    tmw_assert_contains( '[TMW-CR-AUDIT]', (string) $page->notice['message'], 'Audit success notice should contain audit tag.' );
 };
 $tests['audit_probe_handles_errors_and_empty_offers'] = function() {
     tmw_reset_test_state();

@@ -5361,6 +5361,19 @@ $tests['audit_probe_handles_errors_and_empty_offers'] = function() {
     tmw_assert_true( isset( $report['offers'], $report['targeting'], $report['tracking_url'] ), 'Full report should be structured.' );
 };
 
+
+$tests['api_client_request_has_no_global_request_url_logging'] = function() {
+    $client_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'includes/class-cr-api-client.php' );
+    tmw_assert_true( false === strpos( $client_file, "[TMW-CR-API] Request URL:" ), 'Global request() logging must remain disabled.' );
+};
+
+$tests['audit_logging_tag_exists_and_api_key_not_logged_raw'] = function() {
+    $inspector_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'includes/class-cr-api-inspector.php' );
+    $client_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'includes/class-cr-api-client.php' );
+    tmw_assert_contains( '[TMW-CR-AUDIT]', $inspector_file, 'Audit mode should still log with [TMW-CR-AUDIT] tag.' );
+    tmw_assert_contains( 'redact_url_for_log', $client_file, 'API key redaction helper must remain available.' );
+};
+
 foreach ( $tests as $name => $test ) {
     try {
         $test();

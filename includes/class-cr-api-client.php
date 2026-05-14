@@ -216,7 +216,6 @@ class TMW_CR_Slot_CR_API_Client {
      */
     protected function request( $query ) {
         $url      = add_query_arg( $query, self::ENDPOINT );
-        error_log( '[TMW-CR-API] Request URL: ' . self::redact_url_for_log( $url ) );
         $response = wp_remote_get(
             $url,
             array(

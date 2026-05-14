@@ -996,6 +996,19 @@ $tests['skipped_offers_tracker_does_not_change_frontend_pool_legacy'] = function
     tmw_assert_same( count( $before ), count( $after ), 'Skipped offers tracker must not change frontend pool eligibility.' );
 };
 
+
+$tests['public_docs_and_ui_text_omit_forbidden_phrases'] = function() {
+    tmw_reset_test_state();
+    $readme = file_get_contents( __DIR__ . '/../README.md' );
+    $readmetxt = file_get_contents( __DIR__ . '/../readme.txt' );
+    $combined = strtolower( (string) $readme . "
+" . (string) $readmetxt );
+    $forbidden = array( 'spin the reels', 'try your free spins', 'winner!', 'free spins', 'slot experience', 'slot promotion', 'slot machine', 'spin game', 'casino', 'gambling', 'jackpot' );
+    foreach ( $forbidden as $needle ) {
+        tmw_assert_true( false === strpos( $combined, $needle ), 'Forbidden public phrase found in docs: ' . $needle );
+    }
+};
+
 $tests['slot_setup_shows_winner_mode_diagnostics'] = function() {
     tmw_reset_test_state();
     $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
@@ -1011,11 +1024,11 @@ $tests['slot_setup_shows_winner_mode_diagnostics'] = function() {
     $page->render_page();
     $html = ob_get_clean();
 
-    tmw_assert_contains( 'Eligible winner offers:', $html, 'Slot setup should show eligible winner pool count.' );
+    tmw_assert_contains( 'Eligible display offers:', $html, 'Slot setup should show eligible winner pool count.' );
     tmw_assert_contains( 'Offers with API use_target_rules enabled:', $html, 'Slot setup should show use_target_rules audit count.' );
     tmw_assert_contains( 'Offers with use_target_rules but no manual country override:', $html, 'Slot setup should show manual override recommendation count.' );
     tmw_assert_contains( 'Selection mode: forced three-logo match', $html, 'Slot setup should show forced winner mode.' );
-    tmw_assert_contains( 'Final reel behavior: one selected offer repeated across 3 reels', $html, 'Slot setup should describe final reel behavior.' );
+    tmw_assert_contains( 'Final display behavior: one selected offer shown across the animated selector', $html, 'Slot setup should describe final reel behavior.' );
 };
 
 $tests['extract_offer_rows_supports_response_data_and_keyed_collections'] = function() {

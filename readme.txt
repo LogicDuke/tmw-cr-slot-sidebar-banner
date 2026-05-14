@@ -1,20 +1,20 @@
-=== TMW CR Slot Sidebar Banner ===
+=== TMW CR Offer Sidebar Banner ===
 Contributors: themilisofia
 Tags: affiliate marketing, crackrevenue, sidebar, banner, shortcode
 Requires at least: 5.8
 Tested up to: 6.4
-Stable tag: 1.8.3
+Stable tag: 1.9.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
 == Description ==
-TMW CR Slot Sidebar Banner renders an interactive CrackRevenue offer recommendation banner in any sidebar or widget area. It detects the visitor country, rotates through a curated catalog of partner offers, and appends a configurable SubID tracking parameter to the call-to-action URL.
+TMW CR Offer Sidebar Banner renders an interactive CrackRevenue offer recommendation banner in any sidebar or widget area. It detects the visitor country, rotates through a curated catalog of partner offers, and appends a configurable SubID tracking parameter to the call-to-action URL.
 
 Use the `[tmw_cr_slot_banner]` shortcode inside any widget, sidebar, or post content to output the banner. The plugin bundles high-resolution offer assets and a animated offer selector so everything renders instantly without external ad tags.
 
 == Features ==
 * Geo-targeted banner logic with per-country overrides and filters.
-* Three animated slot selector driven by bundled CrackRevenue creatives.
+* Animated offer selector driven by bundled CrackRevenue creatives.
 * Customizable headline, subheadline, CTA text, and base tracking URL.
 * Automatically appends a configurable SubID parameter for affiliate tracking.
 * No external ad scripts — assets load directly from the plugin directory.
@@ -22,13 +22,13 @@ Use the `[tmw_cr_slot_banner]` shortcode inside any widget, sidebar, or post con
 == Installation ==
 1. Upload the plugin files to the `/wp-content/plugins/tmw-cr-slot-sidebar-banner` directory or install the plugin through the WordPress plugins screen directly.
 2. Activate the plugin through the 'Plugins' screen in WordPress.
-3. Navigate to **Settings → TMW Slot Banner** to configure your CrackRevenue offer URLs and creatives.
+3. Navigate to **Settings → TMW Offer Banner** to configure your CrackRevenue offer URLs and creatives.
 4. Add the `[tmw_cr_slot_banner]` shortcode to any widget or template.
 
 == Frequently Asked Questions ==
 
 = How do I add country specific creatives? =
-Enter a line for each country on the settings page using the format `CC|Image URL|CTA URL|CTA Text|Headline`. For example: `CA|https://example.com/ca.png|https://offer.com/ca|Play Now|Canadian Exclusive Spins`.
+Enter a line for each country on the settings page using the format `CC|Image URL|CTA URL|CTA Text|Headline`. For example: `CA|https://example.com/ca.png|https://offer.com/ca|View Offer|Recommended Adult Offer`.
 
 = Can I use the banner outside of a sidebar? =
 Yes. The shortcode outputs responsive markup that adapts well to any narrow column or block area.
@@ -81,13 +81,13 @@ Yes. Version 1.3.0 ships with optimized PNG assets inside `assets/img/offers/` s
 = 1.7.0 =
 * [TMW-CR-IMG] Added synced-offer automatic image resolver chain (manual override → legacy override → local alias match → explicit remote map → placeholder fallback).
 * [TMW-CR-IMG] Added local catalog alias strategy for normalized brand-name matching without frontend API/image discovery calls.
-* [TMW-CR-DASH] Added admin image-source badges (manual, auto-local, auto-remote, placeholder) and wired slot setup preview to the effective image source.
+* [TMW-CR-DASH] Added admin image-source badges (manual, auto-local, auto-remote, placeholder) and wired offer setup preview to the effective image source.
 * [TMW-CR-IMG] Expanded tests to cover resolver order, alias normalization, remote-map fallback, placeholder fallback, and frontend slot normalization compatibility.
 
 = 1.5.0 =
 * [TMW-CR-DASH] Rebuilt admin into a WordPress-native dashboard with Overview, Offers, Slot Setup, and Settings tabs.
 * [TMW-CR-ADMIN] Added synced-offer explorer filtering, sorting, server-side pagination, and selected-for-slot indicators.
-* [TMW-CR-ADMIN] Added operations summary cards, slot setup workflow improvements, and dedicated admin dashboard styling.
+* [TMW-CR-ADMIN] Added operations summary cards, offer setup workflow improvements, and dedicated admin dashboard styling.
 
 = 1.4.2 =
 * [TMW-CR-FIX] Fixed CrakRevenue envelope parsing so `response/status/httpStatus/data/errors/errorMessage` wrappers are not misclassified as offer rows.
@@ -99,7 +99,7 @@ Yes. Version 1.3.0 ships with optimized PNG assets inside `assets/img/offers/` s
 * [TMW-CR-SYNC] Added sync diagnostics, soft-failure preservation, and richer admin notices.
 
 = 1.3.0 =
-* Replaced the static banner with a three-reel slot interface and heartbeat CTA.
+* Replaced the static banner with a animated offer selector and heartbeat CTA.
 * Added an offer catalog with bundled PNG assets and geo filtering.
 * Ensured CSS/JS load using `plugins_url()` for consistent paths.
 * Prevented empty shortcode output when no geo offers are available.

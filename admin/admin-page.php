@@ -1100,7 +1100,7 @@ class TMW_CR_Slot_Admin_Page {
                 $legacy_catalog
             );
             ?>
-            <p class="description"><?php echo esc_html( sprintf( 'Eligible winner offers: %d', count( $eligible_winner_offers ) ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Eligible display offers: %d', count( $eligible_winner_offers ) ) ); ?></p>
             <?php $manual_diag = $this->offer_repository->get_manual_override_diagnostics(); ?>
             <p class="description"><?php echo esc_html( sprintf( 'Manual final URL overrides: %d', (int) $manual_diag['manual_final_url_overrides'] ) ); ?></p>
             <p class="description"><?php echo esc_html( sprintf( 'Manual allowed country overrides: %d', (int) $manual_diag['manual_allowed_country_overrides'] ) ); ?></p>
@@ -1155,7 +1155,7 @@ class TMW_CR_Slot_Admin_Page {
             <?php $eligibility_rows = $this->offer_repository->get_manual_winner_eligibility_audit_rows( $settings, array( 'cta_url' => (string) ( $settings['cta_url'] ?? '' ), 'cta_text' => (string) ( $settings['cta_text'] ?? '' ) ), $country, $legacy_catalog ); ?>
             <?php $manual_audit_page = $this->get_positive_query_int( 'manual_audit_page', 1 ); ?>
             <?php $manual_audit_pagination = $this->paginate_rows( $eligibility_rows, $manual_audit_page, 25 ); ?>
-            <h3><?php esc_html_e( 'Manual winner eligibility audit', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
+            <h3><?php esc_html_e( 'Manual offer display audit', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
             <?php $this->render_audit_pagination( (int) $manual_audit_pagination['current_page'], (int) $manual_audit_pagination['total_pages'], 'manual_audit_page', array( 'pps_audit_page', 'pps_audit_filter', 'pps_audit_search' ) ); ?>
             <table class="widefat striped">
                 <thead><tr><th>Offer ID</th><th>Offer name</th><th>Has final URL override</th><th>Final URL host</th><th>Has allowed country override</th><th>Allowed countries count</th><th>Frontend slogan</th><th>CTA button text</th><th>Offer label</th><th>Final URL status</th></tr></thead>
@@ -1240,10 +1240,10 @@ class TMW_CR_Slot_Admin_Page {
             </table>
             <?php $this->render_audit_pagination( (int) $pps_audit_pagination['current_page'], (int) $pps_audit_pagination['total_pages'], 'pps_audit_page', array( 'manual_audit_page', 'pps_audit_filter', 'pps_audit_search' ) ); ?>
             <?php if ( 0 === count( $eligible_winner_offers ) ) : ?>
-                <p class="description" style="color:#b32d2e;"><strong><?php esc_html_e( 'No eligible winner offers. Add valid final URL overrides or sync real tracking URLs.', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
+                <p class="description" style="color:#b32d2e;"><strong><?php esc_html_e( 'No eligible display offers. Add valid final URL overrides or sync real tracking URLs.', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
             <?php endif; ?>
             <p class="description"><?php esc_html_e( 'Selection mode: forced three-logo match', 'tmw-cr-slot-sidebar-banner' ); ?></p>
-            <p class="description"><?php esc_html_e( 'Final reel behavior: one selected offer repeated across 3 reels', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+            <p class="description"><?php esc_html_e( 'Final display behavior: one selected offer shown across the animated selector', 'tmw-cr-slot-sidebar-banner' ); ?></p>
             <?php if ( current_user_can( 'manage_options' ) ) : ?>
                 <?php $url_audit = $this->offer_repository->get_cr_url_field_audit_summary( $settings ); ?>
                 <h3><?php esc_html_e( 'CR URL field audit', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
@@ -1369,7 +1369,7 @@ class TMW_CR_Slot_Admin_Page {
             <?php submit_button( __( 'Save Slot Setup', 'tmw-cr-slot-sidebar-banner' ) ); ?>
         </form>
 
-        <h3><?php esc_html_e( 'Current final reel pool order', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
+        <h3><?php esc_html_e( 'Current final display pool order', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
         <ol>
             <?php
             $selected_ids = isset( $settings['slot_offer_ids'] ) && is_array( $settings['slot_offer_ids'] ) ? $settings['slot_offer_ids'] : array();
@@ -1425,7 +1425,7 @@ class TMW_CR_Slot_Admin_Page {
         </form>
 
         <h3><?php esc_html_e( 'Import Skipped / Rejected Offers', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
-        <p class="description"><?php esc_html_e( 'Audit-only tracker for offers we do not want in the banner. This does not change frontend winner logic in this hotfix.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+        <p class="description"><?php esc_html_e( 'Audit-only tracker for offers we do not want in the banner. This does not change frontend offer selection logic in this hotfix.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
         <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
             <?php wp_nonce_field( 'tmw_cr_slot_import_skipped_offers' ); ?>
             <input type="hidden" name="action" value="tmw_cr_slot_import_skipped_offers" />
@@ -1658,7 +1658,7 @@ class TMW_CR_Slot_Admin_Page {
                         </td>
                     </tr>
                     <tr>
-                        <th scope="row"><label for="tmw-cr-spin-button-text"><?php esc_html_e( 'Spin Button Text', 'tmw-cr-slot-sidebar-banner' ); ?></label></th>
+                        <th scope="row"><label for="tmw-cr-spin-button-text"><?php esc_html_e( 'Selector Button Text', 'tmw-cr-slot-sidebar-banner' ); ?></label></th>
                         <td>
                             <input type="text" class="regular-text" id="tmw-cr-spin-button-text" name="<?php echo esc_attr( $this->option_key ); ?>[spin_button_text]" value="<?php echo esc_attr( $settings['spin_button_text'] ?? '' ); ?>" />
                             <p class="description"><?php esc_html_e( 'Default used when empty: Show Best Offer', 'tmw-cr-slot-sidebar-banner' ); ?></p>

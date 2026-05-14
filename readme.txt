@@ -8,13 +8,13 @@ License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
 == Description ==
-TMW CR Slot Sidebar Banner renders an interactive CrackRevenue slot promotion in any sidebar or widget area. It detects the visitor country, rotates through a curated catalog of partner offers, and appends a configurable SubID tracking parameter to the call-to-action URL.
+TMW CR Slot Sidebar Banner renders an interactive CrackRevenue offer recommendation banner in any sidebar or widget area. It detects the visitor country, rotates through a curated catalog of partner offers, and appends a configurable SubID tracking parameter to the call-to-action URL.
 
-Use the `[tmw_cr_slot_banner]` shortcode inside any widget, sidebar, or post content to output the banner. The plugin bundles high-resolution offer assets and a 3-reel slot interface so everything renders instantly without external ad tags.
+Use the `[tmw_cr_slot_banner]` shortcode inside any widget, sidebar, or post content to output the banner. The plugin bundles high-resolution offer assets and a animated offer selector so everything renders instantly without external ad tags.
 
 == Features ==
 * Geo-targeted banner logic with per-country overrides and filters.
-* Three animated slot reels driven by bundled CrackRevenue creatives.
+* Three animated slot selector driven by bundled CrackRevenue creatives.
 * Customizable headline, subheadline, CTA text, and base tracking URL.
 * Automatically appends a configurable SubID parameter for affiliate tracking.
 * No external ad scripts — assets load directly from the plugin directory.
@@ -37,7 +37,7 @@ Yes. The shortcode outputs responsive markup that adapts well to any narrow colu
 Yes. Developers can hook into the `tmw_cr_slot_banner_offers` filter to provide their own offer array or integrate directly with the CrackRevenue API.
 
 = Do you include graphics? =
-Yes. Version 1.3.0 ships with optimized PNG assets inside `assets/img/offers/` so the slot banner works out of the box. You can still override or extend the catalog with your own creatives via filters.
+Yes. Version 1.3.0 ships with optimized PNG assets inside `assets/img/offers/` so the offer recommendation banner works out of the box. You can still override or extend the catalog with your own creatives via filters.
 
 == Changelog ==
 
@@ -105,4 +105,4 @@ Yes. Version 1.3.0 ships with optimized PNG assets inside `assets/img/offers/` s
 * Prevented empty shortcode output when no geo offers are available.
 
 = 1.2.0 =
-* Initial code-only release for CrackRevenue slot banner integration.
+* Initial code-only release for CrackRevenue offer recommendation banner integration.

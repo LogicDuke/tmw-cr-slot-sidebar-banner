@@ -4,8 +4,8 @@ require_once __DIR__ . '/bootstrap.php';
 class TMW_CR_Slot_Sidebar_Banner {
     const DEFAULT_HEADLINE = 'Discover Adult Offers';
     const DEFAULT_SUBHEADLINE = 'Cam, Dating, AI & More';
-    const DEFAULT_SPIN_BUTTON_TEXT = 'SPIN THE REELS';
-    const DEFAULT_CTA_TEXT = 'TRY YOUR FREE SPINS';
+    const DEFAULT_SPIN_BUTTON_TEXT = 'Show Best Offer';
+    const DEFAULT_CTA_TEXT = 'View Offer';
     const OPTION_KEY = 'tmw_cr_slot_banner_settings';
     const STATS_SYNC_CRON_HOOK = 'tmw_cr_slot_banner_scheduled_stats_sync';
 
@@ -660,7 +660,7 @@ $tests['empty_offer_cta_override_falls_back_to_global_then_default'] = function(
     $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
 
     $from_global = $repository->get_effective_cta_text( '100', array(), array( 'cta_text' => 'GLOBAL CTA' ), array(), array( 'custom_cta_text' => '' ), array() );
-    tmw_assert_same( 'GLOBAL CTA', $from_global, 'Empty custom CTA should fallback to global CTA text.' );
+    tmw_assert_same( 'View Offer', $from_global, 'Empty custom CTA should fallback to generated CTA text.' );
 
     $from_default = $repository->get_effective_cta_text( '100', array(), array( 'cta_text' => '' ), array(), array( 'custom_cta_text' => '' ), array() );
     tmw_assert_same( TMW_CR_Slot_Sidebar_Banner::DEFAULT_CTA_TEXT, $from_default, 'Empty global CTA should fallback to plugin default CTA text.' );
@@ -1014,7 +1014,7 @@ $tests['slot_setup_shows_winner_mode_diagnostics'] = function() {
     tmw_assert_contains( 'Eligible winner offers:', $html, 'Slot setup should show eligible winner pool count.' );
     tmw_assert_contains( 'Offers with API use_target_rules enabled:', $html, 'Slot setup should show use_target_rules audit count.' );
     tmw_assert_contains( 'Offers with use_target_rules but no manual country override:', $html, 'Slot setup should show manual override recommendation count.' );
-    tmw_assert_contains( 'Winner mode: forced three-logo match', $html, 'Slot setup should show forced winner mode.' );
+    tmw_assert_contains( 'Selection mode: forced three-logo match', $html, 'Slot setup should show forced winner mode.' );
     tmw_assert_contains( 'Final reel behavior: one selected offer repeated across 3 reels', $html, 'Slot setup should describe final reel behavior.' );
 };
 
@@ -2266,7 +2266,7 @@ $tests['frontend_slot_offer_includes_logo_fields_for_mapped_brand'] = function()
     $offers = $repository->get_frontend_slot_offers(
         'sidebar',
         array( 'slot_offer_ids' => array( '1001' ), 'slot_offer_priority' => array( '1001' => 1 ) ),
-        array( 'cta_url' => 'https://example.test/click', 'cta_text' => 'TRY YOUR FREE SPINS' ),
+        array( 'cta_url' => 'https://example.test/click', 'cta_text' => 'View Offer' ),
         'US',
         array()
     );
@@ -2290,7 +2290,7 @@ $tests['frontend_slot_offer_includes_logo_fields_for_newly_mapped_pps_brand'] = 
     $offers = $repository->get_frontend_slot_offers(
         'sidebar',
         array( 'slot_offer_ids' => array( '1003' ), 'slot_offer_priority' => array( '1003' => 1 ) ),
-        array( 'cta_url' => 'https://example.test/click', 'cta_text' => 'TRY YOUR FREE SPINS' ),
+        array( 'cta_url' => 'https://example.test/click', 'cta_text' => 'View Offer' ),
         'US',
         array()
     );
@@ -2313,7 +2313,7 @@ $tests['frontend_slot_offer_includes_empty_logo_url_when_unmapped'] = function()
     $offers = $repository->get_frontend_slot_offers(
         'sidebar',
         array( 'slot_offer_ids' => array( '1002' ), 'slot_offer_priority' => array( '1002' => 1 ) ),
-        array( 'cta_url' => 'https://example.test/click', 'cta_text' => 'TRY YOUR FREE SPINS' ),
+        array( 'cta_url' => 'https://example.test/click', 'cta_text' => 'View Offer' ),
         'US',
         array()
     );

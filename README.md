@@ -1,6 +1,6 @@
 # TMW CR Slot Sidebar Banner
 
-This plugin renders a geo-aware CrackRevenue slot banner that includes a 3-reel
+This plugin renders a geo-aware CrackRevenue offer recommendation banner that includes a 3-reel
 interface, built-in partner creatives, and automatic SubID tracking. Drop the
 `[tmw_cr_slot_banner]` shortcode into any sidebar or narrow column to display
 the animated slot experience with a pulsing call to action.

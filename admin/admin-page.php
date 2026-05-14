@@ -192,6 +192,7 @@ class TMW_CR_Slot_Admin_Page {
                         'final_url_override' => isset( $override['final_url_override'] ) ? esc_url_raw( (string) $override['final_url_override'] ) : (string) ( $existing_override['final_url_override'] ?? '' ),
                         'image_url_override' => isset( $override['image_url_override'] ) ? esc_url_raw( (string) $override['image_url_override'] ) : '',
                         'custom_cta_text'    => isset( $override['custom_cta_text'] ) ? sanitize_text_field( (string) $override['custom_cta_text'] ) : '',
+                        'custom_slogan'      => isset( $override['custom_slogan'] ) ? sanitize_text_field( (string) $override['custom_slogan'] ) : '',
                         'label_override'     => isset( $override['label_override'] ) ? sanitize_text_field( (string) $override['label_override'] ) : '',
                         'allowed_countries'  => isset( $override['allowed_countries'] ) ? sanitize_text_field( (string) $override['allowed_countries'] ) : '',
                         'blocked_countries'  => isset( $override['blocked_countries'] ) ? sanitize_text_field( (string) $override['blocked_countries'] ) : '',
@@ -1157,7 +1158,7 @@ class TMW_CR_Slot_Admin_Page {
             <h3><?php esc_html_e( 'Manual winner eligibility audit', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
             <?php $this->render_audit_pagination( (int) $manual_audit_pagination['current_page'], (int) $manual_audit_pagination['total_pages'], 'manual_audit_page', array( 'pps_audit_page', 'pps_audit_filter', 'pps_audit_search' ) ); ?>
             <table class="widefat striped">
-                <thead><tr><th>Offer ID</th><th>Offer name</th><th>Has final URL override</th><th>Final URL host</th><th>Has allowed country override</th><th>Allowed countries count</th><th>Detected visitor country raw</th><th>Detected visitor country normalized</th><th>Eligibility result</th><th>Exclusion reason</th></tr></thead>
+                <thead><tr><th>Offer ID</th><th>Offer name</th><th>Has final URL override</th><th>Final URL host</th><th>Has allowed country override</th><th>Allowed countries count</th><th>Frontend slogan</th><th>CTA button text</th><th>Offer label</th><th>Final URL status</th></tr></thead>
                 <tbody>
                 <?php foreach ( $manual_audit_pagination['rows'] as $row ) : ?>
                     <tr>
@@ -1241,7 +1242,7 @@ class TMW_CR_Slot_Admin_Page {
             <?php if ( 0 === count( $eligible_winner_offers ) ) : ?>
                 <p class="description" style="color:#b32d2e;"><strong><?php esc_html_e( 'No eligible winner offers. Add valid final URL overrides or sync real tracking URLs.', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
             <?php endif; ?>
-            <p class="description"><?php esc_html_e( 'Winner mode: forced three-logo match', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+            <p class="description"><?php esc_html_e( 'Selection mode: forced three-logo match', 'tmw-cr-slot-sidebar-banner' ); ?></p>
             <p class="description"><?php esc_html_e( 'Final reel behavior: one selected offer repeated across 3 reels', 'tmw-cr-slot-sidebar-banner' ); ?></p>
             <?php if ( current_user_can( 'manage_options' ) ) : ?>
                 <?php $url_audit = $this->offer_repository->get_cr_url_field_audit_summary( $settings ); ?>
@@ -1262,7 +1263,7 @@ class TMW_CR_Slot_Admin_Page {
                 }
                 ?>
                 <?php if ( $tracking_coverage_ratio < 0.5 ) : ?>
-                    <p class="description" style="color:#b32d2e;"><strong><?php esc_html_e( 'WARNING: Real tracking URL coverage is low. Winner pool may be limited.', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
+                    <p class="description" style="color:#b32d2e;"><strong><?php esc_html_e( 'WARNING: Real tracking URL coverage is low. Offer pool may be limited.', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
                 <?php endif; ?>
                 <p class="description"><?php esc_html_e( 'URL field hostnames are shown for audit only.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
                 <ul>
@@ -1332,7 +1333,12 @@ class TMW_CR_Slot_Admin_Page {
                                 </td>
                                 <td><input type="url" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][final_url_override]" value="<?php echo esc_attr( (string) ( $override['final_url_override'] ?? '' ) ); ?>" placeholder="https://..." /></td>
                                 <td>
+                                    <?php $generated_slogan = $this->offer_repository->generate_offer_slogan( is_array( $offer ) ? $offer : array() ); ?>
+                                    <?php $generated_cta = $this->offer_repository->generate_offer_cta_text( is_array( $offer ) ? $offer : array() ); ?>
+                                    <input type="text" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][custom_slogan]" value="<?php echo esc_attr( (string) ( $override['custom_slogan'] ?? '' ) ); ?>" placeholder="<?php esc_attr_e( 'Custom slogan', 'tmw-cr-slot-sidebar-banner' ); ?>" />
+                                    <p class="description"><?php echo esc_html( 'Fallback slogan: ' . $generated_slogan ); ?></p>
                                     <input type="text" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][custom_cta_text]" value="<?php echo esc_attr( (string) ( $override['custom_cta_text'] ?? '' ) ); ?>" placeholder="<?php esc_attr_e( 'Custom CTA text', 'tmw-cr-slot-sidebar-banner' ); ?>" />
+                                    <p class="description"><?php echo esc_html( 'Fallback CTA: ' . $generated_cta ); ?></p>
                                     <input type="text" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][label_override]" value="<?php echo esc_attr( (string) ( $override['label_override'] ?? '' ) ); ?>" placeholder="<?php esc_attr_e( 'Label override', 'tmw-cr-slot-sidebar-banner' ); ?>" />
                                     <textarea class="large-text" rows="2" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][notes]" placeholder="<?php esc_attr_e( 'Internal notes', 'tmw-cr-slot-sidebar-banner' ); ?>"><?php echo esc_textarea( (string) ( $override['notes'] ?? '' ) ); ?></textarea>
                                 </td>
@@ -1648,14 +1654,14 @@ class TMW_CR_Slot_Admin_Page {
                         <th scope="row"><label for="tmw-cr-cta-text"><?php esc_html_e( 'CTA Text', 'tmw-cr-slot-sidebar-banner' ); ?></label></th>
                         <td>
                             <input type="text" class="regular-text" id="tmw-cr-cta-text" name="<?php echo esc_attr( $this->option_key ); ?>[cta_text]" value="<?php echo esc_attr( $settings['cta_text'] ); ?>" />
-                            <p class="description"><?php esc_html_e( 'Default used when empty: TRY YOUR FREE SPINS', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+                            <p class="description"><?php esc_html_e( 'Default used when empty: View Offer', 'tmw-cr-slot-sidebar-banner' ); ?></p>
                         </td>
                     </tr>
                     <tr>
                         <th scope="row"><label for="tmw-cr-spin-button-text"><?php esc_html_e( 'Spin Button Text', 'tmw-cr-slot-sidebar-banner' ); ?></label></th>
                         <td>
                             <input type="text" class="regular-text" id="tmw-cr-spin-button-text" name="<?php echo esc_attr( $this->option_key ); ?>[spin_button_text]" value="<?php echo esc_attr( $settings['spin_button_text'] ?? '' ); ?>" />
-                            <p class="description"><?php esc_html_e( 'Default used when empty: SPIN THE REELS', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+                            <p class="description"><?php esc_html_e( 'Default used when empty: Show Best Offer', 'tmw-cr-slot-sidebar-banner' ); ?></p>
                         </td>
                     </tr>
                     <tr>

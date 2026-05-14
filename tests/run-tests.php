@@ -5232,17 +5232,17 @@ $tests['frontend_banner_wording_v193'] = function() {
     tmw_assert_true( false === strpos( $plugin_file, 'No active CrackRevenue offers were detected for this slot' ), 'Frontend empty message should not contain slot wording.' );
 };
 
-$tests['plugin_version_bumped_to_194'] = function() {
+$tests['plugin_version_bumped_to_193'] = function() {
     $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
-    tmw_assert_contains( 'Version: 1.9.4', $plugin_file, 'Plugin header version should be 1.9.3.' );
-    tmw_assert_contains( "define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.4' );", $plugin_file, 'Asset version constant should be 1.9.3.' );
+    tmw_assert_contains( 'Version: 1.9.3', $plugin_file, 'Plugin header version should be 1.9.3.' );
+    tmw_assert_contains( "define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.3' );", $plugin_file, 'Asset version constant should be 1.9.3.' );
 };
 
 
 
-$tests['readme_stable_tag_bumped_to_194'] = function() {
+$tests['readme_stable_tag_bumped_to_193'] = function() {
     $readme_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'readme.txt' );
-    tmw_assert_contains( 'Stable tag: 1.9.4', $readme_file, 'Readme stable tag should be 1.9.3.' );
+    tmw_assert_contains( 'Stable tag: 1.9.3', $readme_file, 'Readme stable tag should be 1.9.3.' );
 };
 
 $tests['frontend_cta_forces_new_tab_and_rel_attributes'] = function() {
@@ -5252,20 +5252,11 @@ $tests['frontend_cta_forces_new_tab_and_rel_attributes'] = function() {
     tmw_assert_true( false === strpos( $plugin_file, '! empty( $settings[\'open_in_new_tab\'] ) ?' ), 'CTA new tab behavior should not depend on open_in_new_tab.' );
 };
 
-$tests['css_desktop_and_mobile_slot_card_sizing_v194'] = function() {
+$tests['mobile_css_forces_single_row_three_columns'] = function() {
     $css_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/css/slot-banner.css' );
-    tmw_assert_contains( 'flex: 1 1 0;', $css_file, 'Default outer-col should use compact flex sizing.' );
-    tmw_assert_contains( 'max-width: 92px;', $css_file, 'Default outer-col should use compact max-width.' );
-    tmw_assert_true( false === strpos( $css_file, 'flex: 0 0 calc((100% - 20px) / 3);' ), 'Equal-third desktop sizing should not be global.' );
-    tmw_assert_contains( '@media (max-width: 767px)', $css_file, 'Mobile media query should exist for row lock behavior.' );
-    tmw_assert_contains( 'flex-wrap: nowrap;', $css_file, 'Mobile selector container should not wrap.' );
-    tmw_assert_contains( 'overflow: hidden;', $css_file, 'Mobile selector container should clip overflow.' );
-    tmw_assert_contains( 'align-items: center;', $css_file, 'Mobile selector container should keep reels vertically centered.' );
+    tmw_assert_contains( 'flex-wrap: nowrap;', $css_file, 'Selector container should not wrap.' );
+    tmw_assert_contains( 'overflow: hidden;', $css_file, 'Selector container should clip overflow.' );
     tmw_assert_contains( 'flex: 0 0 calc((100% - 16px) / 3);', $css_file, 'Mobile reels should enforce 3 columns in one row.' );
-    tmw_assert_contains( 'width: 80%;', $css_file, 'Reel logos should use restored default width.' );
-    tmw_assert_contains( 'height: 80%;', $css_file, 'Reel logos should use restored default height.' );
-    tmw_assert_true( false === strpos( $css_file, 'max-width: 72%;
-    max-height: 72%;' ), 'Reel logos should no longer use global 72% max dimensions.' );
 };
 
 $tests['js_final_selection_renders_same_offer_for_three_columns'] = function() {

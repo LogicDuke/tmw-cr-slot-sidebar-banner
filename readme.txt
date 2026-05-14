@@ -3,7 +3,7 @@ Contributors: themilisofia
 Tags: affiliate marketing, crackrevenue, sidebar, banner, shortcode
 Requires at least: 5.8
 Tested up to: 6.4
-Stable tag: 1.9.4
+Stable tag: 1.9.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -40,12 +40,6 @@ Yes. Developers can hook into the `tmw_cr_slot_banner_offers` filter to provide 
 Yes. Version 1.3.0 ships with optimized PNG assets inside `assets/img/offers/` so the offer recommendation banner works out of the box. You can still override or extend the catalog with your own creatives via filters.
 
 == Changelog ==
-
-
-= 1.9.4 =
-* Restored compact desktop/main banner card sizing after the v1.9.2 mobile layout change.
-* Kept mobile 3-card final row behavior.
-* Kept SPIN NOW, clean public offer names, and CTA new-tab behavior.
 
 = 1.9.2 =
 * [TMW-FIX] Fixed mobile final selector layout so the 3 final offer cards remain on one row after reveal.

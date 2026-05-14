@@ -52,12 +52,15 @@
     gap: 10px;
     width: 100%;
     margin: 0 auto;
+    flex-wrap: nowrap;
+    overflow: hidden;
+    align-items: center;
 }
 
 #container .outer-col {
     position: relative;
-    flex: 1 1 0;
-    max-width: 92px;
+    flex: 0 0 calc((100% - 20px) / 3);
+    max-width: none;
     min-width: 0;
     height: var(--item-height);
     border-radius: 12px;
@@ -102,8 +105,10 @@
 }
 
 #container .outer-col .icon .tmw-cr-slot-banner__reel-logo {
-    width: 80%;
-    height: 80%;
+    max-width: 72%;
+    max-height: 72%;
+    width: auto;
+    height: auto;
     object-fit: contain;
     border-radius: 12px;
     display: block;
@@ -295,9 +300,6 @@
 @media (max-width: 767px) {
     #container {
         gap: 8px;
-        flex-wrap: nowrap;
-        overflow: hidden;
-        align-items: center;
     }
 
     #container .outer-col {

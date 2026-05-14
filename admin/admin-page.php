@@ -1661,7 +1661,7 @@ class TMW_CR_Slot_Admin_Page {
                         <th scope="row"><label for="tmw-cr-spin-button-text"><?php esc_html_e( 'Selector Button Text', 'tmw-cr-slot-sidebar-banner' ); ?></label></th>
                         <td>
                             <input type="text" class="regular-text" id="tmw-cr-spin-button-text" name="<?php echo esc_attr( $this->option_key ); ?>[spin_button_text]" value="<?php echo esc_attr( $settings['spin_button_text'] ?? '' ); ?>" />
-                            <p class="description"><?php esc_html_e( 'Default used when empty: SPIN NOW', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+                            <p class="description"><?php esc_html_e( 'Default used when empty: Reveal My Offer', 'tmw-cr-slot-sidebar-banner' ); ?></p>
                         </td>
                     </tr>
                     <tr>

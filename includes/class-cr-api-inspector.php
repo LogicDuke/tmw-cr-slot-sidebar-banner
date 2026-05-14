@@ -34,6 +34,7 @@ class TMW_CR_Slot_CR_API_Inspector {
             'tracking_url' => $tracking,
         );
 
+        $this->log_human_readable_summary( $report );
         error_log( self::LOG_TAG . ' Full audit summary: ' . wp_json_encode( $this->summarize_keys( $report, 3 ) ) );
         return $report;
     }
@@ -57,13 +58,19 @@ class TMW_CR_Slot_CR_API_Inspector {
             $sample_offer_id = (string) $rows[0]['id'];
         }
 
-        return array(
+        $row_count = is_array( $rows ) ? count( $rows ) : 0;
+        $report = array(
             'success' => true,
             'top_level_keys' => array_keys( $response ),
+            'row_count' => $row_count,
             'row_keys' => ! empty( $rows[0] ) && is_array( $rows[0] ) ? array_keys( $rows[0] ) : array(),
-            'sample_offer_id' => $sample_offer_id,
+            'sample_offer_id' => $this->is_safe_offer_id( $sample_offer_id ) ? $sample_offer_id : '',
             'iso_candidates' => $this->extract_iso_country_candidates( $response ),
         );
+        if ( $row_count < 1 ) {
+            $report['reason'] = 'empty_rows';
+        }
+        return $report;
     }
 
     public function inspect_targeting_field_groups( $limit = 3 ) {
@@ -84,6 +91,7 @@ class TMW_CR_Slot_CR_API_Inspector {
             $result[ $field ] = array(
                 'success' => true,
                 'top_level_keys' => array_keys( $resp ),
+                'row_count' => is_array( $rows ) ? count( $rows ) : 0,
                 'row_keys' => ! empty( $rows[0] ) && is_array( $rows[0] ) ? array_keys( $rows[0] ) : array(),
                 'nested_keys' => $nested,
                 'iso_candidates' => $this->extract_iso_country_candidates( $resp ),
@@ -122,18 +130,76 @@ class TMW_CR_Slot_CR_API_Inspector {
     }
 
     public function summarize_keys( $payload, $max_depth = 4, $depth = 0 ) {
-        if ( $depth >= $max_depth || ! is_array( $payload ) ) {
-            return is_array( $payload ) ? array() : '[scalar]';
+        if ( ! is_array( $payload ) ) {
+            return $this->sanitize_audit_scalar( $payload );
+        }
+        if ( $depth >= $max_depth ) {
+            return array();
         }
         $summary = array();
         foreach ( $payload as $key => $value ) {
             $label = is_int( $key ) ? '[index]' : (string) $key;
-            $summary[ $label ] = is_array( $value ) ? $this->summarize_keys( $value, $max_depth, $depth + 1 ) : '[scalar]';
+            if ( is_int( $key ) ) {
+                $summary[] = $this->summarize_keys( $value, $max_depth, $depth + 1 );
+                continue;
+            }
+            $summary[ $label ] = $this->summarize_keys( $value, $max_depth, $depth + 1 );
         }
         return $summary;
     }
 
     public function scrub_string( $value ) {
         return preg_replace( '/(api_key|apikey|token|access_token|key)=([^&\s]+)/i', '$1=[redacted]', (string) $value );
+    }
+
+    protected function sanitize_audit_scalar( $value ) {
+        if ( is_bool( $value ) || is_int( $value ) || is_float( $value ) ) {
+            return $value;
+        }
+        if ( null === $value ) {
+            return null;
+        }
+        $string = trim( (string) $value );
+        if ( '' === $string ) {
+            return '';
+        }
+        if ( preg_match( '#^https?://#i', $string ) ) {
+            return '[redacted_url]';
+        }
+        if ( preg_match( '/(bearer\s+[a-z0-9\-_\.]+|authorization:|cookie:|set-cookie:|api[_-]?key|access[_-]?token|token|password|secret)/i', $string ) ) {
+            return '[redacted_secret]';
+        }
+        if ( strlen( $string ) >= 32 && preg_match( '/^[a-f0-9]{32,}$/i', $string ) ) {
+            return '[redacted_secret]';
+        }
+        return $this->scrub_string( $string );
+    }
+
+    protected function is_safe_offer_id( $offer_id ) {
+        $offer_id = trim( (string) $offer_id );
+        return '' !== $offer_id && strlen( $offer_id ) <= 40 && (bool) preg_match( '/^[A-Za-z0-9_-]+$/', $offer_id );
+    }
+
+    protected function log_human_readable_summary( $report ) {
+        if ( ! is_array( $report ) ) {
+            return;
+        }
+        $offers = isset( $report['offers'] ) && is_array( $report['offers'] ) ? $report['offers'] : array();
+        $parts = array(
+            'offers success=' . ( ! empty( $offers['success'] ) ? 'YES' : 'NO' ),
+            'top_level_keys=' . implode( ',', array_slice( (array) ( $offers['top_level_keys'] ?? array() ), 0, 8 ) ),
+            'row_keys=' . implode( ',', array_slice( (array) ( $offers['row_keys'] ?? array() ), 0, 8 ) ),
+            'row_count=' . (int) ( $offers['row_count'] ?? 0 ),
+            'iso_candidates=' . implode( ',', array_slice( (array) ( $offers['iso_candidates'] ?? array() ), 0, 8 ) ),
+        );
+        if ( ! empty( $offers['reason'] ) ) {
+            $parts[] = 'reason=' . sanitize_key( (string) $offers['reason'] );
+        }
+        $tracking = isset( $report['tracking_url'] ) && is_array( $report['tracking_url'] ) ? $report['tracking_url'] : array();
+        if ( array_key_exists( 'skipped', $tracking ) ) {
+            $parts[] = 'tracking_url=' . ( ! empty( $tracking['skipped'] ) ? 'skipped' : 'ready' );
+            $parts[] = 'reason=' . sanitize_key( (string) ( $tracking['reason'] ?? 'unknown' ) );
+        }
+        error_log( self::LOG_TAG . ' ' . implode( ' ', array_filter( $parts ) ) );
     }
 }

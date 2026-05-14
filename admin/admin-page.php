@@ -1792,6 +1792,22 @@ class TMW_CR_Slot_Admin_Page {
                 <?php echo ! empty( $sync_meta['last_synced_at'] ) ? esc_html( (string) $sync_meta['last_synced_at'] ) : esc_html__( 'Never', 'tmw-cr-slot-sidebar-banner' ); ?>
             </p>
         </div>
+
+        <?php if ( current_user_can( 'manage_options' ) ) : ?>
+            <?php $audit_enabled = TMW_CR_Slot_CR_API_Inspector::is_enabled(); ?>
+            <div class="tmw-cr-card" style="margin-top:16px;">
+                <h3><?php esc_html_e( 'CrakRevenue API Audit', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
+                <p class="description"><?php esc_html_e( 'Run a debug-only audit to inspect CrakRevenue targeting fields, ISO country-code response shapes, and tracking URL method availability. Requires WP_DEBUG or TMW_CR_API_AUDIT and writes details to debug.log.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+                <?php if ( ! $audit_enabled ) : ?>
+                    <p><em><?php esc_html_e( 'Audit mode is disabled. Enable WP_DEBUG or define TMW_CR_API_AUDIT as true, then run the audit.', 'tmw-cr-slot-sidebar-banner' ); ?></em></p>
+                <?php endif; ?>
+                <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+                    <input type="hidden" name="action" value="tmw_cr_slot_banner_audit_api" />
+                    <?php wp_nonce_field( 'tmw_cr_slot_banner_audit_api' ); ?>
+                    <?php submit_button( __( 'Run API Audit', 'tmw-cr-slot-sidebar-banner' ), 'secondary', 'submit', false, array( 'disabled' => ! $audit_enabled ) ); ?>
+                </form>
+            </div>
+        <?php endif; ?>
         <?php
     }
 

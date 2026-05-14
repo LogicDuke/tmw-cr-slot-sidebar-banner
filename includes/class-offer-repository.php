@@ -1327,6 +1327,8 @@ class TMW_CR_Slot_Offer_Repository {
             $local_by_id[ $offer_id ] = $offer;
         }
 
+        $max_local_numeric_id = $this->get_max_numeric_offer_id( array_keys( $local_by_id ) );
+
         $cr_missing_locally = array();
         $summary_by_type = array();
         foreach ( $fixture_rows as $cr_id => $cr_row ) {
@@ -1336,6 +1338,7 @@ class TMW_CR_Slot_Offer_Repository {
             }
             ++$summary_by_type[ $cr_payout ]['cr_count'];
             if ( ! isset( $local_by_id[ $cr_id ] ) ) {
+                $cr_row['likely_reason'] = $this->derive_cr_missing_locally_likely_reason( $cr_row, $max_local_numeric_id );
                 $cr_missing_locally[] = $cr_row;
                 ++$summary_by_type[ $cr_payout ]['missing_local_count'];
                 continue;
@@ -1363,6 +1366,7 @@ class TMW_CR_Slot_Offer_Repository {
                         'comparison_label_keys' => $comparison_label_keys,
                         'source_class' => $source_class,
                         'note' => 'CR payout_type not found in local detected/admin/comparison payout families.',
+                        'likely_reason' => $this->derive_payout_mismatch_likely_reason( $local_offer, $cr_row, $source_class, $comparison_label_keys ),
                     );
                 }
             }
@@ -1387,6 +1391,7 @@ class TMW_CR_Slot_Offer_Repository {
             } elseif ( in_array( $source_class, array( 'group_fallback', 'fallback' ), true ) ) {
                 $local_fallback_missing[] = $row;
             } else {
+                $row['likely_reason'] = $this->derive_local_normal_missing_from_cr_likely_reason( $offer );
                 $local_normal_missing[] = $row;
             }
         }
@@ -1406,6 +1411,72 @@ class TMW_CR_Slot_Offer_Repository {
             'approval_mismatches' => array(),
             'summary_by_cr_payout_type' => $summary_by_type,
         );
+    }
+
+
+    /**
+     * @param array<int,string> $offer_ids Offer IDs.
+     *
+     * @return int
+     */
+    protected function get_max_numeric_offer_id( $offer_ids ) {
+        $max = 0;
+        foreach ( (array) $offer_ids as $offer_id ) {
+            $offer_id = trim( (string) $offer_id );
+            if ( '' === $offer_id || ! ctype_digit( $offer_id ) ) {
+                continue;
+            }
+            $value = (int) $offer_id;
+            if ( $value > $max ) {
+                $max = $value;
+            }
+        }
+        return $max;
+    }
+
+    protected function derive_cr_missing_locally_likely_reason( $cr_row, $max_local_numeric_id ) {
+        $approval = strtolower( trim( (string) ( $cr_row['approval'] ?? '' ) ) );
+        if ( 'required' === $approval ) {
+            return 'approval_gated';
+        }
+
+        $cr_id = trim( (string) ( $cr_row['cr_id'] ?? '' ) );
+        if ( '' !== $cr_id && ctype_digit( $cr_id ) && (int) $cr_id > (int) $max_local_numeric_id ) {
+            return 'newer_than_last_sync';
+        }
+
+        return 'absent_from_local_sync';
+    }
+
+    protected function derive_local_normal_missing_from_cr_likely_reason( $local_offer ) {
+        $raw_type = sanitize_key( (string) ( $local_offer['payout_type'] ?? '' ) );
+        if ( 'cpa_flat' === $raw_type ) {
+            return 'api_only_or_fixture_scope_gap';
+        }
+
+        return 'api_visible_not_in_cr_fixture';
+    }
+
+    protected function derive_payout_mismatch_likely_reason( $local_offer, $cr_row, $source_class, $comparison_label_keys ) {
+        $local_name = strtolower( (string) ( $local_offer['name'] ?? '' ) );
+        if ( false !== strpos( $local_name, 'smartlink' ) && 'smartlink' !== (string) $source_class ) {
+            return 'name_smartlink_no_word_boundary';
+        }
+
+        $cr_label = sanitize_text_field( (string) ( $cr_row['payout_type'] ?? '' ) );
+        if ( 'Revshare Lifetime' === $cr_label ) {
+            $keys = array_values( array_unique( array_map( 'sanitize_key', (array) $comparison_label_keys ) ) );
+            if ( in_array( 'revshare', $keys, true ) && ! in_array( 'revshare_lifetime', $keys, true ) ) {
+                return 'name_missing_lifetime_qualifier';
+            }
+        }
+
+        $raw_type = sanitize_key( (string) ( $local_offer['payout_type'] ?? '' ) );
+        if ( 'Multi-CPA' === $cr_label && 'cpa_percentage' === $raw_type ) {
+            return 'cr_ui_label_vs_api_calc_method';
+        }
+
+        return 'documented_taxonomy_exception';
     }
 
     protected function get_offer_audit_source_class( $offer, $detected_keys ) {

@@ -5063,6 +5063,118 @@ $tests['offers_tab_renders_comparison_context_for_mismatches'] = function() {
     tmw_assert_contains( 'detected/admin/comparison:', $html, 'Mismatch rows should include comparison context label.' );
 };
 
+$tests['cr_fixture_reconciliation_emits_likely_reason_for_cr_missing_locally'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '1000' => array( 'id' => '1000', 'name' => 'Only local', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $audit = $repo->get_cr_fixture_reconciliation_audit();
+    tmw_assert_true( ! empty( $audit['cr_missing_locally'] ), 'Expected at least one CR missing locally row.' );
+    $allowed = array( 'approval_gated', 'newer_than_last_sync', 'absent_from_local_sync' );
+    foreach ( (array) $audit['cr_missing_locally'] as $row ) {
+        $reason = (string) ( $row['likely_reason'] ?? '' );
+        tmw_assert_true( '' !== $reason && in_array( $reason, $allowed, true ), 'CR missing locally likely_reason must be valid enum.' );
+    }
+};
+
+$tests['cr_fixture_reconciliation_emits_likely_reason_for_local_normal_missing'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( 'local-only-1' => array( 'id' => 'local-only-1', 'name' => 'Local Offer', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $audit = $repo->get_cr_fixture_reconciliation_audit();
+    tmw_assert_true( ! empty( $audit['local_normal_missing_from_cr'] ), 'Expected at least one local normal missing row.' );
+    $allowed = array( 'api_only_or_fixture_scope_gap', 'api_visible_not_in_cr_fixture' );
+    foreach ( (array) $audit['local_normal_missing_from_cr'] as $row ) {
+        $reason = (string) ( $row['likely_reason'] ?? '' );
+        tmw_assert_true( '' !== $reason && in_array( $reason, $allowed, true ), 'Local normal missing likely_reason must be valid enum.' );
+    }
+};
+
+$tests['cr_fixture_reconciliation_emits_likely_reason_for_payout_mismatch'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '3664' => array( 'id' => '3664', 'name' => 'Mismatch 3664', 'status' => 'active', 'payout_type' => 'cpa_percentage' ) ) );
+    $audit = $repo->get_cr_fixture_reconciliation_audit();
+    $match = null;
+    foreach ( (array) $audit['payout_label_mismatches'] as $row ) {
+        if ( '3664' === (string) ( $row['cr_id'] ?? '' ) ) { $match = $row; break; }
+    }
+    tmw_assert_true( is_array( $match ), 'Expected payout mismatch for 3664.' );
+    tmw_assert_same( 'cr_ui_label_vs_api_calc_method', (string) ( $match['likely_reason'] ?? '' ), 'Expected Multi-CPA vs cpa_percentage likely_reason.' );
+};
+
+$tests['cr_fixture_reconciliation_emits_likely_reason_for_lifetime_name_gap'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '235' => array( 'id' => '235', 'name' => 'Revshare Offer', 'status' => 'active', 'payout_type' => 'cpa_percentage' ) ) );
+    $audit = $repo->get_cr_fixture_reconciliation_audit();
+    $match = null;
+    foreach ( (array) $audit['payout_label_mismatches'] as $row ) {
+        if ( '235' === (string) ( $row['cr_id'] ?? '' ) ) { $match = $row; break; }
+    }
+    tmw_assert_true( is_array( $match ), 'Expected payout mismatch for 235.' );
+    tmw_assert_same( 'name_missing_lifetime_qualifier', (string) ( $match['likely_reason'] ?? '' ), 'Expected lifetime qualifier likely_reason.' );
+};
+
+$tests['cr_fixture_reconciliation_emits_likely_reason_for_concat_smartlink'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '235' => array( 'id' => '235', 'name' => 'DatingSmartlink CPC Test', 'status' => 'active', 'payout_type' => 'cpc' ) ) );
+    $audit = $repo->get_cr_fixture_reconciliation_audit();
+    $match = null;
+    foreach ( (array) $audit['payout_label_mismatches'] as $row ) {
+        if ( '235' === (string) ( $row['cr_id'] ?? '' ) ) { $match = $row; break; }
+    }
+    tmw_assert_true( is_array( $match ), 'Expected payout mismatch for concat smartlink case.' );
+    tmw_assert_same( 'normal_offer', (string) ( $match['source_class'] ?? '' ), 'Source class must remain normal_offer.' );
+    tmw_assert_same( 'name_smartlink_no_word_boundary', (string) ( $match['likely_reason'] ?? '' ), 'Expected concat smartlink likely_reason.' );
+};
+
+$tests['offers_tab_renders_cr_scope_explainer_panel'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'offers' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Two scopes, two row counts', $html, 'Scope explainer should render first heading.' );
+    tmw_assert_contains( 'Why CR labels and local labels can diverge', $html, 'Scope explainer should render second heading.' );
+};
+
+$tests['cr_fixture_reconciliation_likely_reason_does_not_affect_counts'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        '235' => array( 'id' => '235', 'name' => 'Match 235', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+        'local-only-1' => array( 'id' => 'local-only-1', 'name' => 'Local Offer', 'status' => 'active', 'payout_type' => 'PPS' ),
+    ) );
+    $audit = $repo->get_cr_fixture_reconciliation_audit();
+    tmw_assert_same( 273, (int) $audit['fixture_rows'], 'Fixture rows count should remain unchanged.' );
+    tmw_assert_same( 1, (int) $audit['matched_ids'], 'Matched ID count should remain unchanged.' );
+    tmw_assert_true( count( (array) $audit['cr_missing_locally'] ) > 0, 'CR missing locally count should remain populated.' );
+    tmw_assert_same( 1, count( (array) $audit['local_normal_missing_from_cr'] ), 'Local normal missing count should remain unchanged.' );
+};
+
+$tests['frontend_pool_unchanged_after_pr67_likely_reason'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        '8780' => array( 'id' => '8780', 'name' => 'Jerkmate', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '10366' => array( 'id' => '10366', 'name' => 'NaughtyCharm', 'status' => 'active', 'payout_type' => 'PPS' ),
+        'x-soi' => array( 'id' => 'x-soi', 'name' => 'SOI Offer', 'status' => 'active', 'payout_type' => 'SOI' ),
+    ) );
+    $repo->save_offer_overrides( array(
+        '8780' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/8780', 'allowed_countries' => 'Belgium' ),
+        '10366' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/10366', 'allowed_countries' => 'United States' ),
+        'x-soi' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/x-soi', 'allowed_countries' => 'United States' ),
+    ) );
+    $before_be = $repo->get_frontend_slot_offers( 'sidebar', array(), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    $before_us = $repo->get_frontend_slot_offers( 'sidebar', array(), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'United States', array() );
+    $repo->get_cr_fixture_reconciliation_audit();
+    $after_be = $repo->get_frontend_slot_offers( 'sidebar', array(), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    $after_us = $repo->get_frontend_slot_offers( 'sidebar', array(), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'United States', array() );
+    tmw_assert_same( wp_json_encode( $before_be ), wp_json_encode( $after_be ), 'Belgium frontend pool should be unchanged after audit call.' );
+    tmw_assert_same( wp_json_encode( $before_us ), wp_json_encode( $after_us ), 'US frontend pool should be unchanged after audit call.' );
+};
+
+
 $tests['frontend_pool_unchanged_after_cr_reconciliation_comparison_refine'] = $tests['frontend_pool_unchanged_after_cr_fixture_reconciliation'];
 
 

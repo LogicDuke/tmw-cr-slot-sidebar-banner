@@ -2317,6 +2317,7 @@ class TMW_CR_Slot_Offer_Repository {
             'image'    => $this->get_effective_image( $offer_id, $settings, $banner_data, $synced_offer, $override, $legacy_catalog ),
             'cta_url'  => $this->get_effective_cta_url( $offer_id, $settings, $banner_data, $synced_offer, $override ),
             'cta_text' => $this->get_effective_cta_text( $offer_id, $settings, $banner_data, $synced_offer, $override, $legacy_catalog ),
+            'slogan' => $this->get_effective_slogan_text( $offer_id, $synced_offer, $override ),
             'brand_key' => $this->get_offer_brand_key( (string) ( $synced_offer['name'] ?? '' ) ),
             'logo_filename' => $this->get_offer_logo_filename( $synced_offer ),
             'logo_url' => $this->get_offer_logo_url( $synced_offer ),
@@ -2398,7 +2399,8 @@ class TMW_CR_Slot_Offer_Repository {
             'name' => $name,
             'image' => $this->build_placeholder_image( $name ),
             'cta_url' => esc_url_raw( $final_url_override ),
-            'cta_text' => (string) ( $banner_data['cta_text'] ?? '' ),
+            'cta_text' => $this->generate_offer_cta_text( $offer_stub ),
+            'slogan' => $this->get_effective_slogan_text( $offer_id, $offer_stub, $override ),
             'source' => 'manual_override_only',
             'brand_key' => $this->get_offer_brand_key( $name ),
             'logo_filename' => $this->get_offer_logo_filename( $offer_stub ),
@@ -3136,24 +3138,44 @@ class TMW_CR_Slot_Offer_Repository {
             return (string) $override['custom_cta_text'];
         }
 
-        if ( ! empty( $synced_offer['cta_text'] ) ) {
-            return (string) $synced_offer['cta_text'];
-        }
+        return $this->generate_offer_cta_text( $synced_offer );
+    }
 
-        if ( isset( $legacy_catalog[ $offer_id ] ) && ! empty( $legacy_catalog[ $offer_id ]['cta_text'] ) ) {
-            return (string) $legacy_catalog[ $offer_id ]['cta_text'];
+    public function get_effective_slogan_text( $offer_id, $synced_offer, $override ) {
+        unset( $offer_id );
+        if ( ! empty( $override['custom_slogan'] ) ) {
+            return (string) $override['custom_slogan'];
         }
+        return $this->generate_offer_slogan( is_array( $synced_offer ) ? $synced_offer : array() );
+    }
 
-        $global_cta = trim( (string) ( $banner_data['cta_text'] ?? '' ) );
-        if ( '' !== $global_cta ) {
-            return $global_cta;
+    public function classify_offer_vertical( array $offer ): string {
+        $haystack = strtolower( trim( (string) ( ( $offer['name'] ?? '' ) . ' ' . ( $offer['description'] ?? '' ) ) ) );
+        if ( preg_match( '/ai|gpt|companion|fantasy|dreamgf|chatbot|virtual girlfriend/', $haystack ) ) { return 'ai'; }
+        if ( preg_match( '/cam|live|chat|jerkmate|oranum|webcam|performer/', $haystack ) ) { return 'cam'; }
+        if ( preg_match( '/vixen|blacked|tushy|deeper|raw|plus|studio|premium video|scenes/', $haystack ) ) { return 'video'; }
+        if ( preg_match( '/dating|hookup|match|friendfinder|singles|casual dating/', $haystack ) ) { return 'dating'; }
+        return 'fallback';
+    }
+
+    public function generate_offer_slogan( array $offer ): string {
+        switch ( $this->classify_offer_vertical( $offer ) ) {
+            case 'ai': return 'Adult AI chat';
+            case 'cam': return 'Live cam shows';
+            case 'video': return 'Premium adult videos';
+            case 'dating': return 'Adult dating matches';
+            default: return 'Recommended adult offer';
         }
+    }
 
-        if ( class_exists( 'TMW_CR_Slot_Sidebar_Banner' ) && defined( 'TMW_CR_Slot_Sidebar_Banner::DEFAULT_CTA_TEXT' ) ) {
-            return (string) TMW_CR_Slot_Sidebar_Banner::DEFAULT_CTA_TEXT;
+    public function generate_offer_cta_text( array $offer ): string {
+        switch ( $this->classify_offer_vertical( $offer ) ) {
+            case 'ai': return 'Start AI Chat';
+            case 'cam': return 'Start Live Chat';
+            case 'video': return 'Watch Now';
+            case 'dating': return 'Find Matches';
+            default: return 'View Offer';
         }
-
-        return 'TRY YOUR FREE SPINS';
     }
 
     /**
@@ -3529,6 +3551,7 @@ class TMW_CR_Slot_Offer_Repository {
             'allowed_countries' => $this->sanitize_country_names( isset( $override['allowed_countries'] ) ? $override['allowed_countries'] : array() ),
             'blocked_countries' => $this->sanitize_country_codes( isset( $override['blocked_countries'] ) ? $override['blocked_countries'] : array() ),
             'custom_cta_text'   => ! empty( $override['custom_cta_text'] ) ? sanitize_text_field( (string) $override['custom_cta_text'] ) : '',
+            'custom_slogan'     => ! empty( $override['custom_slogan'] ) ? sanitize_text_field( (string) $override['custom_slogan'] ) : '',
             'label_override'    => ! empty( $override['label_override'] ) ? sanitize_text_field( (string) $override['label_override'] ) : '',
             'notes'             => ! empty( $override['notes'] ) ? sanitize_textarea_field( (string) $override['notes'] ) : '',
             'dashboard_tags'    => $this->sanitize_list_values( isset( $override['dashboard_tags'] ) ? $override['dashboard_tags'] : array() ),

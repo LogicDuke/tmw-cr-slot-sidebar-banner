@@ -1,9 +1,9 @@
 <?php
 /**
- * Plugin Name: TMW CR Slot Sidebar Banner
+ * Plugin Name: TMW CR Offer Sidebar Banner
  * Plugin URI: https://themilisofialtd.com/
- * Description: Displays a geo-targeted CrackRevenue slot banner with a 3-reel interface in sidebar areas via shortcode or template tag.
- * Version: 1.8.9
+ * Description: Displays a geo-targeted CrackRevenue offer recommendation banner with an animated offer selector in sidebar areas via shortcode or template tag.
+ * Version: 1.9.0
  * Author: The Milisofia LTD
  * Author URI: https://themilisofialtd.com/
  * License: GPL2
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'TMW_CR_SLOT_BANNER_VERSION', '1.8.9' );
+define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.0' );
 define( 'TMW_CR_SLOT_BANNER_PATH', plugin_dir_path( __FILE__ ) );
 define( 'TMW_CR_SLOT_BANNER_URL', plugin_dir_url( __FILE__ ) );
 
@@ -32,8 +32,8 @@ require_once TMW_CR_SLOT_BANNER_PATH . 'admin/admin-page.php';
 class TMW_CR_Slot_Sidebar_Banner {
     const DEFAULT_HEADLINE = 'Discover Adult Offers';
     const DEFAULT_SUBHEADLINE = 'Cam, Dating, AI & More';
-    const DEFAULT_SPIN_BUTTON_TEXT = 'SPIN THE REELS';
-    const DEFAULT_CTA_TEXT = 'TRY YOUR FREE SPINS';
+    const DEFAULT_SPIN_BUTTON_TEXT = 'Show Best Offer';
+    const DEFAULT_CTA_TEXT = 'View Offer';
     /**
      * Option key used to persist settings.
      *
@@ -348,7 +348,7 @@ class TMW_CR_Slot_Sidebar_Banner {
                 <p class="tmw-cr-slot-banner__subheadline"><?php echo esc_html( $banner_data['subheadline'] ); ?></p>
             </header>
 
-            <div class="tmw-cr-slot-banner__machine" role="group" aria-label="<?php esc_attr_e( 'CrackRevenue slot banner', 'tmw-cr-slot-sidebar-banner' ); ?>">
+            <div class="tmw-cr-slot-banner__machine" role="group" aria-label="<?php esc_attr_e( 'CrackRevenue offer banner', 'tmw-cr-slot-sidebar-banner' ); ?>">
                 <div id="container" class="tmw-slot-container" aria-hidden="true">
                     <?php for ( $i = 0; $i < 3; $i++ ) : ?>
                         <div class="outer-col" data-reel-index="<?php echo esc_attr( $i ); ?>">
@@ -363,9 +363,10 @@ class TMW_CR_Slot_Sidebar_Banner {
 
             <div class="tmw-cr-slot-banner__footer">
                 <p class="tmw-cr-slot-banner__result">
-                    <span class="tmw-cr-slot-banner__result-label"><?php esc_html_e( 'Hot pick:', 'tmw-cr-slot-sidebar-banner' ); ?></span>
+                    <span class="tmw-cr-slot-banner__result-label"><?php esc_html_e( 'Selected for you:', 'tmw-cr-slot-sidebar-banner' ); ?></span>
                     <span class="tmw-cr-slot-banner__offer-name"><?php echo esc_html( $slot_data['initial_offer_name'] ); ?></span>
                 </p>
+                <p class="tmw-cr-slot-banner__offer-slogan"><?php echo esc_html( $slot_data['initial_offer_slogan'] ); ?></p>
                 <a class="tmw-cr-slot-banner__cta" href="<?php echo esc_url( $slot_data['initial_cta_url'] ); ?>"<?php echo $cta_target; ?>>
                     <?php echo esc_html( $slot_data['initial_cta_text'] ); ?>
                 </a>
@@ -446,10 +447,12 @@ class TMW_CR_Slot_Sidebar_Banner {
         $initial_cta_url   = $initial_offer && ! empty( $initial_offer['cta_url'] ) ? $initial_offer['cta_url'] : $banner_data['cta_url'];
         $initial_cta_text  = $initial_offer && ! empty( $initial_offer['cta_text'] ) ? $initial_offer['cta_text'] : $banner_data['cta_text'];
         $initial_offername = $initial_offer ? $initial_offer['name'] : __( 'No active offers', 'tmw-cr-slot-sidebar-banner' );
+        $initial_slogan    = $initial_offer && ! empty( $initial_offer['slogan'] ) ? $initial_offer['slogan'] : __( 'Recommended adult offer', 'tmw-cr-slot-sidebar-banner' );
 
         return array(
             'offers'             => $slot_offers,
             'initial_offer_name' => $initial_offername,
+            'initial_offer_slogan' => $initial_slogan,
             'initial_cta_url'    => $initial_cta_url,
             'initial_cta_text'   => $initial_cta_text,
             'has_empty_offer_cta' => $this->slot_has_empty_offer_cta( $slot_offers ),

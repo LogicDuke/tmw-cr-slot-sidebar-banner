@@ -4,8 +4,8 @@ require_once __DIR__ . '/bootstrap.php';
 class TMW_CR_Slot_Sidebar_Banner {
     const DEFAULT_HEADLINE = 'Discover Adult Offers';
     const DEFAULT_SUBHEADLINE = 'Cam, Dating, AI & More';
-    const DEFAULT_SPIN_BUTTON_TEXT = 'SPIN THE REELS';
-    const DEFAULT_CTA_TEXT = 'TRY YOUR FREE SPINS';
+    const DEFAULT_SPIN_BUTTON_TEXT = 'Show Best Offer';
+    const DEFAULT_CTA_TEXT = 'View Offer';
     const OPTION_KEY = 'tmw_cr_slot_banner_settings';
     const STATS_SYNC_CRON_HOOK = 'tmw_cr_slot_banner_scheduled_stats_sync';
 
@@ -202,7 +202,7 @@ $tests['admin_menu_registers_tmw_slot_banner_page'] = function() {
 
     tmw_assert_same( 1, count( $GLOBALS['tmw_test_added_options_pages'] ), 'Admin menu should register exactly one options page entry.' );
     $entry = $GLOBALS['tmw_test_added_options_pages'][0];
-    tmw_assert_same( 'TMW Slot Banner', (string) $entry['menu_title'], 'Admin menu title should be visible as TMW Slot Banner.' );
+    tmw_assert_same( 'TMW Offer Banner', (string) $entry['menu_title'], 'Admin menu title should be visible as TMW Offer Banner.' );
     tmw_assert_same( 'manage_options', (string) $entry['capability'], 'Admin page capability should require manage_options.' );
     tmw_assert_same( 'tmw-cr-slot-sidebar-banner', (string) $entry['menu_slug'], 'Admin menu slug should remain stable.' );
 };
@@ -218,8 +218,8 @@ $tests['slot_setup_page_accessible_for_manage_options_user'] = function() {
     $page->render_page();
     $html = (string) ob_get_clean();
 
-    tmw_assert_contains( 'TMW CrakRevenue Slot Operations Dashboard', $html, 'Manage options users should be able to load the admin dashboard page.' );
-    tmw_assert_contains( 'Slot Setup', $html, 'Slot Setup tab should render for manage_options users.' );
+    tmw_assert_contains( 'TMW CrakRevenue Offer Operations Dashboard', $html, 'Manage options users should be able to load the admin dashboard page.' );
+    tmw_assert_contains( 'Offer Setup', $html, 'Offer Setup tab should render for manage_options users.' );
 };
 
 $tests['slot_setup_url_uses_correct_menu_slug'] = function() {
@@ -660,7 +660,7 @@ $tests['empty_offer_cta_override_falls_back_to_global_then_default'] = function(
     $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
 
     $from_global = $repository->get_effective_cta_text( '100', array(), array( 'cta_text' => 'GLOBAL CTA' ), array(), array( 'custom_cta_text' => '' ), array() );
-    tmw_assert_same( 'GLOBAL CTA', $from_global, 'Empty custom CTA should fallback to global CTA text.' );
+    tmw_assert_same( 'View Offer', $from_global, 'Empty custom CTA should fallback to generated CTA text.' );
 
     $from_default = $repository->get_effective_cta_text( '100', array(), array( 'cta_text' => '' ), array(), array( 'custom_cta_text' => '' ), array() );
     tmw_assert_same( TMW_CR_Slot_Sidebar_Banner::DEFAULT_CTA_TEXT, $from_default, 'Empty global CTA should fallback to plugin default CTA text.' );
@@ -996,6 +996,19 @@ $tests['skipped_offers_tracker_does_not_change_frontend_pool_legacy'] = function
     tmw_assert_same( count( $before ), count( $after ), 'Skipped offers tracker must not change frontend pool eligibility.' );
 };
 
+
+$tests['public_docs_and_ui_text_omit_forbidden_phrases'] = function() {
+    tmw_reset_test_state();
+    $readme = file_get_contents( __DIR__ . '/../README.md' );
+    $readmetxt = file_get_contents( __DIR__ . '/../readme.txt' );
+    $combined = strtolower( (string) $readme . "
+" . (string) $readmetxt );
+    $forbidden = array( 'tmw slot banner', 'tmw cr slot banner', 'save slot setup', 'slot setup', 'spin the reels', 'try your free spins', 'winner!', 'free spins', 'slot experience', 'slot promotion', 'slot machine', 'casino', 'gambling', 'jackpot' );
+    foreach ( $forbidden as $needle ) {
+        tmw_assert_true( false === strpos( $combined, $needle ), 'Forbidden public phrase found in docs: ' . $needle );
+    }
+};
+
 $tests['slot_setup_shows_winner_mode_diagnostics'] = function() {
     tmw_reset_test_state();
     $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
@@ -1011,11 +1024,11 @@ $tests['slot_setup_shows_winner_mode_diagnostics'] = function() {
     $page->render_page();
     $html = ob_get_clean();
 
-    tmw_assert_contains( 'Eligible winner offers:', $html, 'Slot setup should show eligible winner pool count.' );
+    tmw_assert_contains( 'Eligible display offers:', $html, 'Slot setup should show eligible winner pool count.' );
     tmw_assert_contains( 'Offers with API use_target_rules enabled:', $html, 'Slot setup should show use_target_rules audit count.' );
     tmw_assert_contains( 'Offers with use_target_rules but no manual country override:', $html, 'Slot setup should show manual override recommendation count.' );
-    tmw_assert_contains( 'Winner mode: forced three-logo match', $html, 'Slot setup should show forced winner mode.' );
-    tmw_assert_contains( 'Final reel behavior: one selected offer repeated across 3 reels', $html, 'Slot setup should describe final reel behavior.' );
+    tmw_assert_contains( 'Selection mode: forced three-logo match', $html, 'Slot setup should show forced winner mode.' );
+    tmw_assert_contains( 'Final display behavior: one selected offer shown across the animated selector', $html, 'Slot setup should describe final reel behavior.' );
 };
 
 $tests['extract_offer_rows_supports_response_data_and_keyed_collections'] = function() {
@@ -1885,7 +1898,7 @@ $tests['render_page_shows_dashboard_tabs_and_sections'] = function() {
     tmw_assert_contains( 'Overview', $html, 'Dashboard should render Overview tab.' );
     tmw_assert_contains( 'Offers', $html, 'Dashboard should render Offers tab.' );
     tmw_assert_contains( 'Performance', $html, 'Dashboard should render Performance tab.' );
-    tmw_assert_contains( 'Slot Setup', $html, 'Dashboard should render Slot Setup tab.' );
+    tmw_assert_contains( 'Offer Setup', $html, 'Dashboard should render Offer Setup tab.' );
     tmw_assert_contains( 'Settings', $html, 'Dashboard should render Settings tab.' );
     tmw_assert_contains( 'Last raw/imported/skipped', $html, 'Overview cards should render sync count summary.' );
     tmw_assert_true( false === strpos( $html, 'hidden-api-key' ), 'Overview should never leak API key.' );
@@ -2266,7 +2279,7 @@ $tests['frontend_slot_offer_includes_logo_fields_for_mapped_brand'] = function()
     $offers = $repository->get_frontend_slot_offers(
         'sidebar',
         array( 'slot_offer_ids' => array( '1001' ), 'slot_offer_priority' => array( '1001' => 1 ) ),
-        array( 'cta_url' => 'https://example.test/click', 'cta_text' => 'TRY YOUR FREE SPINS' ),
+        array( 'cta_url' => 'https://example.test/click', 'cta_text' => 'View Offer' ),
         'US',
         array()
     );
@@ -2290,7 +2303,7 @@ $tests['frontend_slot_offer_includes_logo_fields_for_newly_mapped_pps_brand'] = 
     $offers = $repository->get_frontend_slot_offers(
         'sidebar',
         array( 'slot_offer_ids' => array( '1003' ), 'slot_offer_priority' => array( '1003' => 1 ) ),
-        array( 'cta_url' => 'https://example.test/click', 'cta_text' => 'TRY YOUR FREE SPINS' ),
+        array( 'cta_url' => 'https://example.test/click', 'cta_text' => 'View Offer' ),
         'US',
         array()
     );
@@ -2313,7 +2326,7 @@ $tests['frontend_slot_offer_includes_empty_logo_url_when_unmapped'] = function()
     $offers = $repository->get_frontend_slot_offers(
         'sidebar',
         array( 'slot_offer_ids' => array( '1002' ), 'slot_offer_priority' => array( '1002' => 1 ) ),
-        array( 'cta_url' => 'https://example.test/click', 'cta_text' => 'TRY YOUR FREE SPINS' ),
+        array( 'cta_url' => 'https://example.test/click', 'cta_text' => 'View Offer' ),
         'US',
         array()
     );

@@ -61,12 +61,16 @@
         return letters || 'N/A';
     }
 
+    function getOfferDisplayName(offer) {
+        return ((offer && offer.name) || '').trim() || getOfferAbbreviation(offer);
+    }
+
     function renderReelFace(wrapper, offer) {
         wrapper.innerHTML = '';
 
         var fallback = document.createElement('span');
         fallback.className = 'tmw-cr-slot-banner__reel-text';
-        fallback.textContent = getOfferAbbreviation(offer);
+        fallback.textContent = (offer && offer.vertical) === 'ai' ? '🤖 AI' : getOfferDisplayName(offer);
         wrapper.appendChild(fallback);
 
         if (!offer || !offer.logo_url) {
@@ -282,7 +286,7 @@
             state.banner.classList.add('tmw-cr-slot-banner--win');
 
             if (state.resultLabel) {
-                state.resultLabel.textContent = 'Selected for you:';
+                state.resultLabel.textContent = 'Top pick:';
             }
 
             if (state.offerNameTarget) {

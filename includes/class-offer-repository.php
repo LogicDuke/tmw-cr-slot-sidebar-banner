@@ -2318,6 +2318,7 @@ class TMW_CR_Slot_Offer_Repository {
             'cta_url'  => $this->get_effective_cta_url( $offer_id, $settings, $banner_data, $synced_offer, $override ),
             'cta_text' => $this->get_effective_cta_text( $offer_id, $settings, $banner_data, $synced_offer, $override, $legacy_catalog ),
             'slogan' => $this->get_effective_slogan_text( $offer_id, $synced_offer, $override ),
+            'vertical' => $this->classify_offer_vertical( $synced_offer ),
             'brand_key' => $this->get_offer_brand_key( (string) ( $synced_offer['name'] ?? '' ) ),
             'logo_filename' => $this->get_offer_logo_filename( $synced_offer ),
             'logo_url' => $this->get_offer_logo_url( $synced_offer ),
@@ -2401,6 +2402,7 @@ class TMW_CR_Slot_Offer_Repository {
             'cta_url' => esc_url_raw( $final_url_override ),
             'cta_text' => $this->generate_offer_cta_text( $offer_stub ),
             'slogan' => $this->get_effective_slogan_text( $offer_id, $offer_stub, $override ),
+            'vertical' => $this->classify_offer_vertical( $offer_stub ),
             'source' => 'manual_override_only',
             'brand_key' => $this->get_offer_brand_key( $name ),
             'logo_filename' => $this->get_offer_logo_filename( $offer_stub ),
@@ -3151,10 +3153,11 @@ class TMW_CR_Slot_Offer_Repository {
 
     public function classify_offer_vertical( array $offer ): string {
         $haystack = strtolower( trim( (string) ( ( $offer['name'] ?? '' ) . ' ' . ( $offer['description'] ?? '' ) ) ) );
-        if ( preg_match( '/ai|gpt|companion|fantasy|dreamgf|chatbot|virtual girlfriend/', $haystack ) ) { return 'ai'; }
-        if ( preg_match( '/cam|live|chat|jerkmate|oranum|webcam|performer/', $haystack ) ) { return 'cam'; }
+        if ( preg_match( '/jerkmate|oranum|livejasmin|stripchat|streamate|chaturbate|bonga|myfreecams|\bcam\b|webcam|live performer|chat performer/', $haystack ) ) { return 'cam'; }
         if ( preg_match( '/vixen|blacked|tushy|deeper|raw|plus|studio|premium video|scenes/', $haystack ) ) { return 'video'; }
         if ( preg_match( '/dating|hookup|match|friendfinder|singles|casual dating/', $haystack ) ) { return 'dating'; }
+        if ( preg_match( '/\bai\b|gpt|chatbot|virtual girlfriend|companion|fantasy ai/', $haystack ) ) { return 'ai'; }
+        if ( preg_match( '/\blive\b|\bcam\b|webcam|performer/', $haystack ) ) { return 'cam'; }
         return 'fallback';
     }
 

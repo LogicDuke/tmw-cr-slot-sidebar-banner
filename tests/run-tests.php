@@ -4,7 +4,7 @@ require_once __DIR__ . '/bootstrap.php';
 class TMW_CR_Slot_Sidebar_Banner {
     const DEFAULT_HEADLINE = 'Discover Adult Offers';
     const DEFAULT_SUBHEADLINE = 'Cam, Dating, AI & More';
-    const DEFAULT_SPIN_BUTTON_TEXT = 'Show Best Offer';
+    const DEFAULT_SPIN_BUTTON_TEXT = 'Reveal My Offer';
     const DEFAULT_CTA_TEXT = 'View Offer';
     const OPTION_KEY = 'tmw_cr_slot_banner_settings';
     const STATS_SYNC_CRON_HOOK = 'tmw_cr_slot_banner_scheduled_stats_sync';
@@ -44,7 +44,12 @@ class TMW_CR_Slot_Sidebar_Banner {
             'allowed_offer_types' => array( 'pps' ),
         );
 
-        return wp_parse_args( get_option( self::OPTION_KEY, array() ), $defaults );
+        $settings = wp_parse_args( get_option( self::OPTION_KEY, array() ), $defaults );
+        if ( isset( $settings['spin_button_text'] ) && 'Show Best Offer' === trim( (string) $settings['spin_button_text'] ) ) {
+            $settings['spin_button_text'] = self::DEFAULT_SPIN_BUTTON_TEXT;
+        }
+
+        return $settings;
     }
 
     public static function asset_url( $relative_path ) {
@@ -5189,6 +5194,69 @@ $tests['frontend_pool_unchanged_after_pr67_likely_reason'] = function() {
 
 
 $tests['frontend_pool_unchanged_after_cr_reconciliation_comparison_refine'] = $tests['frontend_pool_unchanged_after_cr_fixture_reconciliation'];
+
+$tests['classification_vertical_priority_v191'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $cases = array(
+        array( 'name' => 'Jerkmate - PPS', 'vertical' => 'cam', 'slogan' => 'Live cam shows', 'cta' => 'Start Live Chat' ),
+        array( 'name' => 'Oranum - PPS', 'vertical' => 'cam', 'slogan' => 'Live cam shows', 'cta' => 'Start Live Chat' ),
+        array( 'name' => 'LiveJasmin', 'vertical' => 'cam', 'slogan' => 'Live cam shows', 'cta' => 'Start Live Chat' ),
+        array( 'name' => 'Girlfriend GPT', 'vertical' => 'ai', 'slogan' => 'Adult AI chat', 'cta' => 'Start AI Chat' ),
+        array( 'name' => 'Vixen - PPS', 'vertical' => 'video', 'slogan' => 'Premium adult videos', 'cta' => 'Watch Now' ),
+        array( 'name' => 'BlackedRaw', 'vertical' => 'video', 'slogan' => 'Premium adult videos', 'cta' => 'Watch Now' ),
+        array( 'name' => 'Adult FriendFinder', 'vertical' => 'dating', 'slogan' => 'Adult dating matches', 'cta' => 'Find Matches' ),
+    );
+    foreach ( $cases as $case ) {
+        $offer = array( 'name' => $case['name'], 'description' => '' );
+        tmw_assert_same( $case['vertical'], $repo->classify_offer_vertical( $offer ), 'Vertical classification should match for ' . $case['name'] );
+        tmw_assert_same( $case['slogan'], $repo->generate_offer_slogan( $offer ), 'Slogan should match for ' . $case['name'] );
+        tmw_assert_same( $case['cta'], $repo->generate_offer_cta_text( $offer ), 'CTA should match for ' . $case['name'] );
+    }
+};
+
+$tests['frontend_banner_wording_v191'] = function() {
+    tmw_reset_test_state();
+    $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
+    $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );
+    tmw_assert_contains( 'Reveal My Offer', $plugin_file, 'Spin button default should be Reveal My Offer.' );
+    tmw_assert_contains( 'Top pick:', $plugin_file, 'Result label should use Top pick in PHP template.' );
+    tmw_assert_contains( 'Top pick:', $js_file, 'Result label should use Top pick in frontend JS state updates.' );
+    tmw_assert_true( false === strpos( $plugin_file . $js_file, 'Winner!' ), 'Banner should not include Winner wording.' );
+    tmw_assert_true( false === strpos( $plugin_file . $js_file, 'Spin the Reels' ), 'Banner should not include Spin the Reels wording.' );
+    tmw_assert_true( false === strpos( $plugin_file . $js_file, 'Free Spins' ), 'Banner should not include Free Spins wording.' );
+    tmw_assert_true( false === strpos( $plugin_file, 'for this slot' ), 'Public-facing frontend PHP text should not contain "for this slot".' );
+    tmw_assert_true( false === strpos( $plugin_file, 'No active CrackRevenue offers were detected for this slot' ), 'Frontend empty message should not contain slot wording.' );
+};
+
+$tests['plugin_version_bumped_to_191'] = function() {
+    $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
+    tmw_assert_contains( 'Version: 1.9.1', $plugin_file, 'Plugin header version should be 1.9.1.' );
+    tmw_assert_contains( "define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.1' );", $plugin_file, 'Asset version constant should be 1.9.1.' );
+};
+
+$tests['register_assets_uses_filemtime_version_suffix'] = function() {
+    $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
+    tmw_assert_contains( "filemtime( \$css_path )", $plugin_file, 'CSS registration should include filemtime in version.' );
+    tmw_assert_contains( "filemtime( \$js_path )", $plugin_file, 'JS registration should include filemtime in version.' );
+};
+
+$tests['spin_button_text_migrates_legacy_default_but_preserves_custom'] = function() {
+    tmw_reset_test_state();
+    $GLOBALS['tmw_test_options'][ TMW_CR_Slot_Sidebar_Banner::OPTION_KEY ] = array( 'spin_button_text' => 'Show Best Offer' );
+    $migrated = TMW_CR_Slot_Sidebar_Banner::get_settings();
+    tmw_assert_same( 'Reveal My Offer', (string) $migrated['spin_button_text'], 'Legacy default spin text should migrate to Reveal My Offer.' );
+
+    $GLOBALS['tmw_test_options'][ TMW_CR_Slot_Sidebar_Banner::OPTION_KEY ] = array( 'spin_button_text' => 'My Custom Offer Text' );
+    $custom = TMW_CR_Slot_Sidebar_Banner::get_settings();
+    tmw_assert_same( 'My Custom Offer Text', (string) $custom['spin_button_text'], 'Custom spin text must be preserved.' );
+};
+
+$tests['fallback_visual_rules_non_ai_vs_ai'] = function() {
+    $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );
+    tmw_assert_contains( "(offer && offer.vertical) === 'ai' ? '🤖 AI' : getOfferDisplayName(offer)", $js_file, 'Only AI offers should render robot fallback text.' );
+    tmw_assert_true( false === strpos( $js_file, "'🤖 AI' : getOfferAbbreviation(offer)" ), 'Non-AI fallback should not use generic abbreviation/robot path.' );
+};
 
 
 foreach ( $tests as $name => $test ) {

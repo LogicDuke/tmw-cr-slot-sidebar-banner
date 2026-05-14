@@ -2,8 +2,8 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    gap: 1.25rem;
-    padding: 22px 20px;
+    gap: 0.9rem;
+    padding: 18px 16px;
     border-radius: 18px;
     background: radial-gradient(circle at 20% 20%, rgba(255, 88, 169, 0.28), transparent 55%),
         radial-gradient(circle at 80% 0%, rgba(61, 175, 255, 0.32), transparent 60%),
@@ -38,18 +38,18 @@
 .tmw-cr-slot-banner__machine {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
-    padding: 16px;
+    gap: 0.7rem;
+    padding: 14px 12px;
     border-radius: 16px;
     background: linear-gradient(160deg, rgba(18, 12, 40, 0.88) 0%, rgba(11, 8, 26, 0.88) 100%);
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
 #container {
-    --item-height: 86px;
+    --item-height: 92px;
     display: flex;
     justify-content: center;
-    gap: 12px;
+    gap: 10px;
     width: 100%;
     margin: 0 auto;
 }
@@ -57,7 +57,7 @@
 #container .outer-col {
     position: relative;
     flex: 1 1 0;
-    max-width: 92px;
+    max-width: 102px;
     height: var(--item-height);
     border-radius: 12px;
     background: linear-gradient(180deg, rgba(36, 26, 63, 0.95) 0%, rgba(18, 14, 38, 0.95) 100%);
@@ -109,15 +109,22 @@
 }
 
 #container .outer-col .icon .tmw-cr-slot-banner__reel-text {
-    font-size: 1rem;
+    max-width: 84%;
+    padding: 0.35rem 0.45rem;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.1);
+    font-size: 0.82rem;
     font-weight: 700;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     color: rgba(255, 255, 255, 0.92);
 }
 
 .tmw-cr-slot-banner__spin {
     align-self: center;
-    padding: 0.55rem 1.6rem;
+    padding: 0.65rem 1.5rem;
     border: none;
     border-radius: 999px;
     background: linear-gradient(135deg, #ffb347 0%, #ff006e 100%);
@@ -145,14 +152,14 @@
 .tmw-cr-slot-banner__footer {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.45rem;
     align-items: center;
 }
 
 .tmw-cr-slot-banner__result {
     margin: 0;
     display: flex;
-    gap: 0.4rem;
+    gap: 0.3rem;
     align-items: baseline;
     font-size: 0.95rem;
     color: rgba(255, 255, 255, 0.76);
@@ -160,14 +167,29 @@
 
 .tmw-cr-slot-banner__offer-name {
     font-weight: 700;
+    font-size: 1.2rem;
     color: #ffffff;
+}
+
+.tmw-cr-slot-banner__offer-slogan {
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.92);
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.16);
 }
 
 .tmw-cr-slot-banner__cta {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 0.9rem 1.9rem;
+    padding: 0.82rem 1.8rem;
     border-radius: 999px;
     background: linear-gradient(135deg, #ff007a 0%, #ff4d4d 100%);
     color: #ffffff;
@@ -265,6 +287,6 @@
     }
 
     #container {
-        --item-height: 96px;
+        --item-height: 100px;
     }
 }

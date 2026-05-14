@@ -4,7 +4,7 @@ require_once __DIR__ . '/bootstrap.php';
 class TMW_CR_Slot_Sidebar_Banner {
     const DEFAULT_HEADLINE = 'Discover Adult Offers';
     const DEFAULT_SUBHEADLINE = 'Cam, Dating, AI & More';
-    const DEFAULT_SPIN_BUTTON_TEXT = 'Reveal My Offer';
+    const DEFAULT_SPIN_BUTTON_TEXT = 'SPIN NOW';
     const DEFAULT_CTA_TEXT = 'View Offer';
     const OPTION_KEY = 'tmw_cr_slot_banner_settings';
     const STATS_SYNC_CRON_HOOK = 'tmw_cr_slot_banner_scheduled_stats_sync';
@@ -45,8 +45,11 @@ class TMW_CR_Slot_Sidebar_Banner {
         );
 
         $settings = wp_parse_args( get_option( self::OPTION_KEY, array() ), $defaults );
-        if ( isset( $settings['spin_button_text'] ) && 'Show Best Offer' === trim( (string) $settings['spin_button_text'] ) ) {
-            $settings['spin_button_text'] = self::DEFAULT_SPIN_BUTTON_TEXT;
+        if ( isset( $settings['spin_button_text'] ) ) {
+            $legacy_spin_text = trim( (string) $settings['spin_button_text'] );
+            if ( in_array( $legacy_spin_text, array( 'Show Best Offer', 'Reveal My Offer' ), true ) ) {
+                $settings['spin_button_text'] = self::DEFAULT_SPIN_BUTTON_TEXT;
+            }
         }
 
         return $settings;
@@ -2410,10 +2413,10 @@ $tests['frontend_pps_only_filters_disallowed_types_and_keeps_pps'] = function() 
 
     $offers = $repository->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => 'https://base.test', 'cta_text' => 'CTA' ), 'US', array() );
     $names = array_map( static function( $row ) { return (string) ( $row['name'] ?? '' ); }, $offers );
-    tmw_assert_true( in_array( 'Jerkmate - PPS', $names, true ), 'PPS-only should include Jerkmate - PPS.' );
-    tmw_assert_true( in_array( 'Joi - PPS - Tier 1', $names, true ), 'PPS-only should include Joi - PPS - Tier 1.' );
-    tmw_assert_true( in_array( 'Live Jasmin - PPS', $names, true ), 'PPS-only should include Live Jasmin - PPS.' );
-    tmw_assert_true( in_array( 'Bongacams - PPS + Revshare lifetime', $names, true ), 'PPS-only should include mixed PPS+Revshare if PPS detected.' );
+    tmw_assert_true( in_array( 'Jerkmate', $names, true ), 'PPS-only should include Jerkmate.' );
+    tmw_assert_true( in_array( 'JOI', $names, true ), 'PPS-only should include JOI.' );
+    tmw_assert_true( in_array( 'Live Jasmin', $names, true ), 'PPS-only should include Live Jasmin.' );
+    tmw_assert_true( in_array( 'Bongacams', $names, true ), 'PPS-only should include mixed PPS+Revshare if PPS detected.' );
     tmw_assert_true( ! in_array( 'Group Fallback - Cam - Not Restricted 01', $names, true ), 'PPS-only should reject fallback-only offers.' );
     tmw_assert_true( ! in_array( 'Revenue Driver - Revshare', $names, true ), 'PPS-only should reject Revshare-only offers.' );
     tmw_assert_true( ! in_array( 'Lead Maker - SOI', $names, true ), 'PPS-only should reject SOI-only offers.' );
@@ -2481,11 +2484,11 @@ $tests['frontend_pps_pool_excludes_blocked_and_hot_pick_is_not_blocked'] = funct
     );
     $offers = $repository->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => 'https://base.test', 'cta_text' => 'CTA' ), 'US', array() );
     $names = array_map( static function( $row ) { return (string) ( $row['name'] ?? '' ); }, $offers );
-    tmw_assert_true( in_array( 'Jerkmate - PPS', $names, true ), 'Safe PPS offers should remain.' );
-    tmw_assert_true( ! in_array( 'XLoveGay - PPS', $names, true ), 'Blocked XLoveGay should be excluded.' );
-    tmw_assert_true( ! in_array( 'Mennation - PPS', $names, true ), 'Blocked Mennation should be excluded.' );
-    tmw_assert_true( ! in_array( 'GayBloom - PPS - US', $names, true ), 'Blocked GayBloom should be excluded.' );
-    tmw_assert_true( ! in_array( 'PridePair - PPS - US', $names, true ), 'Blocked PridePair should be excluded.' );
+    tmw_assert_true( in_array( 'Jerkmate', $names, true ), 'Safe PPS offers should remain.' );
+    tmw_assert_true( ! in_array( 'XLoveGay', $names, true ), 'Blocked XLoveGay should be excluded.' );
+    tmw_assert_true( ! in_array( 'Mennation', $names, true ), 'Blocked Mennation should be excluded.' );
+    tmw_assert_true( ! in_array( 'GayBloom', $names, true ), 'Blocked GayBloom should be excluded.' );
+    tmw_assert_true( ! in_array( 'PridePair', $names, true ), 'Blocked PridePair should be excluded.' );
     tmw_assert_true( ! empty( $offers ) && ! $repository->is_offer_blocked_for_banner( $offers[0] ), 'Hot pick (top offer) should never be blocked.' );
 };
 
@@ -5202,10 +5205,10 @@ $tests['classification_vertical_priority_v191'] = function() {
         array( 'name' => 'Jerkmate - PPS', 'vertical' => 'cam', 'slogan' => 'Live cam shows', 'cta' => 'Start Live Chat' ),
         array( 'name' => 'Oranum - PPS', 'vertical' => 'cam', 'slogan' => 'Live cam shows', 'cta' => 'Start Live Chat' ),
         array( 'name' => 'LiveJasmin', 'vertical' => 'cam', 'slogan' => 'Live cam shows', 'cta' => 'Start Live Chat' ),
-        array( 'name' => 'Girlfriend GPT', 'vertical' => 'ai', 'slogan' => 'Adult AI chat', 'cta' => 'Start AI Chat' ),
-        array( 'name' => 'Vixen - PPS', 'vertical' => 'video', 'slogan' => 'Premium adult videos', 'cta' => 'Watch Now' ),
-        array( 'name' => 'BlackedRaw', 'vertical' => 'video', 'slogan' => 'Premium adult videos', 'cta' => 'Watch Now' ),
-        array( 'name' => 'Adult FriendFinder', 'vertical' => 'dating', 'slogan' => 'Adult dating matches', 'cta' => 'Find Matches' ),
+        array( 'name' => 'Girlfriend GPT', 'vertical' => 'ai', 'slogan' => 'AI fantasy chat', 'cta' => 'Start AI Chat' ),
+        array( 'name' => 'Vixen - PPS', 'vertical' => 'video', 'slogan' => 'Premium videos', 'cta' => 'Watch Now' ),
+        array( 'name' => 'Joi - PPS - Tier 1', 'vertical' => 'video', 'slogan' => 'Premium videos', 'cta' => 'Watch Now' ),
+        array( 'name' => 'Adult FriendFinder', 'vertical' => 'dating', 'slogan' => 'Dating matches', 'cta' => 'Find Matches' ),
     );
     foreach ( $cases as $case ) {
         $offer = array( 'name' => $case['name'], 'description' => '' );
@@ -5215,11 +5218,11 @@ $tests['classification_vertical_priority_v191'] = function() {
     }
 };
 
-$tests['frontend_banner_wording_v191'] = function() {
+$tests['frontend_banner_wording_v193'] = function() {
     tmw_reset_test_state();
     $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
     $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );
-    tmw_assert_contains( 'Reveal My Offer', $plugin_file, 'Spin button default should be Reveal My Offer.' );
+    tmw_assert_contains( 'SPIN NOW', $plugin_file, 'Spin button default should be SPIN NOW.' );
     tmw_assert_contains( 'Top pick:', $plugin_file, 'Result label should use Top pick in PHP template.' );
     tmw_assert_contains( 'Top pick:', $js_file, 'Result label should use Top pick in frontend JS state updates.' );
     tmw_assert_true( false === strpos( $plugin_file . $js_file, 'Winner!' ), 'Banner should not include Winner wording.' );
@@ -5229,17 +5232,17 @@ $tests['frontend_banner_wording_v191'] = function() {
     tmw_assert_true( false === strpos( $plugin_file, 'No active CrackRevenue offers were detected for this slot' ), 'Frontend empty message should not contain slot wording.' );
 };
 
-$tests['plugin_version_bumped_to_192'] = function() {
+$tests['plugin_version_bumped_to_193'] = function() {
     $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
-    tmw_assert_contains( 'Version: 1.9.2', $plugin_file, 'Plugin header version should be 1.9.1.' );
-    tmw_assert_contains( "define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.2' );", $plugin_file, 'Asset version constant should be 1.9.1.' );
+    tmw_assert_contains( 'Version: 1.9.3', $plugin_file, 'Plugin header version should be 1.9.3.' );
+    tmw_assert_contains( "define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.3' );", $plugin_file, 'Asset version constant should be 1.9.3.' );
 };
 
 
 
-$tests['readme_stable_tag_bumped_to_192'] = function() {
+$tests['readme_stable_tag_bumped_to_193'] = function() {
     $readme_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'readme.txt' );
-    tmw_assert_contains( 'Stable tag: 1.9.2', $readme_file, 'Readme stable tag should be 1.9.2.' );
+    tmw_assert_contains( 'Stable tag: 1.9.3', $readme_file, 'Readme stable tag should be 1.9.3.' );
 };
 
 $tests['frontend_cta_forces_new_tab_and_rel_attributes'] = function() {
@@ -5284,11 +5287,26 @@ $tests['spin_button_text_migrates_legacy_default_but_preserves_custom'] = functi
     tmw_reset_test_state();
     $GLOBALS['tmw_test_options'][ TMW_CR_Slot_Sidebar_Banner::OPTION_KEY ] = array( 'spin_button_text' => 'Show Best Offer' );
     $migrated = TMW_CR_Slot_Sidebar_Banner::get_settings();
-    tmw_assert_same( 'Reveal My Offer', (string) $migrated['spin_button_text'], 'Legacy default spin text should migrate to Reveal My Offer.' );
+    tmw_assert_same( 'SPIN NOW', (string) $migrated['spin_button_text'], 'Legacy Show Best Offer should migrate to SPIN NOW.' );
+
+    $GLOBALS['tmw_test_options'][ TMW_CR_Slot_Sidebar_Banner::OPTION_KEY ] = array( 'spin_button_text' => 'Reveal My Offer' );
+    $migrated_reveal = TMW_CR_Slot_Sidebar_Banner::get_settings();
+    tmw_assert_same( 'SPIN NOW', (string) $migrated_reveal['spin_button_text'], 'Legacy Reveal My Offer should migrate to SPIN NOW.' );
 
     $GLOBALS['tmw_test_options'][ TMW_CR_Slot_Sidebar_Banner::OPTION_KEY ] = array( 'spin_button_text' => 'My Custom Offer Text' );
     $custom = TMW_CR_Slot_Sidebar_Banner::get_settings();
     tmw_assert_same( 'My Custom Offer Text', (string) $custom['spin_button_text'], 'Custom spin text must be preserved.' );
+};
+
+$tests['public_offer_name_cleaning_v193'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    tmw_assert_same( 'Adult FriendFinder', $repo->get_public_offer_name( array( 'name' => 'Adult FriendFinder - PPS' ) ), 'Adult FriendFinder - PPS should clean suffix.' );
+    tmw_assert_same( 'JOI', $repo->get_public_offer_name( array( 'name' => 'Joi - PPS - Tier 1' ) ), 'Joi - PPS - Tier 1 should normalize to JOI.' );
+    tmw_assert_same( 'Secrets.ai', $repo->get_public_offer_name( array( 'name' => 'Secrets.ai - PPS' ) ), 'Secrets.ai - PPS should clean suffix.' );
+    tmw_assert_same( 'Oranum', $repo->get_public_offer_name( array( 'name' => 'Oranum - PPS' ) ), 'Oranum - PPS should clean suffix.' );
+    tmw_assert_same( 'Swipey', $repo->get_public_offer_name( array( 'name' => 'Swipey - PPS' ) ), 'Swipey - PPS should clean suffix.' );
+    tmw_assert_same( 'Milfy', $repo->get_public_offer_name( array( 'name' => 'Milfy - PPS' ) ), 'Milfy - PPS should clean suffix.' );
 };
 
 $tests['fallback_visual_rules_non_ai_vs_ai'] = function() {

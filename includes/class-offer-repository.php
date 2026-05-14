@@ -3151,10 +3151,11 @@ class TMW_CR_Slot_Offer_Repository {
 
     public function classify_offer_vertical( array $offer ): string {
         $haystack = strtolower( trim( (string) ( ( $offer['name'] ?? '' ) . ' ' . ( $offer['description'] ?? '' ) ) ) );
-        if ( preg_match( '/ai|gpt|companion|fantasy|dreamgf|chatbot|virtual girlfriend/', $haystack ) ) { return 'ai'; }
-        if ( preg_match( '/cam|live|chat|jerkmate|oranum|webcam|performer/', $haystack ) ) { return 'cam'; }
+        if ( preg_match( '/jerkmate|oranum|livejasmin|stripchat|streamate|chaturbate|bonga|myfreecams|\bcam\b|webcam|live performer|chat performer/', $haystack ) ) { return 'cam'; }
         if ( preg_match( '/vixen|blacked|tushy|deeper|raw|plus|studio|premium video|scenes/', $haystack ) ) { return 'video'; }
         if ( preg_match( '/dating|hookup|match|friendfinder|singles|casual dating/', $haystack ) ) { return 'dating'; }
+        if ( preg_match( '/\bai\b|gpt|chatbot|virtual girlfriend|companion|fantasy ai/', $haystack ) ) { return 'ai'; }
+        if ( preg_match( '/\blive\b|\bcam\b|webcam|performer/', $haystack ) ) { return 'cam'; }
         return 'fallback';
     }
 

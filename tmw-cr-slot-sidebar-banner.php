@@ -32,7 +32,7 @@ require_once TMW_CR_SLOT_BANNER_PATH . 'admin/admin-page.php';
 class TMW_CR_Slot_Sidebar_Banner {
     const DEFAULT_HEADLINE = 'Discover Adult Offers';
     const DEFAULT_SUBHEADLINE = 'Cam, Dating, AI & More';
-    const DEFAULT_SPIN_BUTTON_TEXT = 'Show Best Offer';
+    const DEFAULT_SPIN_BUTTON_TEXT = 'Reveal My Offer';
     const DEFAULT_CTA_TEXT = 'View Offer';
     /**
      * Option key used to persist settings.
@@ -363,7 +363,7 @@ class TMW_CR_Slot_Sidebar_Banner {
 
             <div class="tmw-cr-slot-banner__footer">
                 <p class="tmw-cr-slot-banner__result">
-                    <span class="tmw-cr-slot-banner__result-label"><?php esc_html_e( 'Selected for you:', 'tmw-cr-slot-sidebar-banner' ); ?></span>
+                    <span class="tmw-cr-slot-banner__result-label"><?php esc_html_e( 'Top pick:', 'tmw-cr-slot-sidebar-banner' ); ?></span>
                     <span class="tmw-cr-slot-banner__offer-name"><?php echo esc_html( $slot_data['initial_offer_name'] ); ?></span>
                 </p>
                 <p class="tmw-cr-slot-banner__offer-slogan"><?php echo esc_html( $slot_data['initial_offer_slogan'] ); ?></p>

@@ -282,7 +282,7 @@
             state.banner.classList.add('tmw-cr-slot-banner--win');
 
             if (state.resultLabel) {
-                state.resultLabel.textContent = 'Selected for you:';
+                state.resultLabel.textContent = 'Top pick:';
             }
 
             if (state.offerNameTarget) {

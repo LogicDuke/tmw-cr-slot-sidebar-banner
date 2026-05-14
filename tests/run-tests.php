@@ -5250,15 +5250,15 @@ $tests['frontend_banner_wording_v191'] = function() {
 
 $tests['plugin_version_bumped_to_198'] = function() {
     $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
-    tmw_assert_contains( 'Version: 1.9.8', $plugin_file, 'Plugin header version should be 1.9.1.' );
-    tmw_assert_contains( "define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.8' );", $plugin_file, 'Asset version constant should be 1.9.1.' );
+    tmw_assert_contains( 'Version: 1.9.8', $plugin_file, 'Plugin header version should be 1.9.8.' );
+    tmw_assert_contains( "define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.8' );", $plugin_file, 'Asset version constant should be 1.9.8.' );
 };
 
 
 
 $tests['readme_stable_tag_bumped_to_198'] = function() {
     $readme_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'readme.txt' );
-    tmw_assert_contains( 'Stable tag: 1.9.8', $readme_file, 'Readme stable tag should be 1.9.2.' );
+    tmw_assert_contains( 'Stable tag: 1.9.8', $readme_file, 'Readme stable tag should be 1.9.8.' );
 };
 
 
@@ -5287,7 +5287,7 @@ $tests['admin_page_audit_button_warns_and_disables_when_audit_off'] = function()
     $page->render_page();
     $html = (string) ob_get_clean();
 
-        tmw_assert_contains( 'Audit mode is disabled. Enable WP_DEBUG or define TMW_CR_API_AUDIT as true, then run the audit.', $html, 'Settings page should warn when audit mode is disabled.' );
+    tmw_assert_contains( 'Audit mode is disabled. Enable WP_DEBUG or define TMW_CR_API_AUDIT as true, then run the audit.', $html, 'Settings page should warn when audit mode is disabled.' );
     tmw_assert_contains( 'disabled="disabled"', $html, 'Audit button should render disabled when audit mode is off.' );
 };
 

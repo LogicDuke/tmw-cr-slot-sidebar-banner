@@ -2276,7 +2276,39 @@ class TMW_CR_Slot_Offer_Repository {
      * @return bool
      */
     public function is_valid_manual_final_url_override( $cta_url ) {
-        return $this->is_valid_frontend_winner_cta_url( $cta_url );
+        $cta_url = trim( (string) $cta_url );
+        if ( '' === $cta_url ) {
+            return false;
+        }
+
+        $sanitized = function_exists( 'esc_url_raw' ) ? (string) esc_url_raw( $cta_url ) : $cta_url;
+        if ( '' === $sanitized || ! filter_var( $sanitized, FILTER_VALIDATE_URL ) ) {
+            return false;
+        }
+        $parts = parse_url( $sanitized );
+        $scheme = isset( $parts['scheme'] ) ? strtolower( (string) $parts['scheme'] ) : '';
+        if ( ! in_array( $scheme, array( 'http', 'https' ), true ) ) {
+            return false;
+        }
+
+        $lower = strtolower( rawurldecode( $sanitized ) );
+        if ( false !== strpos( $lower, 'preview_url' ) || false !== strpos( $lower, '/preview' ) || false !== strpos( $lower, 'advertisingpolicies.com' ) ) {
+            return false;
+        }
+        if ( false !== strpos( $lower, 'transaction_id=preview' ) || false !== strpos( $lower, 'affiliate_id=affiliate_id' ) || false !== strpos( $lower, 'aid=affiliate_id' ) || false !== strpos( $lower, 'src=source' ) ) {
+            return false;
+        }
+        if ( false !== strpos( $lower, '{affiliate_id}' ) || false !== strpos( $lower, '[affiliate_id]' ) || false !== strpos( $lower, '%%affiliate_id%%' ) ) {
+            return false;
+        }
+        if ( false !== strpos( $lower, 'your_affiliate_id' ) || false !== strpos( $lower, 'insert_affiliate_id' ) || false !== strpos( $lower, 'affiliate_id=your_' ) ) {
+            return false;
+        }
+        if ( false !== strpos( $lower, 'help' ) || false !== strpos( $lower, 'docs' ) || false !== strpos( $lower, 'documentation' ) ) {
+            return false;
+        }
+
+        return true;
     }
 
     /**

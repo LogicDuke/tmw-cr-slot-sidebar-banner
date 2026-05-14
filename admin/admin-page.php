@@ -794,7 +794,9 @@ class TMW_CR_Slot_Admin_Page {
             <br />
             <?php esc_html_e( 'Payout filters use normalized detected type keys from synced offers. Raw payout strings (for example cpa_flat) can still appear in the payout display.', 'tmw-cr-slot-sidebar-banner' ); ?>
         </p>
+        <?php $this->render_cr_scope_explainer_panel(); ?>
         <?php $this->render_payout_reconciliation_panel( $reconciliation_counts, $payout_labels ); ?>
+        <?php $this->render_cr_fixture_reconciliation_panel( (array) ( $result['active_filters'] ?? array() ) ); ?>
 
         <table class="widefat striped">
             <?php if ( ! empty( $result['active_filters'] ) ) : ?>
@@ -2264,6 +2266,77 @@ class TMW_CR_Slot_Admin_Page {
         $family = sanitize_key( (string) $family );
         $values = (array) ( $counts['group_admin_filter'] ?? array() );
         return (int) ( $values[ $family ] ?? 0 );
+    }
+
+
+    protected function render_cr_scope_explainer_panel() {
+        ?>
+        <div class="notice notice-info inline">
+            <p><strong><?php esc_html_e( 'CR dashboard scope vs Local API scope', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
+            <p><strong><?php esc_html_e( 'Two scopes, two row counts', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
+            <p class="description"><?php esc_html_e( 'Total synced offers reflects rows ingested from the CrakRevenue affiliate API into local storage. CR fixture rows reflects rows parsed from the CrakRevenue dashboard fixture. These two numbers describe different universes and are not expected to match. Local synced data may include API-visible rows, synthetic fallback/group rows, or smartlink rows that are not represented in the CR dashboard fixture.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+            <p><strong><?php esc_html_e( 'Why CR labels and local labels can diverge', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
+            <p class="description"><?php esc_html_e( 'The API payout_type field is treated as a payout calculation method, while the CrakRevenue dashboard payout labels are editorial UI labels. The CR UI-label comparison is a best-effort local approximation for audit purposes only. Small deltas can be legitimate and should be explained per row in the likely_reason column rather than fixed by changing sync, mapping, filtering, or frontend selection logic.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+        </div>
+        <?php
+    }
+
+    protected function render_cr_fixture_reconciliation_panel( $active_filters = array() ) {
+        $audit = $this->offer_repository->get_cr_fixture_reconciliation_audit();
+        ?>
+        <div class="notice notice-info inline">
+            <p><strong><?php esc_html_e( 'CR CSV vs local offer ID reconciliation', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
+            <p class="description"><?php esc_html_e( 'Compares the parsed CrakRevenue dashboard CSV fixture against locally synced offers by offer ID. This is read-only audit data. It does not affect syncing, filters, or frontend banner eligibility.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+            <?php if ( empty( $audit['fixture_available'] ) ) : ?>
+                <p><em><?php esc_html_e( 'CR fixture not found; ID reconciliation unavailable.', 'tmw-cr-slot-sidebar-banner' ); ?></em></p>
+                </div><?php return; ?>
+            <?php endif; ?>
+            <p><?php echo esc_html( sprintf( 'CR fixture rows: %d', (int) ( $audit['fixture_rows'] ?? 0 ) ) ); ?></p>
+            <p><?php echo esc_html( sprintf( 'CR unique IDs: %d', (int) ( $audit['fixture_unique_ids'] ?? 0 ) ) ); ?></p>
+            <p><?php echo esc_html( sprintf( 'Local synced rows: %d', (int) ( $audit['local_total_synced'] ?? 0 ) ) ); ?></p>
+            <p><?php echo esc_html( sprintf( 'Matched IDs: %d', (int) ( $audit['matched_ids'] ?? 0 ) ) ); ?></p>
+            <p><?php echo esc_html( sprintf( 'CR IDs missing locally: %d', count( (array) ( $audit['cr_missing_locally'] ?? array() ) ) ) ); ?></p>
+            <p><?php echo esc_html( sprintf( 'Local normal offers missing from CR fixture: %d', count( (array) ( $audit['local_normal_missing_from_cr'] ?? array() ) ) ) ); ?></p>
+            <p><?php echo esc_html( sprintf( 'Local fallback/group fallback rows missing from CR fixture: %d', count( (array) ( $audit['local_fallback_missing_from_cr'] ?? array() ) ) ) ); ?></p>
+            <p><?php echo esc_html( sprintf( 'Local smartlink rows missing from CR fixture: %d', count( (array) ( $audit['local_smartlink_missing_from_cr'] ?? array() ) ) ) ); ?></p>
+            <p><?php echo esc_html( sprintf( 'Payout label mismatches: %d', count( (array) ( $audit['payout_label_mismatches'] ?? array() ) ) ) ); ?></p>
+            <?php if ( ! empty( $active_filters ) ) : ?>
+                <p class="description"><?php esc_html_e( 'Detailed reconciliation tables are hidden while Offers filters are active.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+            <?php else : ?>
+                <?php $this->render_cr_fixture_reconciliation_table( 'CR IDs missing locally', (array) ( $audit['cr_missing_locally'] ?? array() ) ); ?>
+                <?php $this->render_cr_fixture_reconciliation_table( 'Local normal offers missing from CR fixture', (array) ( $audit['local_normal_missing_from_cr'] ?? array() ) ); ?>
+                <?php $this->render_cr_fixture_reconciliation_table( 'Payout label mismatches', (array) ( $audit['payout_label_mismatches'] ?? array() ) ); ?>
+            <?php endif; ?>
+        </div>
+        <?php
+    }
+
+    protected function render_cr_fixture_reconciliation_table( $title, $rows ) {
+        $limit = 25;
+        ?>
+        <p><strong><?php echo esc_html( $title ); ?></strong><?php echo count( $rows ) > $limit ? esc_html( ' (showing first 25)' ) : ''; ?></p>
+        <table class="widefat striped">
+            <thead><tr><th>ID</th><th>CR name</th><th>Local name</th><th>CR payout_type</th><th>Local raw payout_type</th><th>Detected/admin families</th><th>source_class</th><th>note</th><th>Likely reason</th></tr></thead>
+            <tbody>
+                <?php if ( empty( $rows ) ) : ?>
+                    <tr><td colspan="9">None</td></tr>
+                <?php else : foreach ( array_slice( $rows, 0, $limit ) as $row ) : ?>
+                    <?php $families = array_merge( (array) ( $row['local_detected_type_keys'] ?? array() ), (array) ( $row['local_admin_filter_families'] ?? array() ), (array) ( $row['comparison_label_keys'] ?? array() ) ); ?>
+                    <tr>
+                        <td><code><?php echo esc_html( (string) ( $row['cr_id'] ?? $row['id'] ?? '' ) ); ?></code></td>
+                        <td><?php echo esc_html( (string) ( $row['cr_name'] ?? $row['name'] ?? '' ) ); ?></td>
+                        <td><?php echo esc_html( (string) ( $row['local_name'] ?? $row['name'] ?? '' ) ); ?></td>
+                        <td><?php echo esc_html( (string) ( $row['cr_payout_type'] ?? $row['payout_type'] ?? '' ) ); ?></td>
+                        <td><?php echo esc_html( (string) ( $row['local_raw_payout_type'] ?? '' ) ); ?></td>
+                        <td><?php echo esc_html( 'detected/admin/comparison: ' . implode( ', ', array_unique( array_filter( array_map( 'sanitize_key', $families ) ) ) ) ); ?></td>
+                        <td><?php echo esc_html( (string) ( $row['source_class'] ?? '' ) ); ?></td>
+                        <td><?php echo esc_html( (string) ( $row['note'] ?? '' ) ); ?></td>
+                        <td><?php echo esc_html( (string) ( $row['likely_reason'] ?? 'unknown' ) ); ?></td>
+                    </tr>
+                <?php endforeach; endif; ?>
+            </tbody>
+        </table>
+        <?php
     }
 
     /**

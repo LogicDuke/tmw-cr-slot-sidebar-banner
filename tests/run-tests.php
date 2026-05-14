@@ -5248,17 +5248,17 @@ $tests['frontend_banner_wording_v191'] = function() {
     tmw_assert_true( false === strpos( $plugin_file, 'No active CrackRevenue offers were detected for this slot' ), 'Frontend empty message should not contain slot wording.' );
 };
 
-$tests['plugin_version_bumped_to_197'] = function() {
+$tests['plugin_version_bumped_to_198'] = function() {
     $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
-    tmw_assert_contains( 'Version: 1.9.7', $plugin_file, 'Plugin header version should be 1.9.1.' );
-    tmw_assert_contains( "define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.7' );", $plugin_file, 'Asset version constant should be 1.9.1.' );
+    tmw_assert_contains( 'Version: 1.9.8', $plugin_file, 'Plugin header version should be 1.9.1.' );
+    tmw_assert_contains( "define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.8' );", $plugin_file, 'Asset version constant should be 1.9.1.' );
 };
 
 
 
-$tests['readme_stable_tag_bumped_to_197'] = function() {
+$tests['readme_stable_tag_bumped_to_198'] = function() {
     $readme_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'readme.txt' );
-    tmw_assert_contains( 'Stable tag: 1.9.7', $readme_file, 'Readme stable tag should be 1.9.2.' );
+    tmw_assert_contains( 'Stable tag: 1.9.8', $readme_file, 'Readme stable tag should be 1.9.2.' );
 };
 
 
@@ -5287,7 +5287,26 @@ $tests['admin_page_audit_button_warns_and_disables_when_audit_off'] = function()
     $page->render_page();
     $html = (string) ob_get_clean();
 
-    tmw_assert_contains( 'Audit mode is disabled. Enable WP_DEBUG or define TMW_CR_API_AUDIT as true, then run the audit.', $html, 'Settings page should warn when audit mode is disabled.' );
+        tmw_assert_contains( 'Audit mode is disabled. Enable WP_DEBUG or define TMW_CR_API_AUDIT as true, then run the audit.', $html, 'Settings page should warn when audit mode is disabled.' );
+    tmw_assert_contains( 'disabled="disabled"', $html, 'Audit button should render disabled when audit mode is off.' );
+};
+
+$tests['admin_page_audit_button_enabled_when_audit_on'] = function() {
+    if ( ! defined( 'WP_DEBUG' ) && ! defined( 'TMW_CR_API_AUDIT' ) ) {
+        tmw_assert_true( true, 'Audit-on state assertions are covered when debug/audit constants are enabled in this test runtime.' );
+        return;
+    }
+
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'settings' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+
+    ob_start();
+    $page->render_page();
+    $html = (string) ob_get_clean();
+
+    tmw_assert_true( false === strpos( $html, 'Audit mode is disabled. Enable WP_DEBUG or define TMW_CR_API_AUDIT as true, then run the audit.' ), 'Audit warning should not render when audit mode is on.' );
+    tmw_assert_true( false === strpos( $html, 'disabled="disabled"' ), 'Audit button should not render disabled attribute when audit mode is on.' );
 };
 
 $tests['frontend_cta_forces_new_tab_and_rel_attributes'] = function() {

@@ -53,7 +53,19 @@ function wp_unslash( $value ) { return $value; }
 function wp_nonce_field() { echo '<input type="hidden" value="1" />'; }
 function check_admin_referer() { if ( empty( $GLOBALS['tmw_test_nonce_ok'] ) ) { throw new Exception( 'bad nonce' ); } }
 function settings_fields() { echo '<input type="hidden" value="settings" />'; }
-function submit_button( $text = 'Submit', $type = 'primary', $name = 'submit', $wrap = true ) { echo '<button type="submit" name="' . $name . '" class="' . $type . '">' . $text . '</button>'; }
+function submit_button( $text = 'Submit', $type = 'primary', $name = 'submit', $wrap = true, $attributes = array() ) {
+    $attr_string = '';
+    foreach ( (array) $attributes as $attr_name => $attr_value ) {
+        if ( false === $attr_value || null === $attr_value ) {
+            continue;
+        }
+        if ( true === $attr_value ) {
+            $attr_value = $attr_name;
+        }
+        $attr_string .= ' ' . $attr_name . '="' . esc_attr( (string) $attr_value ) . '"';
+    }
+    echo '<button type="submit" name="' . $name . '" class="' . $type . '"' . $attr_string . '>' . $text . '</button>';
+}
 function register_setting() {}
 function add_action() {}
 function add_filter() {}

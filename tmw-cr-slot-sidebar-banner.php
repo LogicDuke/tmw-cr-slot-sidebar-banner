@@ -3,7 +3,7 @@
  * Plugin Name: TMW CR Offer Sidebar Banner
  * Plugin URI: https://themilisofialtd.com/
  * Description: Displays a geo-targeted CrackRevenue offer recommendation banner with an animated offer selector in sidebar areas via shortcode or template tag.
- * Version: 1.9.0
+ * Version: 1.9.1
  * Author: The Milisofia LTD
  * Author URI: https://themilisofialtd.com/
  * License: GPL2
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.0' );
+define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.1' );
 define( 'TMW_CR_SLOT_BANNER_PATH', plugin_dir_path( __FILE__ ) );
 define( 'TMW_CR_SLOT_BANNER_URL', plugin_dir_url( __FILE__ ) );
 
@@ -124,18 +124,31 @@ class TMW_CR_Slot_Sidebar_Banner {
      * @return void
      */
     public function register_assets() {
+        $css_version = TMW_CR_SLOT_BANNER_VERSION;
+        $js_version  = TMW_CR_SLOT_BANNER_VERSION;
+        $css_path    = TMW_CR_SLOT_BANNER_PATH . 'assets/css/slot-banner.css';
+        $js_path     = TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js';
+        $css_mtime   = file_exists( $css_path ) ? filemtime( $css_path ) : false;
+        $js_mtime    = file_exists( $js_path ) ? filemtime( $js_path ) : false;
+        if ( false !== $css_mtime ) {
+            $css_version .= '-' . (string) $css_mtime;
+        }
+        if ( false !== $js_mtime ) {
+            $js_version .= '-' . (string) $js_mtime;
+        }
+
         wp_register_style(
             'tmw-cr-slot-banner',
             self::asset_url( 'assets/css/slot-banner.css' ),
             array(),
-            TMW_CR_SLOT_BANNER_VERSION
+            $css_version
         );
 
         wp_register_script(
             'tmw-cr-slot-banner',
             self::asset_url( 'assets/js/slot-banner.js' ),
             array(),
-            TMW_CR_SLOT_BANNER_VERSION,
+            $js_version,
             true
         );
     }
@@ -199,6 +212,9 @@ class TMW_CR_Slot_Sidebar_Banner {
         $settings = is_array( $settings ) ? $settings : array();
 
         $settings = wp_parse_args( $settings, $defaults );
+        if ( isset( $settings['spin_button_text'] ) && 'Show Best Offer' === trim( (string) $settings['spin_button_text'] ) ) {
+            $settings['spin_button_text'] = self::DEFAULT_SPIN_BUTTON_TEXT;
+        }
         $settings['slot_offer_ids']        = is_array( $settings['slot_offer_ids'] ) ? array_values( $settings['slot_offer_ids'] ) : array();
         $settings['slot_offer_priority']   = is_array( $settings['slot_offer_priority'] ) ? $settings['slot_offer_priority'] : array();
         $settings['offer_image_overrides'] = is_array( $settings['offer_image_overrides'] ) ? $settings['offer_image_overrides'] : array();

@@ -44,7 +44,12 @@ class TMW_CR_Slot_Sidebar_Banner {
             'allowed_offer_types' => array( 'pps' ),
         );
 
-        return wp_parse_args( get_option( self::OPTION_KEY, array() ), $defaults );
+        $settings = wp_parse_args( get_option( self::OPTION_KEY, array() ), $defaults );
+        if ( isset( $settings['spin_button_text'] ) && 'Show Best Offer' === trim( (string) $settings['spin_button_text'] ) ) {
+            $settings['spin_button_text'] = self::DEFAULT_SPIN_BUTTON_TEXT;
+        }
+
+        return $settings;
     }
 
     public static function asset_url( $relative_path ) {
@@ -5220,6 +5225,35 @@ $tests['frontend_banner_wording_v191'] = function() {
     tmw_assert_true( false === strpos( $plugin_file . $js_file, 'Winner!' ), 'Banner should not include Winner wording.' );
     tmw_assert_true( false === strpos( $plugin_file . $js_file, 'Spin the Reels' ), 'Banner should not include Spin the Reels wording.' );
     tmw_assert_true( false === strpos( $plugin_file . $js_file, 'Free Spins' ), 'Banner should not include Free Spins wording.' );
+};
+
+$tests['plugin_version_bumped_to_191'] = function() {
+    $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
+    tmw_assert_contains( 'Version: 1.9.1', $plugin_file, 'Plugin header version should be 1.9.1.' );
+    tmw_assert_contains( "define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.1' );", $plugin_file, 'Asset version constant should be 1.9.1.' );
+};
+
+$tests['register_assets_uses_filemtime_version_suffix'] = function() {
+    $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
+    tmw_assert_contains( "filemtime( \$css_path )", $plugin_file, 'CSS registration should include filemtime in version.' );
+    tmw_assert_contains( "filemtime( \$js_path )", $plugin_file, 'JS registration should include filemtime in version.' );
+};
+
+$tests['spin_button_text_migrates_legacy_default_but_preserves_custom'] = function() {
+    tmw_reset_test_state();
+    $GLOBALS['tmw_test_options'][ TMW_CR_Slot_Sidebar_Banner::OPTION_KEY ] = array( 'spin_button_text' => 'Show Best Offer' );
+    $migrated = TMW_CR_Slot_Sidebar_Banner::get_settings();
+    tmw_assert_same( 'Reveal My Offer', (string) $migrated['spin_button_text'], 'Legacy default spin text should migrate to Reveal My Offer.' );
+
+    $GLOBALS['tmw_test_options'][ TMW_CR_Slot_Sidebar_Banner::OPTION_KEY ] = array( 'spin_button_text' => 'My Custom Offer Text' );
+    $custom = TMW_CR_Slot_Sidebar_Banner::get_settings();
+    tmw_assert_same( 'My Custom Offer Text', (string) $custom['spin_button_text'], 'Custom spin text must be preserved.' );
+};
+
+$tests['fallback_visual_rules_non_ai_vs_ai'] = function() {
+    $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );
+    tmw_assert_contains( "(offer && offer.vertical) === 'ai' ? '🤖 AI' : getOfferDisplayName(offer)", $js_file, 'Only AI offers should render robot fallback text.' );
+    tmw_assert_true( false === strpos( $js_file, "'🤖 AI' : getOfferAbbreviation(offer)" ), 'Non-AI fallback should not use generic abbreviation/robot path.' );
 };
 
 

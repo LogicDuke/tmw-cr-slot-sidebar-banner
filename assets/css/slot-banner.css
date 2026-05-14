@@ -109,9 +109,16 @@
 }
 
 #container .outer-col .icon .tmw-cr-slot-banner__reel-text {
-    font-size: 1rem;
+    max-width: 84%;
+    padding: 0.35rem 0.45rem;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.1);
+    font-size: 0.82rem;
     font-weight: 700;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     color: rgba(255, 255, 255, 0.92);
 }
 

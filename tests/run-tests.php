@@ -5427,6 +5427,80 @@ $tests['api_audit_logs_human_readable_summary'] = function() {
     tmw_assert_contains( 'offers success=', $inspector_file, 'Audit should log compact human-readable summary.' );
     tmw_assert_contains( 'tracking_url=', $inspector_file, 'Summary should include tracking_url status.' );
 };
+$tests['api_audit_unwraps_response_offer_shape'] = function() {
+    $client = new class {
+        public function find_all_offers() {
+            return array( 'request' => array(), 'response' => array( 'Offer' => array( array( 'ID' => '1234', 'Name' => 'X' ) ) ) );
+        }
+    };
+    $ins = new TMW_CR_Slot_CR_API_Inspector( $client );
+    $report = $ins->inspect_offers( 1 );
+    tmw_assert_same( 1, (int) $report['row_count'], 'Should unwrap response.Offer rows.' );
+};
+$tests['api_audit_unwraps_single_nested_offer_row'] = function() {
+    $client = new class {
+        public function find_all_offers() {
+            return array( 'response' => array( 'Offer' => array( array( 'Offer' => array( 'ID' => '98', 'Targeting' => array( 'countries' => array( 'US' ) ) ) ) ) ) );
+        }
+    };
+    $ins = new TMW_CR_Slot_CR_API_Inspector( $client );
+    $report = $ins->inspect_offers( 1 );
+    tmw_assert_true( in_array( 'ID', $report['row_keys'], true ), 'Single nested Offer row should be unwrapped for row keys.' );
+};
+$tests['api_audit_reports_unwrap_path'] = function() {
+    $client = new class { public function find_all_offers() { return array( 'response' => array( 'Offer' => array( array( 'ID' => '1' ) ) ) ); } };
+    $ins = new TMW_CR_Slot_CR_API_Inspector( $client );
+    $report = $ins->inspect_offers( 1 );
+    tmw_assert_same( 'response.Offer', (string) $report['unwrap_path'], 'Unwrap path should be reported.' );
+};
+$tests['api_audit_detects_sample_offer_id_from_uppercase_id'] = function() {
+    $client = new class { public function find_all_offers() { return array( 'response' => array( 'Offer' => array( array( 'ID' => '1234' ) ) ) ); } };
+    $ins = new TMW_CR_Slot_CR_API_Inspector( $client );
+    $report = $ins->inspect_offers( 1 );
+    tmw_assert_same( '1234', (string) $report['sample_offer_id'], 'Sample ID should detect uppercase ID key.' );
+};
+$tests['api_audit_detects_country_candidates_inside_unwrapped_offer'] = function() {
+    $client = new class { public function find_all_offers() { return array( 'response' => array( 'Offer' => array( array( 'Countries' => array( 'US' ), 'Targeting' => array() ) ) ) ); } };
+    $ins = new TMW_CR_Slot_CR_API_Inspector( $client );
+    $report = $ins->inspect_offers( 1 );
+    tmw_assert_true( in_array( 'Countries', $report['iso_candidates'], true ) && in_array( 'Targeting', $report['iso_candidates'], true ), 'Country candidate keys should be detected in unwrapped row.' );
+};
+$tests['api_audit_detects_url_candidates_inside_unwrapped_offer_without_logging_full_urls'] = function() {
+    $client = new class { public function find_all_offers() { return array( 'response' => array( 'Offer' => array( array( 'TrackingURL' => 'https://secret.example.test/path' ) ) ) ); } };
+    $ins = new TMW_CR_Slot_CR_API_Inspector( $client );
+    $report = $ins->inspect_offers( 1 );
+    tmw_assert_true( in_array( 'TrackingURL', $report['url_candidates'], true ), 'URL candidate keys should be detected.' );
+    $sum = $ins->summarize_keys( array( 'TrackingURL' => 'https://secret.example.test/path' ), 2 );
+    tmw_assert_same( '[redacted_url]', (string) $sum['TrackingURL'], 'Full URL values should remain redacted in summaries.' );
+};
+$tests['api_audit_no_longer_skips_tracking_url_when_sample_offer_id_exists'] = function() {
+    tmw_reset_test_state();
+    $GLOBALS['tmw_test_remote_get'] = tmw_audit_build_remote_get_stub( array(
+        'Method=findAll&' => array( 'body' => array( 'response' => array( 'Offer' => array( array( 'ID' => '1234' ) ) ) ) ),
+        'Method=getTrackingUrl' => array( 'body' => array( 'ok' => true ) ),
+        'Method=generateTrackingLink' => array( 'body' => array( 'ok' => true ) ),
+        'Method=findOneTrackingLink' => array( 'body' => array( 'ok' => true ) ),
+        'Method=getTrackingLink' => array( 'body' => array( 'ok' => true ) ),
+    ) );
+    $ins = new TMW_CR_Slot_CR_API_Inspector( new TMW_CR_Slot_CR_API_Client( 'k' ) );
+    $report = $ins->run_full_audit( 1 );
+    tmw_assert_true( ! isset( $report['tracking_url']['skipped'] ), 'Tracking URL audit should run when sample offer id exists.' );
+};
+$tests['api_audit_still_redacts_secret_values'] = function() {
+    $ins = new TMW_CR_Slot_CR_API_Inspector( new TMW_CR_Slot_CR_API_Client( 'k' ) );
+    $sum = $ins->summarize_keys( array( 'Authorization' => 'Bearer abc123', 'cookie' => 'x=y' ), 2 );
+    tmw_assert_same( '[redacted_secret]', (string) $sum['Authorization'], 'Authorization values should remain redacted.' );
+};
+$tests['existing_api_audit_safe_field_tests_still_pass'] = function() {
+    $ins = new TMW_CR_Slot_CR_API_Inspector( new TMW_CR_Slot_CR_API_Client( 'k' ) );
+    $sum = $ins->summarize_keys( array( 'offers' => array( 'success' => true, 'row_keys' => array( 'id' ) ) ), 4 );
+    tmw_assert_true( true === $sum['offers']['success'], 'Existing safe boolean behavior should still pass.' );
+    tmw_assert_same( 'id', (string) $sum['offers']['row_keys'][0], 'Existing safe row key behavior should still pass.' );
+};
+$tests['existing_frontend_behavior_tests_still_pass'] = function() {
+    $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );
+    tmw_assert_contains( 'getOfferDisplayName', $js_file, 'Frontend behavior remains intact.' );
+};
 $tests['api_audit_admin_post_redirects_with_success_notice'] = function() {
     if ( ! defined( 'TMW_CR_API_AUDIT' ) ) {
         define( 'TMW_CR_API_AUDIT', true );

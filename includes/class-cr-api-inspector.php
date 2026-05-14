@@ -52,20 +52,29 @@ class TMW_CR_Slot_CR_API_Inspector {
             return array( 'success' => false, 'error' => $this->scrub_string( $response->get_error_message() ) );
         }
 
-        $rows = TMW_CR_Slot_Offer_Sync_Service::extract_offer_rows( $response );
-        $sample_offer_id = '';
-        if ( ! empty( $rows[0]['id'] ) ) {
-            $sample_offer_id = (string) $rows[0]['id'];
+        $top_level_keys = is_array( $response ) ? array_keys( $response ) : array();
+        $unwrapped = $this->unwrap_offer_rows( $response );
+        $rows = $unwrapped['rows'];
+
+        if ( ! empty( $rows[0] ) && is_array( $rows[0] ) && 1 === count( $rows[0] ) ) {
+            $single = reset( $rows[0] );
+            if ( is_array( $single ) ) {
+                $rows[0] = $single;
+            }
         }
+
+        $sample_offer_id = $this->extract_candidate_value_by_keys( ! empty( $rows[0] ) && is_array( $rows[0] ) ? $rows[0] : array(), array( 'id', 'offer_id' ) );
 
         $row_count = is_array( $rows ) ? count( $rows ) : 0;
         $report = array(
             'success' => true,
-            'top_level_keys' => array_keys( $response ),
+            'top_level_keys' => $top_level_keys,
+            'unwrap_path' => $unwrapped['path'],
             'row_count' => $row_count,
             'row_keys' => ! empty( $rows[0] ) && is_array( $rows[0] ) ? array_keys( $rows[0] ) : array(),
             'sample_offer_id' => $this->is_safe_offer_id( $sample_offer_id ) ? $sample_offer_id : '',
-            'iso_candidates' => $this->extract_iso_country_candidates( $response ),
+            'iso_candidates' => $this->extract_candidate_field_keys( ! empty( $rows[0] ) && is_array( $rows[0] ) ? $rows[0] : array(), array( 'countries', 'country', 'allowed_countries', 'geo', 'geos', 'targeting' ) ),
+            'url_candidates' => $this->extract_candidate_field_keys( ! empty( $rows[0] ) && is_array( $rows[0] ) ? $rows[0] : array(), array( 'tracking_url', 'trackingurl', 'click_url', 'clickurl', 'url', 'preview_url', 'landing_page', 'landingpage' ) ),
         );
         if ( $row_count < 1 ) {
             $report['reason'] = 'empty_rows';
@@ -180,6 +189,76 @@ class TMW_CR_Slot_CR_API_Inspector {
         return '' !== $offer_id && strlen( $offer_id ) <= 40 && (bool) preg_match( '/^[A-Za-z0-9_-]+$/', $offer_id );
     }
 
+    protected function unwrap_offer_rows( $payload ) {
+        $paths = array(
+            'response.Offer' => array( 'response', 'Offer' ),
+            'response.offers' => array( 'response', 'offers' ),
+            'response.data' => array( 'response', 'data' ),
+            'Offer' => array( 'Offer' ),
+            'offers' => array( 'offers' ),
+            'data' => array( 'data' ),
+        );
+        foreach ( $paths as $path_label => $segments ) {
+            $candidate = $payload;
+            $ok = true;
+            foreach ( $segments as $segment ) {
+                if ( ! is_array( $candidate ) || ! array_key_exists( $segment, $candidate ) ) {
+                    $ok = false;
+                    break;
+                }
+                $candidate = $candidate[ $segment ];
+            }
+            if ( ! $ok ) {
+                continue;
+            }
+            if ( is_array( $candidate ) ) {
+                $rows = array_values( $candidate );
+                if ( isset( $rows[0] ) && is_array( $rows[0] ) ) {
+                    return array( 'path' => $path_label, 'rows' => $rows );
+                }
+            }
+        }
+
+        return array( 'path' => 'extract_offer_rows', 'rows' => TMW_CR_Slot_Offer_Sync_Service::extract_offer_rows( $payload ) );
+    }
+
+    protected function extract_candidate_field_keys( $row, $needle_keys ) {
+        if ( ! is_array( $row ) ) {
+            return array();
+        }
+        $needles = array();
+        foreach ( (array) $needle_keys as $key ) {
+            $needles[] = strtolower( (string) $key );
+        }
+        $matches = array();
+        foreach ( $row as $key => $value ) {
+            unset( $value );
+            $label = (string) $key;
+            if ( in_array( strtolower( $label ), $needles, true ) ) {
+                $matches[] = $label;
+            }
+        }
+        return $matches;
+    }
+
+    protected function extract_candidate_value_by_keys( $row, $needle_keys ) {
+        if ( ! is_array( $row ) ) {
+            return '';
+        }
+        $lookup = array();
+        foreach ( $row as $key => $value ) {
+            $lookup[ strtolower( (string) $key ) ] = $value;
+        }
+        foreach ( (array) $needle_keys as $needle ) {
+            $normalized = strtolower( (string) $needle );
+            if ( ! array_key_exists( $normalized, $lookup ) ) {
+                continue;
+            }
+            return is_scalar( $lookup[ $normalized ] ) ? (string) $lookup[ $normalized ] : '';
+        }
+        return '';
+    }
+
     protected function log_human_readable_summary( $report ) {
         if ( ! is_array( $report ) ) {
             return;
@@ -187,10 +266,13 @@ class TMW_CR_Slot_CR_API_Inspector {
         $offers = isset( $report['offers'] ) && is_array( $report['offers'] ) ? $report['offers'] : array();
         $parts = array(
             'offers success=' . ( ! empty( $offers['success'] ) ? 'YES' : 'NO' ),
-            'top_level_keys=' . implode( ',', array_slice( (array) ( $offers['top_level_keys'] ?? array() ), 0, 8 ) ),
+            'wrapper_keys=' . implode( ',', array_slice( (array) ( $offers['top_level_keys'] ?? array() ), 0, 8 ) ),
+            'unwrap_path=' . sanitize_text_field( (string) ( $offers['unwrap_path'] ?? '' ) ),
             'row_keys=' . implode( ',', array_slice( (array) ( $offers['row_keys'] ?? array() ), 0, 8 ) ),
             'row_count=' . (int) ( $offers['row_count'] ?? 0 ),
             'iso_candidates=' . implode( ',', array_slice( (array) ( $offers['iso_candidates'] ?? array() ), 0, 8 ) ),
+            'url_candidates=' . implode( ',', array_slice( (array) ( $offers['url_candidates'] ?? array() ), 0, 8 ) ),
+            'sample_offer_id=' . sanitize_text_field( (string) ( $offers['sample_offer_id'] ?? '' ) ),
         );
         if ( ! empty( $offers['reason'] ) ) {
             $parts[] = 'reason=' . sanitize_key( (string) $offers['reason'] );

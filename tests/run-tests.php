@@ -4761,7 +4761,7 @@ $tests['skipped_exclusion_does_not_log_type_disallowed_selected_offer'] = functi
     $logs = tmw_capture_error_log( static function () use ( $repo ) {
         $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( 'safe-pps', 'x-soi' ), 'enforce_skipped_offers_exclusion' => 1 ), array( 'cta_url' => 'https://base.test', 'cta_text' => 'CTA' ), 'US', array() );
     } );
-    tmw_assert_true( true, 'Type-disallowed selected offer logging behavior is non-blocking for CTA override-only workflow.' );
+    tmw_assert_true( false === strpos( $logs, '[TMW-BANNER-SKIP] type_disallowed_selected_offer' ), 'Type-disallowed selected offer logging marker should not appear for CTA override-only workflow.' );
 };
 $tests['skipped_exclusion_logs_every_candidate_path'] = function() {
     tmw_reset_test_state();
@@ -5291,7 +5291,7 @@ $tests['admin_page_audit_button_warns_and_disables_when_audit_off'] = function()
 
 $tests['admin_page_audit_button_enabled_when_audit_on'] = function() {
     if ( ! defined( 'WP_DEBUG' ) && ! defined( 'TMW_CR_API_AUDIT' ) ) {
-        tmw_assert_true( true, 'Audit-on state assertions are covered when debug/audit constants are enabled in this test runtime.' );
+        tmw_assert_true( ! defined( 'WP_DEBUG' ) && ! defined( 'TMW_CR_API_AUDIT' ), 'Audit-on assertions are skipped because neither audit-enabling constant is defined in this runtime.' );
         return;
     }
 
@@ -5314,11 +5314,23 @@ $tests['frontend_cta_forces_new_tab_and_rel_attributes'] = function() {
     tmw_assert_true( false === strpos( $plugin_file, '! empty( $settings[\'open_in_new_tab\'] ) ?' ), 'CTA new tab behavior should not depend on open_in_new_tab.' );
 };
 
-$tests['mobile_css_forces_single_row_three_columns'] = function() {
+$tests['mobile_css_preserves_compact_three_card_row'] = function() {
     $css_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/css/slot-banner.css' );
-    tmw_assert_contains( 'flex-wrap: nowrap;', $css_file, 'Selector container should not wrap.' );
-    tmw_assert_contains( 'overflow: hidden;', $css_file, 'Selector container should clip overflow.' );
-    tmw_assert_contains( 'flex: 0 0 calc((100% - 16px) / 3);', $css_file, 'Mobile reels should enforce 3 columns in one row.' );
+    tmw_assert_contains( '@media (max-width: 767px)', $css_file, 'Mobile CSS should define a max-width 767px media query.' );
+    tmw_assert_contains( 'gap: 8px;', $css_file, 'Mobile container should keep compact 8px gap.' );
+    tmw_assert_contains( 'flex-wrap: nowrap;', $css_file, 'Mobile container should keep a single row.' );
+    tmw_assert_contains( 'overflow: hidden;', $css_file, 'Mobile container should clip overflow to preserve compact frame layout.' );
+    tmw_assert_contains( 'align-items: center;', $css_file, 'Mobile container should vertically align card frames.' );
+    tmw_assert_contains( 'flex: 0 1 92px;', $css_file, 'Mobile outer-col should use compact bounded flex basis.' );
+    tmw_assert_contains( 'max-width: 92px;', $css_file, 'Mobile outer-col should preserve compact max width.' );
+    tmw_assert_contains( 'min-width: 0;', $css_file, 'Mobile outer-col should allow shrinking without overflow.' );
+    tmw_assert_true( false === strpos( $css_file, 'flex: 0 0 calc((100% - 16px) / 3);' ), 'Mobile CSS must not reintroduce the old stretch-to-third-width rule.' );
+
+    $mobile_outer_col_match = array();
+    preg_match( '/@media\\s*\\(max-width:\\s*767px\\)\\s*\\{[\\s\\S]*?#container\\s+\\.outer-col\\s*\\{([\\s\\S]*?)\\}[\\s\\S]*?\\}/', $css_file, $mobile_outer_col_match );
+    tmw_assert_true( isset( $mobile_outer_col_match[1] ), 'Mobile media query should include a #container .outer-col rule.' );
+    $mobile_outer_col_rule = isset( $mobile_outer_col_match[1] ) ? (string) $mobile_outer_col_match[1] : '';
+    tmw_assert_true( false === strpos( $mobile_outer_col_rule, 'max-width: none;' ), 'Mobile outer-col rule must not use max-width:none stretch behavior.' );
 };
 
 $tests['js_final_selection_renders_same_offer_for_three_columns'] = function() {

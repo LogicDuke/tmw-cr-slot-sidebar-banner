@@ -300,11 +300,14 @@
 @media (max-width: 767px) {
     #container {
         gap: 8px;
+        flex-wrap: nowrap;
+        overflow: hidden;
+        align-items: center;
     }
 
     #container .outer-col {
-        flex: 0 0 calc((100% - 16px) / 3);
-        max-width: none;
+        flex: 0 1 92px;
+        max-width: 92px;
         min-width: 0;
     }
 }

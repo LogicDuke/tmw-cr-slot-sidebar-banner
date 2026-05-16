@@ -219,17 +219,24 @@
 .tmw-cr-slot-banner .tmw-cr-slot-banner__cta:hover,
 .tmw-cr-slot-banner .tmw-cr-slot-banner__cta:active,
 .tmw-cr-slot-banner .tmw-cr-slot-banner__cta:focus,
-.tmw-cr-slot-banner .tmw-cr-slot-banner__cta *,
 .tmw-cr-slot-banner .tmw-cr-slot-banner__cta::before,
 .tmw-cr-slot-banner .tmw-cr-slot-banner__cta::after,
-.tmw-cr-slot-banner .tmw-cr-slot-banner__cta *::before,
-.tmw-cr-slot-banner .tmw-cr-slot-banner__cta *::after,
+.tmw-cr-slot-banner .tmw-cr-slot-banner__cta-label {
+    text-decoration: none !important;
+    text-decoration-line: none !important;
+    -webkit-text-decoration-line: none !important;
+    border-bottom: 0 !important;
+    background-image: none !important;
+}
+
 .tmw-cr-slot-banner .tmw-cr-slot-banner__cta-label,
 .tmw-cr-slot-banner .tmw-cr-slot-banner__cta-label::before,
 .tmw-cr-slot-banner .tmw-cr-slot-banner__cta-label::after {
     text-decoration: none !important;
     text-decoration-line: none !important;
+    -webkit-text-decoration-line: none !important;
     border-bottom: 0 !important;
+    box-shadow: none !important;
     background-image: none !important;
 }
 

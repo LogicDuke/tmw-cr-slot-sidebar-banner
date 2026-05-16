@@ -165,8 +165,8 @@
 }
 
 .tmw-cr-slot-banner__offer-slogan {
+    display: none;
     margin: 0;
-    display: inline-flex;
     align-items: center;
     justify-content: center;
     padding: 0.25rem 0.75rem;
@@ -176,6 +176,14 @@
     color: rgba(255, 255, 255, 0.92);
     background: rgba(255, 255, 255, 0.12);
     border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.tmw-cr-slot-banner__offer-slogan.tmw-cr-slot-banner__offer-slogan--active {
+    display: inline-flex;
+}
+
+.tmw-cr-slot-banner__offer-slogan[hidden] {
+    display: none !important;
 }
 
 .tmw-cr-slot-banner__cta {
@@ -201,6 +209,16 @@
 .tmw-cr-slot-banner__cta:hover,
 .tmw-cr-slot-banner__cta:focus-visible {
     text-decoration: none;
+}
+
+
+.tmw-cr-slot-banner__cta::before,
+.tmw-cr-slot-banner__cta::after,
+.tmw-cr-slot-banner__cta *::before,
+.tmw-cr-slot-banner__cta *::after {
+    text-decoration: none;
+    border-bottom: none;
+    box-shadow: none;
 }
 
 .tmw-cr-slot-banner__cta:hover,

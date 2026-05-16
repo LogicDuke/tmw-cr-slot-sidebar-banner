@@ -5237,9 +5237,8 @@ $tests['frontend_banner_wording_v198'] = function() {
     $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
     $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );
     tmw_assert_contains( 'SPIN NOW', $plugin_file, 'Spin button default should be SPIN NOW.' );
-    tmw_assert_contains( 'Your match is ready', $plugin_file, 'Result label should use Your match is ready in PHP template.' );
-    tmw_assert_contains( 'Your match is ready', $js_file, 'Result label should use Your match is ready in frontend JS state updates.' );
-    tmw_assert_contains( "POST_SPIN_RESULT_LABEL = 'Your match is ready'", $js_file, 'Post-spin JS should force the public result label.' );
+    tmw_assert_contains( "POST_SPIN_RESULT_LABEL = 'Your match is ready'", $js_file, 'Result label should use Your match is ready in frontend JS state updates.' );
+    tmw_assert_contains( 'applyWinState(state, matchingOffer);', $js_file, 'Post-spin JS should only set result text in win state.' );
     tmw_assert_contains( "POST_SPIN_CTA_TEXT = 'VISIT OFFER'", $js_file, 'Post-spin JS should force VISIT OFFER CTA copy.' );
     tmw_assert_contains( 'sanitizeFrontendOfferName(matchingOffer.name)', $js_file, 'Post-spin JS should sanitize the visible offer name.' );
     tmw_assert_contains( 'setOfferSloganVisibility(state.offerSloganTarget', $js_file, 'Post-spin JS should hide slogan/category metadata wrappers when no safe text is present.' );
@@ -5254,10 +5253,11 @@ $tests['frontend_banner_wording_v198'] = function() {
 
 $tests['frontend_post_spin_cta_text_decoration_none'] = function() {
     $css_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/css/slot-banner.css' );
-    tmw_assert_contains( '.tmw-cr-slot-banner__cta *', $css_file, 'CTA child nodes should prevent inherited strike-through decoration.' );
-    tmw_assert_contains( 'text-decoration: none;', $css_file, 'CTA styles should enforce no text decoration.' );
-    tmw_assert_contains( '.tmw-cr-slot-banner__cta::before', $css_file, 'CTA pseudo elements should not render strike-through visuals.' );
-    tmw_assert_contains( 'border-bottom: none;', $css_file, 'CTA pseudo elements should not render underline borders.' );
+    tmw_assert_contains( '.tmw-cr-slot-banner .tmw-cr-slot-banner__cta *', $css_file, 'CTA child nodes should prevent inherited strike-through decoration.' );
+    tmw_assert_contains( 'text-decoration: none !important;', $css_file, 'CTA styles should enforce no text decoration with strong specificity.' );
+    tmw_assert_contains( '.tmw-cr-slot-banner .tmw-cr-slot-banner__cta::before', $css_file, 'CTA pseudo elements should not render strike-through visuals.' );
+    tmw_assert_contains( '.tmw-cr-slot-banner .tmw-cr-slot-banner__cta-label', $css_file, 'CTA label should exist for strict text-decoration overrides.' );
+    tmw_assert_contains( 'border-bottom: 0 !important;', $css_file, 'CTA pseudo elements should not render underline borders.' );
 };
 
 $tests['plugin_version_bumped_to_198'] = function() {
@@ -5359,6 +5359,23 @@ $tests['js_final_selection_renders_same_offer_for_three_columns'] = function() {
     $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );
     tmw_assert_contains( 'function renderFinalSelection(state, selectedOffer, prepareForSpin)', $js_file, 'JS should include explicit final selection renderer.' );
     tmw_assert_contains( 'return renderFinalSelection(state, winner, prepareForSpin);', $js_file, 'Final result should render the selected offer in every reel.' );
+};
+$tests['frontend_initial_state_hidden_and_no_auto_spin'] = function() {
+    $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
+    $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );
+    tmw_assert_contains( 'tmw-cr-slot-banner__footer tmw-cr-slot-banner__footer--hidden', $plugin_file, 'Footer should be hidden by default before user win.' );
+    tmw_assert_contains( '<span class="tmw-cr-slot-banner__result-label"></span>', $plugin_file, 'Result label should render empty before a real win.' );
+    tmw_assert_contains( 'applyPreWinState(state);', $js_file, 'Banner should initialize pre-win hidden state.' );
+    tmw_assert_true( false === strpos( $js_file, 'setResult(state, false);' ), 'Banner should not precompute/show winner state on load.' );
+};
+$tests['finish_spin_reveals_only_on_three_reel_match'] = function() {
+    $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );
+    tmw_assert_contains( 'function isThreeReelWin(results)', $js_file, 'Three-reel win validator should exist.' );
+    tmw_assert_contains( 'results.length !== 3', $js_file, 'Three-reel win validator should enforce exactly three reels.' );
+    tmw_assert_contains( '!results[0] || !results[1] || !results[2]', $js_file, 'Three-reel win validator should require all reels to exist.' );
+    tmw_assert_contains( '!results.length || !isThreeReelWin(results)', $js_file, 'finishSpin should reject reveal when there is no full three-reel match.' );
+    tmw_assert_contains( 'state.hasWin = true;', $js_file, 'Win state flag should be set only after validated match.' );
+    tmw_assert_contains( 'state.currentWinningOffer = matchingOffer;', $js_file, 'Winning offer should persist in state only after validated match.' );
 };
 
 $tests['frontend_banner_wording_still_avoids_banned_terms_v192'] = function() {

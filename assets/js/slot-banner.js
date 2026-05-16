@@ -298,29 +298,80 @@
         }
     }
 
-    function applyDefaultState(state) {
+    function clearResultVisibility(state) {
+        state.banner.classList.add('tmw-cr-slot-banner--pre-win');
         state.banner.classList.remove('tmw-cr-slot-banner--win');
 
-        if (state.cta) {
-            if (state.defaultCtaUrl) {
-                state.cta.href = state.defaultCtaUrl;
-            }
-
-            if (state.defaultCtaText) {
-                state.cta.textContent = state.defaultCtaText;
-            }
-
-            appendTrackingParam(state.cta, state.param, state.value);
+        if (state.resultLabel) {
+            state.resultLabel.textContent = '';
         }
 
         if (state.offerNameTarget) {
-            state.offerNameTarget.textContent = state.defaultOfferName || state.defaultCtaText || '';
+            state.offerNameTarget.textContent = '';
         }
+
         setOfferSloganVisibility(state.offerSloganTarget, '', '', state.debugEnabled);
 
-        if (state.resultLabel) {
-            state.resultLabel.textContent = state.defaultResultLabel;
+        if (state.cta) {
+            state.cta.hidden = true;
+            state.cta.setAttribute('aria-hidden', 'true');
+            state.cta.textContent = POST_SPIN_CTA_TEXT;
         }
+    }
+
+    function applyPreWinState(state) {
+        clearResultVisibility(state);
+        if (state.debugEnabled && window.console && typeof window.console.debug === 'function') {
+            window.console.debug('[TMW-CR-CTA] pre_win_state_hidden');
+        }
+    }
+
+    function applySpinningState(state) {
+        clearResultVisibility(state);
+    }
+
+    function applyWinState(state, matchingOffer) {
+        if (!matchingOffer) {
+            return;
+        }
+
+        state.banner.classList.remove('tmw-cr-slot-banner--pre-win');
+        state.banner.classList.add('tmw-cr-slot-banner--win');
+
+        if (state.resultLabel) {
+            state.resultLabel.textContent = POST_SPIN_RESULT_LABEL;
+        }
+
+        if (state.offerNameTarget) {
+            state.offerNameTarget.textContent = sanitizeFrontendOfferName(matchingOffer.name) || '';
+        }
+
+        setOfferSloganVisibility(state.offerSloganTarget, '', matchingOffer.id || '', state.debugEnabled);
+
+        if (state.cta) {
+            var nextHref = matchingOffer.cta_url || state.defaultCtaUrl;
+            if (nextHref) {
+                state.cta.href = nextHref;
+            }
+
+            state.cta.textContent = POST_SPIN_CTA_TEXT;
+            state.cta.hidden = false;
+            state.cta.removeAttribute('aria-hidden');
+            appendTrackingParam(state.cta, state.param, state.value);
+        }
+    }
+
+    function isThreeReelWin(results) {
+        if (!Array.isArray(results) || results.length !== 3) {
+            return false;
+        }
+
+        if (!results[0] || !results[1] || !results[2]) {
+            return false;
+        }
+
+        var firstId = String(results[0].id || '');
+        return firstId !== '' && String(results[1].id || '') === firstId && String(results[2].id || '') === firstId;
     }
 
     function finishSpin(state, results) {
@@ -331,8 +382,15 @@
             state.spinButton.disabled = false;
         }
 
-        if (!results.length) {
-            applyDefaultState(state);
+        if (!results.length || !isThreeReelWin(results)) {
+            if (state.debugEnabled && window.console && typeof window.console.debug === 'function') {
+                window.console.debug('[TMW-CR-CTA] no_reveal_without_three_match');
+            }
+            if (state.hasWin && state.currentWinningOffer) {
+                applyWinState(state, state.currentWinningOffer);
+            } else {
+                applyPreWinState(state);
+            }
             return;
         }
 
@@ -342,32 +400,14 @@
             if (state.debugEnabled && window.console && typeof window.console.debug === 'function') {
                 window.console.debug('[TMW-BANNER-OFFER] final offer_id=' + (matchingOffer.id || '') + ' repeated=3 cta_url_present=' + (matchingOffer.cta_url ? '1' : '0'));
             }
-            state.banner.classList.add('tmw-cr-slot-banner--win');
-
-            if (state.resultLabel) {
-                state.resultLabel.textContent = POST_SPIN_RESULT_LABEL;
+            if (state.debugEnabled && window.console && typeof window.console.debug === 'function') {
+                window.console.debug('[TMW-CR-CTA] win_revealed offer_id=' + (matchingOffer.id || ''));
             }
-
-            if (state.offerNameTarget) {
-                state.offerNameTarget.textContent = sanitizeFrontendOfferName(matchingOffer.name) || state.defaultOfferName || state.defaultCtaText || '';
-            }
-            setOfferSloganVisibility(state.offerSloganTarget, '', matchingOffer.id || '', state.debugEnabled);
-
-            if (state.cta) {
-                var nextHref = matchingOffer.cta_url || state.defaultCtaUrl;
-
-                if (nextHref) {
-                    state.cta.href = nextHref;
-                }
-
-                state.cta.textContent = POST_SPIN_CTA_TEXT;
-                appendTrackingParam(state.cta, state.param, state.value);
-            }
-
+            state.hasWin = true;
+            state.currentWinningOffer = matchingOffer;
+            applyWinState(state, matchingOffer);
             return;
         }
-
-        applyDefaultState(state);
     }
 
     function spin(state, button) {
@@ -383,7 +423,7 @@
             button.disabled = true;
         }
 
-        applyDefaultState(state);
+        applySpinningState(state);
 
         var results = setResult(state, true);
 
@@ -471,6 +511,8 @@
             param: param,
             value: value,
             isSpinning: false,
+            hasWin: false,
+            currentWinningOffer: null,
             debugEnabled: debugEnabled
         };
 
@@ -483,15 +525,7 @@
 
         setInitialItems(state);
 
-        if (state.offers.length && state.columns.length) {
-            setResult(state, false);
-            applyDefaultState(state);
-            window.setTimeout(function() {
-                spin(state, state.spinButton);
-            }, 300);
-        } else {
-            applyDefaultState(state);
-        }
+        applyPreWinState(state);
 
         banner.classList.add('tmw-cr-slot-banner--ready');
     }

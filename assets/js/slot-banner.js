@@ -70,12 +70,31 @@
 
     function sanitizeFrontendOfferName(name) {
         var value = (name || '').trim();
+        var backendMarkerPattern = /^(PPS|CPA|CPL|RevShare|Rev Share|SOI|DOI|CPC|CPI|CPM|LQ|HQ|Smartlink|fallback|fallback offer|offer|campaign|campaign type)$/i;
 
         if (!value) {
             return '';
         }
 
-        return value.replace(/\s*[-–—|:]\s*(PPS|CPA|CPL|RevShare|SOI|DOI|CPC|CPI|CPM|Smartlink|fallback)\s*$/i, '').trim();
+        var segments = value.split(/\s*(?:\s-\s|–|—|\|)\s*/).map(function(segment) {
+            return segment.trim();
+        }).filter(function(segment) {
+            return segment !== '';
+        });
+
+        if (!segments.length) {
+            return '';
+        }
+
+        if (segments.length > 1) {
+            for (var i = 1; i < segments.length; i++) {
+                if (backendMarkerPattern.test(segments[i])) {
+                    return segments[0];
+                }
+            }
+        }
+
+        return segments[0] || value;
     }
 
 

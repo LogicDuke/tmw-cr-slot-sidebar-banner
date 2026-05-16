@@ -485,10 +485,28 @@ class TMW_CR_Slot_Sidebar_Banner {
             return '';
         }
 
-        $suffixes = array( 'PPS', 'CPA', 'CPL', 'REVSHARE', 'SOI', 'DOI', 'CPC', 'CPI', 'CPM', 'SMARTLINK', 'FALLBACK' );
-        $pattern  = '/\s*[-–—|:]\s*(?:' . implode( '|', $suffixes ) . ')\s*$/i';
+        $segments = preg_split( '/\s*(?:\s-\s|–|—|\|)\s*/u', $name );
+        $segments = array_values(
+            array_filter(
+                array_map( 'trim', is_array( $segments ) ? $segments : array() ),
+                static function( $segment ) {
+                    return '' !== $segment;
+                }
+            )
+        );
 
-        return trim( (string) preg_replace( $pattern, '', $name ) );
+        if ( empty( $segments ) ) {
+            return '';
+        }
+
+        $marker_pattern = '/^(?:PPS|CPA|CPL|REVSHARE|REV SHARE|SOI|DOI|CPC|CPI|CPM|LQ|HQ|SMARTLINK|FALLBACK|FALLBACK OFFER|OFFER|CAMPAIGN|CAMPAIGN TYPE)$/i';
+        for ( $index = 1; $index < count( $segments ); $index++ ) {
+            if ( preg_match( $marker_pattern, $segments[ $index ] ) ) {
+                return (string) $segments[0];
+            }
+        }
+
+        return (string) $segments[0];
     }
 
     protected static function fallback_text( $value, $fallback ) {

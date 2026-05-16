@@ -378,14 +378,14 @@ class TMW_CR_Slot_Sidebar_Banner {
                 </button>
             </div>
 
-            <div class="tmw-cr-slot-banner__footer">
+            <div class="tmw-cr-slot-banner__footer tmw-cr-slot-banner__footer--hidden" aria-hidden="true">
                 <p class="tmw-cr-slot-banner__result">
-                    <span class="tmw-cr-slot-banner__result-label"><?php esc_html_e( 'Your match is ready', 'tmw-cr-slot-sidebar-banner' ); ?></span>
-                    <span class="tmw-cr-slot-banner__offer-name"><?php echo esc_html( $slot_data['initial_offer_name'] ); ?></span>
+                    <span class="tmw-cr-slot-banner__result-label"></span>
+                    <span class="tmw-cr-slot-banner__offer-name"></span>
                 </p>
                 <p class="tmw-cr-slot-banner__offer-slogan" aria-hidden="true"></p>
-                <a class="tmw-cr-slot-banner__cta" href="<?php echo esc_url( $slot_data['initial_cta_url'] ); ?>"<?php echo $cta_target; ?>>
-                    <?php echo esc_html( $slot_data['initial_cta_text'] ); ?>
+                <a class="tmw-cr-slot-banner__cta" href="<?php echo esc_url( $slot_data['initial_cta_url'] ); ?>"<?php echo $cta_target; ?> hidden aria-hidden="true">
+                    <span class="tmw-cr-slot-banner__cta-label"><?php echo esc_html( self::DEFAULT_CTA_TEXT ); ?></span>
                 </a>
             </div>
 

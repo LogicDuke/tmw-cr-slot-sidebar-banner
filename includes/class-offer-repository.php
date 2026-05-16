@@ -3192,7 +3192,7 @@ class TMW_CR_Slot_Offer_Repository {
             case 'cam': return 'Start Live Chat';
             case 'video': return 'Watch Now';
             case 'dating': return 'Find Matches';
-            default: return 'View Offer';
+            default: return 'VISIT OFFER';
         }
     }
 

@@ -62,8 +62,20 @@
     }
 
     function getOfferDisplayName(offer) {
-        return ((offer && offer.name) || '').trim() || getOfferAbbreviation(offer);
+        var sanitizedName = sanitizeFrontendOfferName((offer && offer.name) || '');
+        return sanitizedName || getOfferAbbreviation(offer);
     }
+
+    function sanitizeFrontendOfferName(name) {
+        var value = (name || '').trim();
+
+        if (!value) {
+            return '';
+        }
+
+        return value.replace(/\s*[-–—|:]\s*(PPS|CPA|CPL|RevShare|SOI|DOI|CPC|CPI|CPM|Smartlink|fallback)\s*$/i, '').trim();
+    }
+
 
     function renderReelFace(wrapper, offer) {
         wrapper.innerHTML = '';
@@ -277,7 +289,7 @@
             state.offerNameTarget.textContent = state.defaultOfferName || state.defaultCtaText || '';
         }
         if (state.offerSloganTarget) {
-            state.offerSloganTarget.textContent = state.defaultSlogan || '';
+            state.offerSloganTarget.textContent = '';
         }
 
         if (state.resultLabel) {
@@ -307,14 +319,14 @@
             state.banner.classList.add('tmw-cr-slot-banner--win');
 
             if (state.resultLabel) {
-                state.resultLabel.textContent = 'Top pick:';
+                state.resultLabel.textContent = 'Your match is ready';
             }
 
             if (state.offerNameTarget) {
-                state.offerNameTarget.textContent = matchingOffer.name || state.defaultOfferName || state.defaultCtaText || '';
+                state.offerNameTarget.textContent = sanitizeFrontendOfferName(matchingOffer.name) || state.defaultOfferName || state.defaultCtaText || '';
             }
             if (state.offerSloganTarget) {
-                state.offerSloganTarget.textContent = matchingOffer.slogan || state.defaultSlogan || '';
+                state.offerSloganTarget.textContent = '';
             }
 
             if (state.cta) {
@@ -324,7 +336,7 @@
                     state.cta.href = nextHref;
                 }
 
-                state.cta.textContent = matchingOffer.cta_text || state.defaultCtaText || state.cta.textContent;
+                state.cta.textContent = state.defaultCtaText || state.cta.textContent;
                 appendTrackingParam(state.cta, state.param, state.value);
             }
 

@@ -33,8 +33,8 @@ require_once TMW_CR_SLOT_BANNER_PATH . 'admin/admin-page.php';
 class TMW_CR_Slot_Sidebar_Banner {
     const DEFAULT_HEADLINE = 'Discover Adult Offers';
     const DEFAULT_SUBHEADLINE = 'Cam, Dating, AI & More';
-    const DEFAULT_SPIN_BUTTON_TEXT = 'Reveal My Offer';
-    const DEFAULT_CTA_TEXT = 'View Offer';
+    const DEFAULT_SPIN_BUTTON_TEXT = 'SPIN NOW';
+    const DEFAULT_CTA_TEXT = 'VISIT OFFER';
     /**
      * Option key used to persist settings.
      *
@@ -380,10 +380,10 @@ class TMW_CR_Slot_Sidebar_Banner {
 
             <div class="tmw-cr-slot-banner__footer">
                 <p class="tmw-cr-slot-banner__result">
-                    <span class="tmw-cr-slot-banner__result-label"><?php esc_html_e( 'Top pick:', 'tmw-cr-slot-sidebar-banner' ); ?></span>
+                    <span class="tmw-cr-slot-banner__result-label"><?php esc_html_e( 'Your match is ready', 'tmw-cr-slot-sidebar-banner' ); ?></span>
                     <span class="tmw-cr-slot-banner__offer-name"><?php echo esc_html( $slot_data['initial_offer_name'] ); ?></span>
                 </p>
-                <p class="tmw-cr-slot-banner__offer-slogan"><?php echo esc_html( $slot_data['initial_offer_slogan'] ); ?></p>
+                <p class="tmw-cr-slot-banner__offer-slogan" aria-hidden="true"></p>
                 <a class="tmw-cr-slot-banner__cta" href="<?php echo esc_url( $slot_data['initial_cta_url'] ); ?>"<?php echo $cta_target; ?>>
                     <?php echo esc_html( $slot_data['initial_cta_text'] ); ?>
                 </a>
@@ -425,10 +425,6 @@ class TMW_CR_Slot_Sidebar_Banner {
                 $data['cta_url'] = $override['cta_url'];
             }
 
-            if ( ! empty( $override['cta_text'] ) ) {
-                $data['cta_text'] = $override['cta_text'];
-            }
-
             if ( ! empty( $override['headline'] ) ) {
                 $data['headline'] = $override['headline'];
             }
@@ -437,7 +433,7 @@ class TMW_CR_Slot_Sidebar_Banner {
         $data['headline'] = self::fallback_text( $data['headline'], self::DEFAULT_HEADLINE );
         $data['subheadline'] = self::fallback_text( $data['subheadline'], self::DEFAULT_SUBHEADLINE );
         $data['spin_button_text'] = self::fallback_text( $data['spin_button_text'], self::DEFAULT_SPIN_BUTTON_TEXT );
-        $data['cta_text'] = self::fallback_text( $data['cta_text'], self::DEFAULT_CTA_TEXT );
+        $data['cta_text'] = self::DEFAULT_CTA_TEXT;
 
         return $data;
     }
@@ -462,9 +458,9 @@ class TMW_CR_Slot_Sidebar_Banner {
 
         $initial_offer     = isset( $slot_offers[0] ) ? $slot_offers[0] : null;
         $initial_cta_url   = $initial_offer && ! empty( $initial_offer['cta_url'] ) ? $initial_offer['cta_url'] : $banner_data['cta_url'];
-        $initial_cta_text  = $initial_offer && ! empty( $initial_offer['cta_text'] ) ? $initial_offer['cta_text'] : $banner_data['cta_text'];
-        $initial_offername = $initial_offer ? $initial_offer['name'] : __( 'No active offers', 'tmw-cr-slot-sidebar-banner' );
-        $initial_slogan    = $initial_offer && ! empty( $initial_offer['slogan'] ) ? $initial_offer['slogan'] : __( 'Recommended adult offer', 'tmw-cr-slot-sidebar-banner' );
+        $initial_cta_text  = $banner_data['cta_text'];
+        $initial_offername = $initial_offer ? $this->sanitize_frontend_offer_name( (string) $initial_offer['name'] ) : __( 'No active offers', 'tmw-cr-slot-sidebar-banner' );
+        $initial_slogan    = '';
 
         return array(
             'offers'             => $slot_offers,
@@ -474,6 +470,25 @@ class TMW_CR_Slot_Sidebar_Banner {
             'initial_cta_text'   => $initial_cta_text,
             'has_empty_offer_cta' => $this->slot_has_empty_offer_cta( $slot_offers ),
         );
+    }
+
+    /**
+     * Sanitizes frontend offer names by removing backend payout suffixes.
+     *
+     * @param string $offer_name Raw offer name.
+     *
+     * @return string
+     */
+    protected function sanitize_frontend_offer_name( $offer_name ) {
+        $name = trim( (string) $offer_name );
+        if ( '' === $name ) {
+            return '';
+        }
+
+        $suffixes = array( 'PPS', 'CPA', 'CPL', 'REVSHARE', 'SOI', 'DOI', 'CPC', 'CPI', 'CPM', 'SMARTLINK', 'FALLBACK' );
+        $pattern  = '/\s*[-–—|:]\s*(?:' . implode( '|', $suffixes ) . ')\s*$/i';
+
+        return trim( (string) preg_replace( $pattern, '', $name ) );
     }
 
     protected static function fallback_text( $value, $fallback ) {

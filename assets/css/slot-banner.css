@@ -195,6 +195,14 @@
     animation: tmw-cr-slot-cta-pulse 2.4s ease-in-out infinite;
 }
 
+
+.tmw-cr-slot-banner__cta,
+.tmw-cr-slot-banner__cta *,
+.tmw-cr-slot-banner__cta:hover,
+.tmw-cr-slot-banner__cta:focus-visible {
+    text-decoration: none;
+}
+
 .tmw-cr-slot-banner__cta:hover,
 .tmw-cr-slot-banner__cta:focus-visible {
     transform: translateY(-2px) scale(1.02);

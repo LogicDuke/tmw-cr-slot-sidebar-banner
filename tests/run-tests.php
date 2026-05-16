@@ -5316,13 +5316,16 @@ $tests['frontend_cta_forces_new_tab_and_rel_attributes'] = function() {
 
 $tests['mobile_css_preserves_compact_three_card_row'] = function() {
     $css_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/css/slot-banner.css' );
+    tmw_assert_contains( 'flex: 0 1 102px;', $css_file, 'Default outer-col should keep compact bounded flex basis.' );
+    tmw_assert_contains( 'max-width: 102px;', $css_file, 'Default outer-col should keep compact max width.' );
+    tmw_assert_true( false === strpos( $css_file, 'flex: 0 0 calc((100% - 20px) / 3);' ), 'Default CSS must not use stretch-to-third-width sizing.' );
     tmw_assert_contains( '@media (max-width: 767px)', $css_file, 'Mobile CSS should define a max-width 767px media query.' );
     tmw_assert_contains( 'gap: 8px;', $css_file, 'Mobile container should keep compact 8px gap.' );
     tmw_assert_contains( 'flex-wrap: nowrap;', $css_file, 'Mobile container should keep a single row.' );
     tmw_assert_contains( 'overflow: hidden;', $css_file, 'Mobile container should clip overflow to preserve compact frame layout.' );
     tmw_assert_contains( 'align-items: center;', $css_file, 'Mobile container should vertically align card frames.' );
-    tmw_assert_contains( 'flex: 0 1 92px;', $css_file, 'Mobile outer-col should use compact bounded flex basis.' );
-    tmw_assert_contains( 'max-width: 92px;', $css_file, 'Mobile outer-col should preserve compact max width.' );
+    tmw_assert_contains( 'flex: 0 1 88px;', $css_file, 'Mobile outer-col should use compact bounded flex basis.' );
+    tmw_assert_contains( 'max-width: 88px;', $css_file, 'Mobile outer-col should preserve compact max width.' );
     tmw_assert_contains( 'min-width: 0;', $css_file, 'Mobile outer-col should allow shrinking without overflow.' );
     tmw_assert_true( false === strpos( $css_file, 'flex: 0 0 calc((100% - 16px) / 3);' ), 'Mobile CSS must not reintroduce the old stretch-to-third-width rule.' );
 

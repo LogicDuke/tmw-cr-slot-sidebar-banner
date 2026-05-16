@@ -59,8 +59,9 @@
 
 #container .outer-col {
     position: relative;
-    flex: 0 0 calc((100% - 20px) / 3);
-    max-width: none;
+    flex: 0 1 102px;
+    max-width: 102px;
+    width: 100%;
     min-width: 0;
     height: var(--item-height);
     border-radius: 12px;
@@ -306,8 +307,8 @@
     }
 
     #container .outer-col {
-        flex: 0 1 92px;
-        max-width: 92px;
+        flex: 0 1 88px;
+        max-width: 88px;
         min-width: 0;
     }
 }

@@ -5238,7 +5238,7 @@ $tests['frontend_banner_wording_v198'] = function() {
     $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );
     tmw_assert_contains( 'SPIN NOW', $plugin_file, 'Spin button default should be SPIN NOW.' );
     tmw_assert_contains( "POST_SPIN_RESULT_LABEL = 'Your match is ready'", $js_file, 'Result label should use Your match is ready in frontend JS state updates.' );
-    tmw_assert_contains( 'applyWinState(state, matchingOffer);', $js_file, 'Post-spin JS should only set result text in win state.' );
+    tmw_assert_contains( 'showWinResult(state, matchingOffer);', $js_file, 'Post-spin JS should only set result text in win state.' );
     tmw_assert_contains( "POST_SPIN_CTA_TEXT = 'VISIT OFFER'", $js_file, 'Post-spin JS should force VISIT OFFER CTA copy.' );
     tmw_assert_contains( 'sanitizeFrontendOfferName(matchingOffer.name)', $js_file, 'Post-spin JS should sanitize the visible offer name.' );
     tmw_assert_contains( 'setOfferSloganVisibility(state.offerSloganTarget', $js_file, 'Post-spin JS should hide slogan/category metadata wrappers when no safe text is present.' );
@@ -5253,7 +5253,7 @@ $tests['frontend_banner_wording_v198'] = function() {
 
 $tests['frontend_post_spin_cta_text_decoration_none'] = function() {
     $css_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/css/slot-banner.css' );
-    tmw_assert_contains( '.tmw-cr-slot-banner .tmw-cr-slot-banner__cta *', $css_file, 'CTA child nodes should prevent inherited strike-through decoration.' );
+    tmw_assert_contains( '.tmw-cr-slot-banner .tmw-cr-slot-banner__cta-label', $css_file, 'CTA label should prevent inherited strike-through decoration.' );
     tmw_assert_contains( 'text-decoration: none !important;', $css_file, 'CTA styles should enforce no text decoration with strong specificity.' );
     tmw_assert_contains( '.tmw-cr-slot-banner .tmw-cr-slot-banner__cta::before', $css_file, 'CTA pseudo elements should not render strike-through visuals.' );
     tmw_assert_contains( '.tmw-cr-slot-banner .tmw-cr-slot-banner__cta-label', $css_file, 'CTA label should exist for strict text-decoration overrides.' );
@@ -5367,6 +5367,37 @@ $tests['frontend_initial_state_hidden_and_no_auto_spin'] = function() {
     tmw_assert_contains( '<span class="tmw-cr-slot-banner__result-label"></span>', $plugin_file, 'Result label should render empty before a real win.' );
     tmw_assert_contains( 'applyPreWinState(state);', $js_file, 'Banner should initialize pre-win hidden state.' );
     tmw_assert_true( false === strpos( $js_file, 'setResult(state, false);' ), 'Banner should not precompute/show winner state on load.' );
+};
+$tests['frontend_cta_text_never_used_as_offer_name_fallback'] = function() {
+    $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );
+    tmw_assert_true( false === strpos( $js_file, 'state.defaultOfferName || state.defaultCtaText' ), 'Default CTA text must never be used as offer-name fallback.' );
+    tmw_assert_true( false === strpos( $js_file, 'sanitizeFrontendOfferName(matchingOffer.name) || state.defaultOfferName || state.defaultCtaText' ), 'Win state must not fallback to CTA text for offer-name.' );
+    tmw_assert_contains( 'sanitizeFrontendOfferName(matchingOffer.name) || getOfferAbbreviation(matchingOffer)', $js_file, 'Win state should fallback to abbreviation instead of CTA text.' );
+};
+
+$tests['spinning_state_hides_result_and_cta'] = function() {
+    $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );
+    tmw_assert_contains( 'function hideResultArea(state)', $js_file, 'JS should include explicit helper to hide non-win result area.' );
+    tmw_assert_contains( 'function setCtaVisibility(state, isVisible)', $js_file, 'JS should include explicit helper to toggle CTA visibility.' );
+    tmw_assert_contains( 'function showWinResult(state, matchingOffer)', $js_file, 'JS should include explicit helper to render validated win result.' );
+    tmw_assert_contains( 'applySpinningState(state);', $js_file, 'Spin start should apply explicit spinning hidden-state helper.' );
+    tmw_assert_contains( "window.console.debug('[TMW-CR-CTA] hidden_non_win_result');", $js_file, 'Debug helper should include hidden non-win result trace.' );
+};
+
+$tests['cta_text_updates_preserve_cta_label_span'] = function() {
+    $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
+    $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );
+    tmw_assert_contains( '<span class="tmw-cr-slot-banner__cta-label"><?php echo esc_html( self::DEFAULT_CTA_TEXT ); ?></span>', $plugin_file, 'CTA render should include dedicated CTA label span.' );
+    tmw_assert_contains( 'function setCtaText(cta, text)', $js_file, 'JS should update CTA text via helper that preserves label span.' );
+    tmw_assert_true( false === strpos( $js_file, 'state.cta.textContent = POST_SPIN_CTA_TEXT' ), 'Win-state CTA updates should not replace CTA markup via textContent.' );
+};
+
+$tests['cta_css_includes_scoped_no_decoration_rules'] = function() {
+    $css_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/css/slot-banner.css' );
+    tmw_assert_contains( '.tmw-cr-slot-banner .tmw-cr-slot-banner__cta:focus,', $css_file, 'CTA no-decoration rule should include focused CTA state.' );
+    tmw_assert_contains( '.tmw-cr-slot-banner .tmw-cr-slot-banner__cta-label {', $css_file, 'CTA no-decoration rule should include CTA label.' );
+    tmw_assert_contains( '-webkit-text-decoration-line: none !important;', $css_file, 'CTA text-decoration override should include webkit-prefixed fallback.' );
+    tmw_assert_contains( 'box-shadow: none !important;', $css_file, 'CTA label pseudo-elements should suppress visual line overlays.' );
 };
 $tests['finish_spin_reveals_only_on_three_reel_match'] = function() {
     $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );

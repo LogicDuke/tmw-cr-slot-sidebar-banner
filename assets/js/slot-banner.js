@@ -298,7 +298,38 @@
         }
     }
 
-    function clearResultVisibility(state) {
+    function setCtaText(cta, text) {
+        if (!cta) {
+            return;
+        }
+
+        var safeText = typeof text === 'string' ? text : '';
+        var label = cta.querySelector('.tmw-cr-slot-banner__cta-label');
+
+        if (!label) {
+            cta.textContent = '';
+            label = document.createElement('span');
+            label.className = 'tmw-cr-slot-banner__cta-label';
+            cta.appendChild(label);
+        }
+
+        label.textContent = safeText;
+    }
+
+    function setCtaVisibility(state, isVisible) {
+        if (!state || !state.cta) {
+            return;
+        }
+
+        state.cta.hidden = !isVisible;
+        if (isVisible) {
+            state.cta.removeAttribute('aria-hidden');
+        } else {
+            state.cta.setAttribute('aria-hidden', 'true');
+        }
+    }
+
+    function hideResultArea(state) {
         state.banner.classList.add('tmw-cr-slot-banner--pre-win');
         state.banner.classList.remove('tmw-cr-slot-banner--win');
 
@@ -312,25 +343,26 @@
 
         setOfferSloganVisibility(state.offerSloganTarget, '', '', state.debugEnabled);
 
-        if (state.cta) {
-            state.cta.hidden = true;
-            state.cta.setAttribute('aria-hidden', 'true');
-            state.cta.textContent = POST_SPIN_CTA_TEXT;
+        setCtaText(state.cta, POST_SPIN_CTA_TEXT);
+        setCtaVisibility(state, false);
+
+        if (state.debugEnabled && window.console && typeof window.console.debug === 'function') {
+            window.console.debug('[TMW-CR-CTA] hidden_non_win_result');
         }
     }
 
     function applyPreWinState(state) {
-        clearResultVisibility(state);
+        hideResultArea(state);
         if (state.debugEnabled && window.console && typeof window.console.debug === 'function') {
             window.console.debug('[TMW-CR-CTA] pre_win_state_hidden');
         }
     }
 
     function applySpinningState(state) {
-        clearResultVisibility(state);
+        hideResultArea(state);
     }
 
-    function applyWinState(state, matchingOffer) {
+    function showWinResult(state, matchingOffer) {
         if (!matchingOffer) {
             return;
         }
@@ -343,21 +375,23 @@
         }
 
         if (state.offerNameTarget) {
-            state.offerNameTarget.textContent = sanitizeFrontendOfferName(matchingOffer.name) || '';
+            state.offerNameTarget.textContent = sanitizeFrontendOfferName(matchingOffer.name) || getOfferAbbreviation(matchingOffer);
         }
 
         setOfferSloganVisibility(state.offerSloganTarget, '', matchingOffer.id || '', state.debugEnabled);
 
         if (state.cta) {
-            var nextHref = matchingOffer.cta_url || state.defaultCtaUrl;
+            var nextHref = matchingOffer.cta_url || state.defaultCtaUrl || '';
             if (nextHref) {
                 state.cta.href = nextHref;
             }
 
-            state.cta.textContent = POST_SPIN_CTA_TEXT;
-            state.cta.hidden = false;
-            state.cta.removeAttribute('aria-hidden');
+            setCtaText(state.cta, POST_SPIN_CTA_TEXT);
+            setCtaVisibility(state, !!nextHref);
             appendTrackingParam(state.cta, state.param, state.value);
+            if (state.debugEnabled && window.console && typeof window.console.debug === 'function') {
+                window.console.debug('[TMW-CR-CTA] cta_label_sanitized');
+            }
         }
     }
 
@@ -387,7 +421,7 @@
                 window.console.debug('[TMW-CR-CTA] no_reveal_without_three_match');
             }
             if (state.hasWin && state.currentWinningOffer) {
-                applyWinState(state, state.currentWinningOffer);
+                showWinResult(state, state.currentWinningOffer);
             } else {
                 applyPreWinState(state);
             }
@@ -405,7 +439,7 @@
             }
             state.hasWin = true;
             state.currentWinningOffer = matchingOffer;
-            applyWinState(state, matchingOffer);
+            showWinResult(state, matchingOffer);
             return;
         }
     }

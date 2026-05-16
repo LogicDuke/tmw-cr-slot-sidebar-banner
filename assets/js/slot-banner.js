@@ -272,6 +272,32 @@
         return renderFinalSelection(state, winner, prepareForSpin);
     }
 
+
+    function setOfferSloganVisibility(target, text, offerId, debugEnabled) {
+        if (!target) {
+            return;
+        }
+
+        var safeText = typeof text === 'string' ? text.trim() : '';
+
+        target.textContent = safeText;
+
+        if (safeText) {
+            target.hidden = false;
+            target.removeAttribute('aria-hidden');
+            target.classList.add('tmw-cr-slot-banner__offer-slogan--active');
+            return;
+        }
+
+        target.hidden = true;
+        target.setAttribute('aria-hidden', 'true');
+        target.classList.remove('tmw-cr-slot-banner__offer-slogan--active');
+
+        if (debugEnabled && window.console && typeof window.console.debug === 'function') {
+            window.console.debug('[TMW-CR-CTA] post_spin_empty_pill_hidden offer_id=' + (offerId || ''));
+        }
+    }
+
     function applyDefaultState(state) {
         state.banner.classList.remove('tmw-cr-slot-banner--win');
 
@@ -290,9 +316,7 @@
         if (state.offerNameTarget) {
             state.offerNameTarget.textContent = state.defaultOfferName || state.defaultCtaText || '';
         }
-        if (state.offerSloganTarget) {
-            state.offerSloganTarget.textContent = '';
-        }
+        setOfferSloganVisibility(state.offerSloganTarget, '', '', state.debugEnabled);
 
         if (state.resultLabel) {
             state.resultLabel.textContent = state.defaultResultLabel;
@@ -327,9 +351,7 @@
             if (state.offerNameTarget) {
                 state.offerNameTarget.textContent = sanitizeFrontendOfferName(matchingOffer.name) || state.defaultOfferName || state.defaultCtaText || '';
             }
-            if (state.offerSloganTarget) {
-                state.offerSloganTarget.textContent = '';
-            }
+            setOfferSloganVisibility(state.offerSloganTarget, '', matchingOffer.id || '', state.debugEnabled);
 
             if (state.cta) {
                 var nextHref = matchingOffer.cta_url || state.defaultCtaUrl;
@@ -420,6 +442,8 @@
         var defaultCtaUrl = banner.getAttribute('data-default-cta-url') || '';
         var defaultOfferName = offerNameTarget ? offerNameTarget.textContent : '';
         var defaultSlogan = offerSloganTarget ? offerSloganTarget.textContent : '';
+
+        setOfferSloganVisibility(offerSloganTarget, defaultSlogan, '', debugEnabled);
         var debugEnabled = banner.getAttribute('data-debug-enabled') === '1';
 
         var state = {

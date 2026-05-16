@@ -5242,7 +5242,8 @@ $tests['frontend_banner_wording_v198'] = function() {
     tmw_assert_contains( "POST_SPIN_RESULT_LABEL = 'Your match is ready'", $js_file, 'Post-spin JS should force the public result label.' );
     tmw_assert_contains( "POST_SPIN_CTA_TEXT = 'VISIT OFFER'", $js_file, 'Post-spin JS should force VISIT OFFER CTA copy.' );
     tmw_assert_contains( 'sanitizeFrontendOfferName(matchingOffer.name)', $js_file, 'Post-spin JS should sanitize the visible offer name.' );
-    tmw_assert_true( false !== strpos( $js_file, 'state.offerSloganTarget.textContent = "";' ) || false !== strpos( $js_file, "state.offerSloganTarget.textContent = '';" ), 'Post-spin JS should clear slogan/category metadata text.' );
+    tmw_assert_contains( 'setOfferSloganVisibility(state.offerSloganTarget', $js_file, 'Post-spin JS should hide slogan/category metadata wrappers when no safe text is present.' );
+    tmw_assert_contains( "target.hidden = true;", $js_file, 'Post-spin JS should hide empty metadata pill wrappers.' );
     tmw_assert_true( false === strpos( $plugin_file . $js_file, 'Winner!' ), 'Banner should not include Winner wording.' );
     tmw_assert_true( false === strpos( $plugin_file . $js_file, 'Spin the Reels' ), 'Banner should not include Spin the Reels wording.' );
     tmw_assert_true( false === strpos( $plugin_file . $js_file, 'Free Spins' ), 'Banner should not include Free Spins wording.' );
@@ -5255,6 +5256,8 @@ $tests['frontend_post_spin_cta_text_decoration_none'] = function() {
     $css_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/css/slot-banner.css' );
     tmw_assert_contains( '.tmw-cr-slot-banner__cta *', $css_file, 'CTA child nodes should prevent inherited strike-through decoration.' );
     tmw_assert_contains( 'text-decoration: none;', $css_file, 'CTA styles should enforce no text decoration.' );
+    tmw_assert_contains( '.tmw-cr-slot-banner__cta::before', $css_file, 'CTA pseudo elements should not render strike-through visuals.' );
+    tmw_assert_contains( 'border-bottom: none;', $css_file, 'CTA pseudo elements should not render underline borders.' );
 };
 
 $tests['plugin_version_bumped_to_198'] = function() {

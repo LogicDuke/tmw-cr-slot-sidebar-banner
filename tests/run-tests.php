@@ -5316,24 +5316,29 @@ $tests['frontend_cta_forces_new_tab_and_rel_attributes'] = function() {
 
 $tests['mobile_css_preserves_compact_three_card_row'] = function() {
     $css_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/css/slot-banner.css' );
-    tmw_assert_contains( 'flex: 0 1 102px;', $css_file, 'Default outer-col should keep compact bounded flex basis.' );
-    tmw_assert_contains( 'max-width: 102px;', $css_file, 'Default outer-col should keep compact max width.' );
-    tmw_assert_true( false === strpos( $css_file, 'flex: 0 0 calc((100% - 20px) / 3);' ), 'Default CSS must not use stretch-to-third-width sizing.' );
-    tmw_assert_contains( '@media (max-width: 767px)', $css_file, 'Mobile CSS should define a max-width 767px media query.' );
-    tmw_assert_contains( 'gap: 8px;', $css_file, 'Mobile container should keep compact 8px gap.' );
-    tmw_assert_contains( 'flex-wrap: nowrap;', $css_file, 'Mobile container should keep a single row.' );
-    tmw_assert_contains( 'overflow: hidden;', $css_file, 'Mobile container should clip overflow to preserve compact frame layout.' );
-    tmw_assert_contains( 'align-items: center;', $css_file, 'Mobile container should vertically align card frames.' );
-    tmw_assert_contains( 'flex: 0 1 88px;', $css_file, 'Mobile outer-col should use compact bounded flex basis.' );
-    tmw_assert_contains( 'max-width: 88px;', $css_file, 'Mobile outer-col should preserve compact max width.' );
-    tmw_assert_contains( 'min-width: 0;', $css_file, 'Mobile outer-col should allow shrinking without overflow.' );
-    tmw_assert_true( false === strpos( $css_file, 'flex: 0 0 calc((100% - 16px) / 3);' ), 'Mobile CSS must not reintroduce the old stretch-to-third-width rule.' );
+    tmw_assert_contains( '#container {', $css_file, 'Slot reel CSS should define the #container rule.' );
+    tmw_assert_contains( 'justify-content: center;', $css_file, 'Reel container should center compact logo tiles.' );
+    tmw_assert_contains( 'gap: 10px;', $css_file, 'Reel container should preserve compact tile spacing.' );
 
-    $mobile_outer_col_match = array();
-    preg_match( '/@media\\s*\\(max-width:\\s*767px\\)\\s*\\{[\\s\\S]*?#container\\s+\\.outer-col\\s*\\{([\\s\\S]*?)\\}[\\s\\S]*?\\}/', $css_file, $mobile_outer_col_match );
-    tmw_assert_true( isset( $mobile_outer_col_match[1] ), 'Mobile media query should include a #container .outer-col rule.' );
-    $mobile_outer_col_rule = isset( $mobile_outer_col_match[1] ) ? (string) $mobile_outer_col_match[1] : '';
-    tmw_assert_true( false === strpos( $mobile_outer_col_rule, 'max-width: none;' ), 'Mobile outer-col rule must not use max-width:none stretch behavior.' );
+    tmw_assert_contains( '#container .outer-col {', $css_file, 'Slot reel CSS should define the outer-col tile rule.' );
+    tmw_assert_contains( 'flex: 1 1 0;', $css_file, 'Outer-col tiles should keep compact equal-width flex sizing.' );
+    tmw_assert_contains( 'max-width: 102px;', $css_file, 'Outer-col tiles should remain compact and bounded.' );
+    tmw_assert_true( false === strpos( $css_file, 'max-width: none;' ), 'Outer-col tiles must not use unbounded max-width.' );
+    tmw_assert_true( false === strpos( $css_file, 'flex: 0 0 calc((100% - 20px) / 3);' ), 'Default CSS must not use stretch-to-third-width sizing.' );
+    tmw_assert_true( false === strpos( $css_file, 'flex: 0 0 calc((100% - 16px) / 3);' ), 'CSS must not include stretch-to-third-width mobile sizing.' );
+
+    tmw_assert_contains( '#container .outer-col .icon .tmw-cr-slot-banner__reel-logo {', $css_file, 'Reel logo rule should exist for compact tile logos.' );
+    tmw_assert_contains( 'width: 80%;', $css_file, 'Reel logos should use compact contained width.' );
+    tmw_assert_contains( 'height: 80%;', $css_file, 'Reel logos should use compact contained height.' );
+
+    tmw_assert_contains( '.tmw-cr-slot-banner__spin {', $css_file, 'Spin/reveal button style block should exist.' );
+    tmw_assert_contains( 'align-self: center;', $css_file, 'Spin/reveal button should remain centered in the reel panel.' );
+
+    tmw_assert_contains( '.tmw-cr-slot-banner__footer {', $css_file, 'Footer block should exist for winner and CTA stacking.' );
+    tmw_assert_contains( 'flex-direction: column;', $css_file, 'Winner/top-pick and CTA should remain vertically stacked.' );
+
+    tmw_assert_contains( '@media (min-width: 768px)', $css_file, 'Desktop media query should match prompt-67 baseline.' );
+    tmw_assert_true( false === strpos( $css_file, '@media (max-width: 767px)' ), 'Prompt-67 baseline should not include a max-width 767px override.' );
 };
 
 $tests['js_final_selection_renders_same_offer_for_three_columns'] = function() {

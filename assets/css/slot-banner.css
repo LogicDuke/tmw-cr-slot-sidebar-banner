@@ -52,17 +52,12 @@
     gap: 10px;
     width: 100%;
     margin: 0 auto;
-    flex-wrap: nowrap;
-    overflow: hidden;
-    align-items: center;
 }
 
 #container .outer-col {
     position: relative;
-    flex: 0 1 102px;
+    flex: 1 1 0;
     max-width: 102px;
-    width: 100%;
-    min-width: 0;
     height: var(--item-height);
     border-radius: 12px;
     background: linear-gradient(180deg, rgba(36, 26, 63, 0.95) 0%, rgba(18, 14, 38, 0.95) 100%);
@@ -106,26 +101,17 @@
 }
 
 #container .outer-col .icon .tmw-cr-slot-banner__reel-logo {
-    max-width: 72%;
-    max-height: 72%;
-    width: auto;
-    height: auto;
+    width: 80%;
+    height: 80%;
     object-fit: contain;
     border-radius: 12px;
     display: block;
 }
 
 #container .outer-col .icon .tmw-cr-slot-banner__reel-text {
-    max-width: 84%;
-    padding: 0.35rem 0.45rem;
-    border-radius: 10px;
-    background: rgba(255, 255, 255, 0.1);
-    font-size: 0.82rem;
+    font-size: 1rem;
     font-weight: 700;
-    letter-spacing: 0.03em;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    letter-spacing: 0.12em;
     color: rgba(255, 255, 255, 0.92);
 }
 
@@ -295,20 +281,5 @@
 
     #container {
         --item-height: 100px;
-    }
-}
-
-@media (max-width: 767px) {
-    #container {
-        gap: 8px;
-        flex-wrap: nowrap;
-        overflow: hidden;
-        align-items: center;
-    }
-
-    #container .outer-col {
-        flex: 0 1 88px;
-        max-width: 88px;
-        min-width: 0;
     }
 }

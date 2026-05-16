@@ -2,6 +2,8 @@
     var BASE_SPINNING_DURATION = 2600;
     var COLUMN_SPINNING_DURATION = 450;
     var ICONS_PER_REEL = 40;
+    var POST_SPIN_RESULT_LABEL = 'Your match is ready';
+    var POST_SPIN_CTA_TEXT = 'VISIT OFFER';
 
     function appendTrackingParam(anchor, param, value) {
         if (!anchor || !anchor.href || !param || !value) {
@@ -319,7 +321,7 @@
             state.banner.classList.add('tmw-cr-slot-banner--win');
 
             if (state.resultLabel) {
-                state.resultLabel.textContent = 'Your match is ready';
+                state.resultLabel.textContent = POST_SPIN_RESULT_LABEL;
             }
 
             if (state.offerNameTarget) {
@@ -336,7 +338,7 @@
                     state.cta.href = nextHref;
                 }
 
-                state.cta.textContent = state.defaultCtaText || state.cta.textContent;
+                state.cta.textContent = POST_SPIN_CTA_TEXT;
                 appendTrackingParam(state.cta, state.param, state.value);
             }
 

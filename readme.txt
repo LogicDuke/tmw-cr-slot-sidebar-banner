@@ -28,7 +28,7 @@ Use the `[tmw_cr_slot_banner]` shortcode inside any widget, sidebar, or post con
 == Frequently Asked Questions ==
 
 = How do I add country specific creatives? =
-Enter a line for each country on the settings page using the format `CC|Image URL|CTA URL|CTA Text|Headline`. For example: `CA|https://example.com/ca.png|https://offer.com/ca|View Offer|Recommended Adult Offer`.
+Enter a line for each country on the settings page using the format `CC|Image URL|CTA URL|CTA Text|Headline`. For example: `CA|https://example.com/ca.png|https://offer.com/ca|VISIT OFFER|Recommended Adult Offer`.
 
 = Can I use the banner outside of a sidebar? =
 Yes. The shortcode outputs responsive markup that adapts well to any narrow column or block area.

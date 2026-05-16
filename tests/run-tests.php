@@ -4,8 +4,8 @@ require_once __DIR__ . '/bootstrap.php';
 class TMW_CR_Slot_Sidebar_Banner {
     const DEFAULT_HEADLINE = 'Discover Adult Offers';
     const DEFAULT_SUBHEADLINE = 'Cam, Dating, AI & More';
-    const DEFAULT_SPIN_BUTTON_TEXT = 'Reveal My Offer';
-    const DEFAULT_CTA_TEXT = 'View Offer';
+    const DEFAULT_SPIN_BUTTON_TEXT = 'SPIN NOW';
+    const DEFAULT_CTA_TEXT = 'VISIT OFFER';
     const OPTION_KEY = 'tmw_cr_slot_banner_settings';
     const STATS_SYNC_CRON_HOOK = 'tmw_cr_slot_banner_scheduled_stats_sync';
 
@@ -684,7 +684,7 @@ $tests['empty_offer_cta_override_falls_back_to_global_then_default'] = function(
     $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
 
     $from_global = $repository->get_effective_cta_text( '100', array(), array( 'cta_text' => 'GLOBAL CTA' ), array(), array( 'custom_cta_text' => '' ), array() );
-    tmw_assert_same( 'View Offer', $from_global, 'Empty custom CTA should fallback to generated CTA text.' );
+    tmw_assert_same( 'VISIT OFFER', $from_global, 'Empty custom CTA should fallback to generated CTA text.' );
 
     $from_default = $repository->get_effective_cta_text( '100', array(), array( 'cta_text' => '' ), array(), array( 'custom_cta_text' => '' ), array() );
     tmw_assert_same( TMW_CR_Slot_Sidebar_Banner::DEFAULT_CTA_TEXT, $from_default, 'Empty global CTA should fallback to plugin default CTA text.' );
@@ -2301,7 +2301,7 @@ $tests['frontend_slot_offer_includes_logo_fields_for_mapped_brand'] = function()
     $offers = $repository->get_frontend_slot_offers(
         'sidebar',
         array( 'slot_offer_ids' => array( '1001' ), 'slot_offer_priority' => array( '1001' => 1 ) ),
-        array( 'cta_url' => 'https://example.test/click', 'cta_text' => 'View Offer' ),
+        array( 'cta_url' => 'https://example.test/click', 'cta_text' => 'VISIT OFFER' ),
         'US',
         array()
     );
@@ -2322,7 +2322,7 @@ $tests['frontend_slot_offer_includes_logo_fields_for_newly_mapped_pps_brand'] = 
     $offers = $repository->get_frontend_slot_offers(
         'sidebar',
         array( 'slot_offer_ids' => array( '1003' ), 'slot_offer_priority' => array( '1003' => 1 ) ),
-        array( 'cta_url' => 'https://example.test/click', 'cta_text' => 'View Offer' ),
+        array( 'cta_url' => 'https://example.test/click', 'cta_text' => 'VISIT OFFER' ),
         'US',
         array()
     );
@@ -2342,7 +2342,7 @@ $tests['frontend_slot_offer_includes_empty_logo_url_when_unmapped'] = function()
     $offers = $repository->get_frontend_slot_offers(
         'sidebar',
         array( 'slot_offer_ids' => array( '1002' ), 'slot_offer_priority' => array( '1002' => 1 ) ),
-        array( 'cta_url' => 'https://example.test/click', 'cta_text' => 'View Offer' ),
+        array( 'cta_url' => 'https://example.test/click', 'cta_text' => 'VISIT OFFER' ),
         'US',
         array()
     );
@@ -5232,13 +5232,13 @@ $tests['classification_vertical_priority_v191'] = function() {
     }
 };
 
-$tests['frontend_banner_wording_v191'] = function() {
+$tests['frontend_banner_wording_v198'] = function() {
     tmw_reset_test_state();
     $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
     $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );
-    tmw_assert_contains( 'Reveal My Offer', $plugin_file, 'Spin button default should be Reveal My Offer.' );
-    tmw_assert_contains( 'Top pick:', $plugin_file, 'Result label should use Top pick in PHP template.' );
-    tmw_assert_contains( 'Top pick:', $js_file, 'Result label should use Top pick in frontend JS state updates.' );
+    tmw_assert_contains( 'SPIN NOW', $plugin_file, 'Spin button default should be SPIN NOW.' );
+    tmw_assert_contains( 'Your match is ready', $plugin_file, 'Result label should use Your match is ready in PHP template.' );
+    tmw_assert_contains( 'Your match is ready', $js_file, 'Result label should use Your match is ready in frontend JS state updates.' );
     tmw_assert_true( false === strpos( $plugin_file . $js_file, 'Winner!' ), 'Banner should not include Winner wording.' );
     tmw_assert_true( false === strpos( $plugin_file . $js_file, 'Spin the Reels' ), 'Banner should not include Spin the Reels wording.' );
     tmw_assert_true( false === strpos( $plugin_file . $js_file, 'Free Spins' ), 'Banner should not include Free Spins wording.' );
@@ -5369,7 +5369,7 @@ $tests['spin_button_text_migrates_legacy_default_but_preserves_custom'] = functi
     tmw_reset_test_state();
     $GLOBALS['tmw_test_options'][ TMW_CR_Slot_Sidebar_Banner::OPTION_KEY ] = array( 'spin_button_text' => 'Show Best Offer' );
     $migrated = TMW_CR_Slot_Sidebar_Banner::get_settings();
-    tmw_assert_same( 'Reveal My Offer', (string) $migrated['spin_button_text'], 'Legacy default spin text should migrate to Reveal My Offer.' );
+    tmw_assert_same( 'SPIN NOW', (string) $migrated['spin_button_text'], 'Legacy default spin text should migrate to Reveal My Offer.' );
 
     $GLOBALS['tmw_test_options'][ TMW_CR_Slot_Sidebar_Banner::OPTION_KEY ] = array( 'spin_button_text' => 'My Custom Offer Text' );
     $custom = TMW_CR_Slot_Sidebar_Banner::get_settings();

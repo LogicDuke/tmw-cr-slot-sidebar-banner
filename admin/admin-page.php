@@ -1682,7 +1682,7 @@ class TMW_CR_Slot_Admin_Page {
                         <th scope="row"><label for="tmw-cr-cta-text"><?php esc_html_e( 'CTA Text', 'tmw-cr-slot-sidebar-banner' ); ?></label></th>
                         <td>
                             <input type="text" class="regular-text" id="tmw-cr-cta-text" name="<?php echo esc_attr( $this->option_key ); ?>[cta_text]" value="<?php echo esc_attr( $settings['cta_text'] ); ?>" />
-                            <p class="description"><?php esc_html_e( 'Default used when empty: View Offer', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+                            <p class="description"><?php esc_html_e( 'Default used when empty: VISIT OFFER', 'tmw-cr-slot-sidebar-banner' ); ?></p>
                         </td>
                     </tr>
                     <tr>

@@ -442,9 +442,9 @@
         var defaultCtaUrl = banner.getAttribute('data-default-cta-url') || '';
         var defaultOfferName = offerNameTarget ? offerNameTarget.textContent : '';
         var defaultSlogan = offerSloganTarget ? offerSloganTarget.textContent : '';
+        var debugEnabled = banner.getAttribute('data-debug-enabled') === '1';
 
         setOfferSloganVisibility(offerSloganTarget, defaultSlogan, '', debugEnabled);
-        var debugEnabled = banner.getAttribute('data-debug-enabled') === '1';
 
         var state = {
             banner: banner,

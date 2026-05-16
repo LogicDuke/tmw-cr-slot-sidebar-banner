@@ -226,7 +226,6 @@
     text-decoration-line: none !important;
     -webkit-text-decoration-line: none !important;
     border-bottom: 0 !important;
-    background-image: none !important;
 }
 
 .tmw-cr-slot-banner .tmw-cr-slot-banner__cta-label,
@@ -237,6 +236,7 @@
     -webkit-text-decoration-line: none !important;
     border-bottom: 0 !important;
     box-shadow: none !important;
+    background: transparent !important;
     background-image: none !important;
 }
 

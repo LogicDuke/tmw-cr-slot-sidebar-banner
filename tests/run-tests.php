@@ -5375,6 +5375,17 @@ $tests['frontend_cta_text_never_used_as_offer_name_fallback'] = function() {
     tmw_assert_contains( 'sanitizeFrontendOfferName(matchingOffer.name) || getOfferAbbreviation(matchingOffer)', $js_file, 'Win state should fallback to abbreviation instead of CTA text.' );
 };
 
+$tests['frontend_offer_name_sanitizer_strips_compound_backend_suffixes'] = function() {
+    $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );
+    $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
+    tmw_assert_contains( 'backendMarkerPattern', $js_file, 'Frontend JS sanitizer should include backend marker matching.' );
+    tmw_assert_contains( 'segments = value.split', $js_file, 'Frontend JS sanitizer should split offer names on backend separators.' );
+    tmw_assert_contains( 'if (backendMarkerPattern.test(segments[i])) {', $js_file, 'Frontend JS sanitizer should collapse names when backend markers are present.' );
+    tmw_assert_contains( 'CAMPAIGN TYPE', strtoupper( $plugin_file ), 'PHP sanitizer should include campaign type marker coverage.' );
+    tmw_assert_contains( 'FALLBACK OFFER', strtoupper( $plugin_file ), 'PHP sanitizer should include fallback offer marker coverage.' );
+    tmw_assert_contains( 'REV SHARE', strtoupper( $plugin_file ), 'PHP sanitizer should include rev share marker coverage.' );
+};
+
 $tests['spinning_state_hides_result_and_cta'] = function() {
     $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );
     tmw_assert_contains( 'function hideResultArea(state)', $js_file, 'JS should include explicit helper to hide non-win result area.' );
@@ -5398,6 +5409,10 @@ $tests['cta_css_includes_scoped_no_decoration_rules'] = function() {
     tmw_assert_contains( '.tmw-cr-slot-banner .tmw-cr-slot-banner__cta-label {', $css_file, 'CTA no-decoration rule should include CTA label.' );
     tmw_assert_contains( '-webkit-text-decoration-line: none !important;', $css_file, 'CTA text-decoration override should include webkit-prefixed fallback.' );
     tmw_assert_contains( 'box-shadow: none !important;', $css_file, 'CTA label pseudo-elements should suppress visual line overlays.' );
+    tmw_assert_contains( '.tmw-cr-slot-banner__cta {', $css_file, 'CTA style block should exist and own its visual background.' );
+    tmw_assert_contains( 'background: linear-gradient(135deg, #ff007a 0%, #ff4d4d 100%);', $css_file, 'CTA should preserve original pink/orange gradient background.' );
+    tmw_assert_true( false === strpos( $css_file, '.tmw-cr-slot-banner .tmw-cr-slot-banner__cta:focus,' . PHP_EOL . ' .tmw-cr-slot-banner .tmw-cr-slot-banner__cta::before,' ), 'Sanity guard for selector continuity should remain stable.' );
+    tmw_assert_true( false === strpos( $css_file, '.tmw-cr-slot-banner .tmw-cr-slot-banner__cta-label {' . PHP_EOL . '    text-decoration: none !important;' . PHP_EOL . '    text-decoration-line: none !important;' . PHP_EOL . '    -webkit-text-decoration-line: none !important;' . PHP_EOL . '    border-bottom: 0 !important;' . PHP_EOL . '    background-image: none !important;' . PHP_EOL . '}' ), 'CTA label guard should not imply CTA background removal.' );
 };
 $tests['finish_spin_reveals_only_on_three_reel_match'] = function() {
     $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );

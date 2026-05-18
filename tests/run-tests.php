@@ -5964,19 +5964,19 @@ $tests['live_frontend_pool_audit_uses_get_frontend_slot_offers'] = function() {
 
 $tests['offer_type_detection_normalizes_crakrevenue_enums'] = function() {
     $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
-    tmw_assert_true( in_array( 'revshare', $repository->get_offer_type_keys( array( 'id' => '10393', 'name' => 'Fanvue Model', 'payout_type' => 'cpa_percentage' ) ), true ), 'cpa_percentage => revshare' );
-    tmw_assert_true( in_array( 'revshare_lifetime', $repository->get_offer_type_keys( array( 'name' => 'Fanvue Model', 'payout_type' => 'cpa_flat' ) ), true ), 'cpa_flat => revshare_lifetime' );
-    tmw_assert_true( in_array( 'revshare', $repository->get_offer_type_keys( array( 'name' => 'Fanvue Model', 'payout_type' => 'revenue_share' ) ), true ), 'revenue_share => revshare' );
-    tmw_assert_true( in_array( 'revshare', $repository->get_offer_type_keys( array( 'name' => 'Fanvue Model', 'payout_type' => 'Revenue Share' ) ), true ), 'Revenue Share => revshare' );
-    tmw_assert_true( in_array( 'revshare_lifetime', $repository->get_offer_type_keys( array( 'name' => 'Fanvue Model', 'payout_type' => 'revshare_lifetime' ) ), true ), 'revshare_lifetime => revshare_lifetime' );
-    tmw_assert_true( in_array( 'revshare_lifetime', $repository->get_offer_type_keys( array( 'name' => 'Fanvue Model', 'payout_type' => 'RevShareLifetime' ) ), true ), 'RevShareLifetime => revshare_lifetime' );
-    tmw_assert_true( in_array( 'pps', $repository->get_offer_type_keys( array( 'name' => 'Fanvue Model', 'payout_type' => 'pps' ) ), true ), 'pps => pps' );
+    tmw_assert_true( in_array( 'revshare', $repository->get_offer_type_keys( array( 'id' => '10393', 'name' => 'Fanvue - Mai', 'payout_type' => 'cpa_percentage' ) ), true ), 'cpa_percentage => revshare' );
+    tmw_assert_true( in_array( 'revshare_lifetime', $repository->get_offer_type_keys( array( 'name' => 'Fanvue - Mai', 'payout_type' => 'cpa_flat' ) ), true ), 'cpa_flat => revshare_lifetime' );
+    tmw_assert_true( in_array( 'revshare', $repository->get_offer_type_keys( array( 'name' => 'Fanvue - Mai', 'payout_type' => 'revenue_share' ) ), true ), 'revenue_share => revshare' );
+    tmw_assert_true( in_array( 'revshare', $repository->get_offer_type_keys( array( 'name' => 'Fanvue - Mai', 'payout_type' => 'Revenue Share' ) ), true ), 'Revenue Share => revshare' );
+    tmw_assert_true( in_array( 'revshare_lifetime', $repository->get_offer_type_keys( array( 'name' => 'Fanvue - Mai', 'payout_type' => 'revshare_lifetime' ) ), true ), 'revshare_lifetime => revshare_lifetime' );
+    tmw_assert_true( in_array( 'revshare_lifetime', $repository->get_offer_type_keys( array( 'name' => 'Fanvue - Mai', 'payout_type' => 'RevShareLifetime' ) ), true ), 'RevShareLifetime => revshare_lifetime' );
+    tmw_assert_true( in_array( 'pps', $repository->get_offer_type_keys( array( 'name' => 'Fanvue - Mai', 'payout_type' => 'pps' ) ), true ), 'pps => pps' );
 };
 
 $tests['frontend_pool_includes_selected_fanvue_cpa_percentage_revshare'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
-    $repo->save_synced_offers( array( '10393' => array( 'id' => '10393', 'name' => 'Fanvue - Example Model', 'status' => 'active', 'payout_type' => 'cpa_percentage' ) ) );
+    $repo->save_synced_offers( array( '10393' => array( 'id' => '10393', 'name' => 'Fanvue - Mai', 'status' => 'active', 'payout_type' => 'cpa_percentage' ) ) );
     update_option( 'overrides', array( '10393' => array( 'enabled' => 1, 'final_url_override' => 'https://t.acust-9.com/383520/10393/0?aff_sub5=SF_006OG000004lmDN', 'allowed_countries' => array( 'US' ) ) ) );
     $settings = array( 'slot_offer_ids' => array( '10393' ), 'allowed_offer_types' => array( 'revshare' ) );
     $offers = $repo->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => 'https://base.test', 'cta_text' => 'CTA' ), 'US', array() );
@@ -6004,13 +6004,14 @@ $tests['manual_ready_not_live_selected_type_blocked_shows_not_allowed_type_reaso
     tmw_reset_test_state();
     update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '10393' ), 'cta_url' => 'https://base.test', 'cta_text' => 'CTA' ) );
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
-    $repo->save_synced_offers( array( '10393' => array( 'id' => '10393', 'name' => 'Fanvue - Example Model', 'status' => 'active', 'payout_type' => 'cpa_percentage' ) ) );
+    $repo->save_synced_offers( array( '10393' => array( 'id' => '10393', 'name' => 'Fanvue - Mai', 'status' => 'active', 'payout_type' => 'cpa_percentage' ) ) );
     update_option( 'overrides', array( '10393' => array( 'enabled' => 1, 'final_url_override' => 'https://t.acust-9.com/383520/10393/0?aff_sub5=SF_006OG000004lmDN', 'allowed_countries' => array( 'US' ) ) ) );
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
     $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1 );
     ob_start(); $page->render_page(); $html = (string) ob_get_clean();
     tmw_assert_contains( 'not_allowed_type', $html, 'Type-blocked selected manual-ready offer should show not_allowed_type reason.' );
     tmw_assert_true( false === strpos( $html, 'unknown_frontend_drop' ), 'Type-blocked selected manual-ready offer should not show unknown_frontend_drop.' );
+    tmw_assert_contains( 'enable Revshare in allowed offer types', $html, 'Type-blocked selected manual-ready offer should recommend enabling Revshare.' );
 };
 
 $tests['manual_offer_display_audit_warning_exists'] = function() {

@@ -38,6 +38,8 @@ class TMW_CR_Slot_Offer_Repository {
 
     /** @var string */
     protected $skipped_offers_option_key;
+    /** @var array<string,array<string,string>>|null */
+    protected $offer_logo_manifest_rows = null;
 
     /**
      * @param string $offers_option_key     Option key for synced offers.
@@ -581,6 +583,23 @@ class TMW_CR_Slot_Offer_Repository {
      * @return string
      */
     public function get_offer_logo_filename( $offer ) {
+        $offer_id = sanitize_text_field( (string) ( $offer['id'] ?? '' ) );
+        if ( '' !== $offer_id ) {
+            $manifest_filename = $this->get_offer_logo_filename_from_manifest( $offer_id );
+            if ( '' !== $manifest_filename ) {
+                $manifest_path = dirname( __DIR__ ) . '/assets/logos/80x80/' . $manifest_filename;
+                if ( file_exists( $manifest_path ) ) {
+                    if ( function_exists( 'error_log' ) ) {
+                        error_log( sprintf( '[TMW-BANNER-LOGO] logo_source offer_id=%s source="manifest" filename="%s"', $offer_id, $manifest_filename ) );
+                    }
+                    return $manifest_filename;
+                }
+                if ( function_exists( 'error_log' ) ) {
+                    error_log( sprintf( '[TMW-BANNER-LOGO] missing_manifest_logo offer_id=%s expected="%s"', $offer_id, $manifest_filename ) );
+                }
+            }
+        }
+
         $offer_name = isset( $offer['name'] ) ? (string) $offer['name'] : '';
         $brand_key  = $this->get_offer_brand_key( $offer_name );
         if ( '' === $brand_key ) {
@@ -596,13 +615,86 @@ class TMW_CR_Slot_Offer_Repository {
         $path = dirname( __DIR__ ) . '/assets/logos/80x80/' . $expected;
         if ( ! file_exists( $path ) ) {
             if ( function_exists( 'error_log' ) ) {
-                $offer_id = sanitize_text_field( (string) ( $offer['id'] ?? '' ) );
                 error_log( sprintf( '[TMW-BANNER-LOGO] missing_logo offer_id=%s brand_key=%s expected=%s', $offer_id, $brand_key, $expected ) );
             }
             return '';
         }
+        if ( function_exists( 'error_log' ) ) {
+            error_log( sprintf( '[TMW-BANNER-LOGO] logo_source offer_id=%s source="brand_map" brand_key="%s" filename="%s"', $offer_id, $brand_key, $expected ) );
+        }
 
         return $expected;
+    }
+
+    public function get_offer_logo_manifest_path() {
+        return dirname( __DIR__ ) . '/assets/logos/80x80/manifest.csv';
+    }
+
+    public function get_offer_logo_manifest_rows() {
+        if ( null !== $this->offer_logo_manifest_rows ) {
+            return $this->offer_logo_manifest_rows;
+        }
+        $rows = array();
+        $path = $this->get_offer_logo_manifest_path();
+        if ( ! file_exists( $path ) || ! is_readable( $path ) ) {
+            $this->offer_logo_manifest_rows = $rows;
+            return $rows;
+        }
+        $handle = fopen( $path, 'r' );
+        if ( false === $handle ) {
+            $this->offer_logo_manifest_rows = $rows;
+            return $rows;
+        }
+        $headers = fgetcsv( $handle );
+        if ( false === $headers || ! is_array( $headers ) ) {
+            fclose( $handle );
+            $this->offer_logo_manifest_rows = $rows;
+            return $rows;
+        }
+        $header_map = array();
+        foreach ( $headers as $idx => $header ) {
+            $header_map[ sanitize_key( (string) $header ) ] = (int) $idx;
+        }
+        while ( false !== ( $line = fgetcsv( $handle ) ) ) {
+            if ( ! is_array( $line ) ) {
+                continue;
+            }
+            $offer_id = isset( $header_map['offer_id'] ) ? sanitize_text_field( (string) ( $line[ $header_map['offer_id'] ] ?? '' ) ) : '';
+            if ( '' === $offer_id ) {
+                continue;
+            }
+            $rows[ $offer_id ] = array(
+                'offer_id' => $offer_id,
+                'logo_file' => isset( $header_map['logo_file'] ) ? ( function_exists( 'sanitize_file_name' ) ? sanitize_file_name( (string) ( $line[ $header_map['logo_file'] ] ?? '' ) ) : trim( (string) ( $line[ $header_map['logo_file'] ] ?? '' ) ) ) : '',
+                'offer_name' => isset( $header_map['offer_name'] ) ? sanitize_text_field( (string) ( $line[ $header_map['offer_name'] ] ?? '' ) ) : '',
+            );
+        }
+        fclose( $handle );
+        $this->offer_logo_manifest_rows = $rows;
+        return $rows;
+    }
+
+    public function get_offer_logo_filename_from_manifest( $offer_id ) {
+        $offer_id = sanitize_text_field( (string) $offer_id );
+        if ( '' === $offer_id ) {
+            return '';
+        }
+        $rows = $this->get_offer_logo_manifest_rows();
+        return isset( $rows[ $offer_id ]['logo_file'] ) ? (string) $rows[ $offer_id ]['logo_file'] : '';
+    }
+
+    /**
+     * @param string $brand_key Brand key.
+     *
+     * @return string
+     */
+    public function get_offer_brand_logo_filename( $brand_key ) {
+        $brand_key = sanitize_key( (string) $brand_key );
+        if ( '' === $brand_key ) {
+            return '';
+        }
+        $map = $this->get_offer_logo_filename_map();
+        return isset( $map[ $brand_key ] ) ? (string) $map[ $brand_key ] : '';
     }
 
     /**

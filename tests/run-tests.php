@@ -128,6 +128,14 @@ class TMW_Test_Offer_Repository extends TMW_CR_Slot_Offer_Repository {
         return $this->get_offer_cr_ui_label_comparison_keys( $offer, $source_class );
     }
 }
+class TMW_Test_Logo_Repository_Missing_Manifest_File extends TMW_CR_Slot_Offer_Repository {
+    public function get_offer_logo_filename_from_manifest( $offer_id ) {
+        if ( '9248' === (string) $offer_id ) {
+            return 'missing-manifest-logo.png';
+        }
+        return parent::get_offer_logo_filename_from_manifest( $offer_id );
+    }
+}
 
 function tmw_reset_test_state() {
     $GLOBALS['tmw_test_options']      = array();
@@ -2427,6 +2435,42 @@ $tests['offer_logo_mapping_manifest_consistency'] = function() {
         tmw_assert_true( isset( $manifest_files[ $filename ] ), 'Required filename must exist in manifest.csv: ' . $filename );
         tmw_assert_true( file_exists( __DIR__ . '/../assets/logos/80x80/' . $filename ), 'Required filename must exist on disk: ' . $filename );
     }
+};
+$tests['offer_logo_manifest_loads_header_based_rows'] = function() {
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $rows = $repo->get_offer_logo_manifest_rows();
+    tmw_assert_true( isset( $rows['8835'] ), 'Manifest should load by header offer_id key.' );
+};
+$tests['offer_logo_manifest_resolves_offer_id_logo_before_brand_map'] = function() {
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    tmw_assert_same( (string) $repo->get_offer_logo_filename_from_manifest( '8835' ), (string) $repo->get_offer_logo_filename( array( 'id' => '8835', 'name' => 'OnlyFans - Renae Erica' ) ), 'Manifest filename should win before brand fallback.' );
+};
+$tests['offer_logo_manifest_missing_file_falls_back_to_brand_map'] = function() {
+    $repo = new TMW_Test_Logo_Repository_Missing_Manifest_File( 'offers', 'meta' );
+    tmw_assert_same( 'faphouse-80x80-transparent.png', $repo->get_offer_logo_filename( array( 'id' => '9248', 'name' => 'Faphouse.com - Revshare' ) ), 'Missing manifest file should fall back to brand map.' );
+};
+$tests['offer_logo_manifest_missing_file_logs_expected_filename'] = function() {
+    $repo = new TMW_Test_Logo_Repository_Missing_Manifest_File( 'offers', 'meta' );
+    $logs = tmw_capture_error_log( static function () use ( $repo ) { $repo->get_offer_logo_filename( array( 'id' => '9248', 'name' => 'Faphouse.com - Revshare' ) ); } );
+    tmw_assert_contains( 'missing_manifest_logo offer_id=9248', $logs, 'Missing manifest log should include offer id.' );
+};
+$tests['offer_logo_source_manifest_log_exists'] = function() {
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $logs = tmw_capture_error_log( static function () use ( $repo ) { $repo->get_offer_logo_filename( array( 'id' => '8835', 'name' => 'OnlyFans - Renae Erica' ) ); } );
+    tmw_assert_contains( 'source="manifest"', $logs, 'Manifest source log should exist.' );
+};
+$tests['offer_logo_source_brand_map_log_still_exists'] = function() {
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $logs = tmw_capture_error_log( static function () use ( $repo ) { $repo->get_offer_logo_filename( array( 'id' => 'm1', 'name' => 'Sex Messenger - PPS - US' ) ); } );
+    tmw_assert_contains( 'source="brand_map"', $logs, 'Brand map source log should exist.' );
+};
+$tests['offer_logo_url_uses_manifest_filename'] = function() {
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    tmw_assert_contains( $repo->get_offer_logo_filename_from_manifest( '8835' ), $repo->get_offer_logo_url( array( 'id' => '8835', 'name' => 'OnlyFans - Renae Erica' ) ), 'Manifest filename should be used in logo URL.' );
+};
+$tests['offer_brand_logo_filename_helper_returns_expected_map_entry'] = function() {
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    tmw_assert_same( 'faphouse-80x80-transparent.png', $repo->get_offer_brand_logo_filename( 'faphouse' ), 'Public brand helper should return mapped logo filename.' );
 };
 
 $tests['offer_type_allowlist_pps_only_rejects_fallback_only'] = function() {
@@ -5910,6 +5954,44 @@ $tests['slot_setup_revshare_not_auto_selected'] = function() {
     $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1 );
     ob_start(); $page->render_page(); $html = (string) ob_get_clean();
     tmw_assert_contains( 'Not selected', $html, 'Revshare should remain unselected by default.' );
+};
+$tests['slot_setup_logo_diagnostics_include_manifest_counts'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1 );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Manifest logo rows loaded:', $html, 'Manifest loaded diagnostic should exist.' );
+    tmw_assert_contains( 'Manifest logos available for displayed rows:', $html, 'Manifest available diagnostic should exist.' );
+};
+$tests['slot_setup_missing_logo_examples_include_manifest_expected_filename'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( 'u1' ) ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ); $repo->save_synced_offers( array( 'u1' => array( 'id' => 'u1', 'name' => 'Unknown Brand PPS', 'status' => 'active', 'payout_type' => 'pps' ) ) );
+    $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1 );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Missing logo examples:', $html, 'Missing logo examples should render.' );
+};
+$tests['slot_setup_revshare_filter_link_exists'] = function() {
+    tmw_reset_test_state(); $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1 );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Show Revshare matching offers', $html, 'Revshare link should exist.' );
+    tmw_assert_contains( 'payout_type=revshare', $html, 'Revshare link should contain filter.' );
+};
+$tests['slot_setup_revshare_lifetime_filter_link_exists'] = function() {
+    tmw_reset_test_state(); $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1 );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Show Revshare Lifetime matching offers', $html, 'Revshare lifetime link should exist.' );
+    tmw_assert_contains( 'payout_type=revshare_lifetime', $html, 'Revshare lifetime link should contain filter.' );
+};
+$tests['slot_setup_include_all_pagination_diagnostics_exist'] = function() {
+    tmw_reset_test_state(); $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1 );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Include-all diagnostics:', $html, 'Include-all diagnostics should exist.' );
+    tmw_assert_contains( 'page=', $html, 'Include-all diagnostics should include pagination info.' );
 };
 $tests['slot_setup_frontend_ready_count_requires_manual_final_url'] = function() {
     tmw_reset_test_state();

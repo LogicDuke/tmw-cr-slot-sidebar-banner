@@ -985,6 +985,11 @@ class TMW_CR_Slot_Admin_Page {
         $missing_final_url_override_count = 0;
         $missing_allowed_country_override_count = 0;
         $missing_logo_count = 0;
+        $manifest_rows_loaded = count( $this->offer_repository->get_offer_logo_manifest_rows() );
+        $manifest_logos_available_displayed = 0;
+        $brand_map_logos_available_displayed = 0;
+        $missing_manifest_files_count = 0;
+        $missing_logo_examples = array();
         $blocked_by_business_rule_count = 0;
         $filtered_offers = array();
 
@@ -1014,6 +1019,17 @@ class TMW_CR_Slot_Admin_Page {
             ++$displayed_pool_count;
             $offer['is_type_allowed_for_slot'] = $is_allowed_type;
             $filtered_offers[] = $offer;
+            $offer_id = sanitize_text_field( (string) ( $offer['id'] ?? '' ) );
+            $manifest_filename = '' !== $offer_id ? $this->offer_repository->get_offer_logo_filename_from_manifest( $offer_id ) : '';
+            $brand_key = $this->offer_repository->get_offer_brand_key( (string) ( $offer['name'] ?? '' ) );
+            $expected_brand_filename = $this->offer_repository->get_offer_brand_logo_filename( $brand_key );
+            if ( '' !== $manifest_filename && file_exists( dirname( __DIR__ ) . '/assets/logos/80x80/' . $manifest_filename ) ) {
+                ++$manifest_logos_available_displayed;
+            } elseif ( '' !== $manifest_filename ) {
+                ++$missing_manifest_files_count;
+            } elseif ( '' !== $expected_brand_filename && file_exists( dirname( __DIR__ ) . '/assets/logos/80x80/' . $expected_brand_filename ) ) {
+                ++$brand_map_logos_available_displayed;
+            }
 
             $eligibility_summary = $this->offer_repository->get_offer_frontend_eligibility_summary( $offer, $settings, $country, $legacy_catalog );
             if ( ! empty( $eligibility_summary['is_eligible'] ) ) {
@@ -1028,6 +1044,7 @@ class TMW_CR_Slot_Admin_Page {
             }
             if ( 'missing_logo' === $block_reason ) {
                 ++$missing_logo_count;
+                $missing_logo_examples[] = sprintf( 'id=%1$s name=%2$s manifest=%3$s brand_key=%4$s brand_file=%5$s', $offer_id, (string) ( $offer['name'] ?? '' ), $manifest_filename, $brand_key, $expected_brand_filename );
             }
             if ( 'business_rule_blocked' === $block_reason || 'skipped_offer' === $block_reason || 'unavailable_account_offer' === $block_reason || 'not_allowed_type' === $block_reason ) {
                 ++$blocked_by_business_rule_count;
@@ -1137,12 +1154,22 @@ class TMW_CR_Slot_Admin_Page {
 
             <p class="description"><?php echo esc_html( sprintf( 'Synced offers matching allowed types: %d', (int) $synced_type_allowed_count ) ); ?></p>
             <p class="description"><?php echo esc_html( sprintf( 'Setup rows currently displayed: %d', (int) $displayed_pool_count ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Manifest logo rows loaded: %d', (int) $manifest_rows_loaded ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Manifest logos available for displayed rows: %d', (int) $manifest_logos_available_displayed ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Brand-map logos available for displayed rows: %d', (int) $brand_map_logos_available_displayed ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Missing manifest files: %d', (int) $missing_manifest_files_count ) ); ?></p>
             <p class="description"><?php echo esc_html( sprintf( 'Selected display offers: %d', (int) $selected_count ) ); ?></p>
             <p class="description"><?php echo esc_html( sprintf( 'Frontend-ready offers: %d', (int) $frontend_ready_count ) ); ?></p>
             <p class="description"><?php echo esc_html( sprintf( 'Missing final URL override: %d', (int) $missing_final_url_override_count ) ); ?></p>
             <p class="description"><?php echo esc_html( sprintf( 'Missing allowed country override: %d', (int) $missing_allowed_country_override_count ) ); ?></p>
             <p class="description"><?php echo esc_html( sprintf( 'Missing logo: %d', (int) $missing_logo_count ) ); ?></p>
+            <?php if ( ! empty( $missing_logo_examples ) ) : ?>
+                <p class="description"><?php echo esc_html( 'Missing logo examples: ' . implode( ' | ', array_slice( $missing_logo_examples, 0, 5 ) ) ); ?></p>
+            <?php endif; ?>
             <p class="description"><?php echo esc_html( sprintf( 'Blocked by business rule: %d', (int) $blocked_by_business_rule_count ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Include-all diagnostics: include_all=%1$s total_matching_allowed_types=%2$d displayed_rows=%3$d page=%4$d per_page=%5$d active_filters=payout_type:%6$s', $include_all ? '1' : '0', (int) $synced_type_allowed_count, (int) $displayed_pool_count, (int) ( $result['page'] ?? 1 ), (int) ( $result['per_page'] ?? 400 ), sanitize_text_field( (string) ( $_GET['payout_type'] ?? '' ) ) ) ); ?></p>
+            <p class="description"><a href="<?php echo esc_url( add_query_arg( array( 'page' => 'tmw-cr-slot-sidebar-banner', 'tab' => 'slot-setup', 'include_all_offers' => 1, 'payout_type' => 'revshare' ), admin_url( 'options-general.php' ) ) ); ?>">Show Revshare matching offers</a></p>
+            <p class="description"><a href="<?php echo esc_url( add_query_arg( array( 'page' => 'tmw-cr-slot-sidebar-banner', 'tab' => 'slot-setup', 'include_all_offers' => 1, 'payout_type' => 'revshare_lifetime' ), admin_url( 'options-general.php' ) ) ); ?>">Show Revshare Lifetime matching offers</a></p>
             <p>
                 <label>
                     <input type="checkbox" name="<?php echo esc_attr( $this->option_key ); ?>[enforce_skipped_offers_exclusion]" value="1" <?php checked( ! empty( $settings['enforce_skipped_offers_exclusion'] ) ); ?> />

@@ -5999,6 +5999,19 @@ $tests['pps_detection_and_frontend_behavior_regression'] = function() {
     tmw_assert_contains( '8780', wp_json_encode( $offers ), 'PPS frontend eligibility should remain intact when enabled.' );
 };
 
+
+$tests['manual_ready_not_live_selected_type_blocked_shows_not_allowed_type_reason'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '10393' ), 'cta_url' => 'https://base.test', 'cta_text' => 'CTA' ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '10393' => array( 'id' => '10393', 'name' => 'Fanvue - Example Model', 'status' => 'active', 'payout_type' => 'cpa_percentage' ) ) );
+    update_option( 'overrides', array( '10393' => array( 'enabled' => 1, 'final_url_override' => 'https://t.acust-9.com/383520/10393/0?aff_sub5=SF_006OG000004lmDN', 'allowed_countries' => array( 'US' ) ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1 );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'not_allowed_type', $html, 'Type-blocked selected manual-ready offer should show not_allowed_type reason.' );
+};
+
 $tests['manual_offer_display_audit_warning_exists'] = function() {
     tmw_reset_test_state(); $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' ); $_GET = array( 'tab' => 'slot-setup' );
     ob_start(); $page->render_page(); $html = (string) ob_get_clean(); tmw_assert_contains( 'This table only checks manual final URL and country override readiness.', $html, 'Manual audit warning should exist.' );

@@ -1786,6 +1786,49 @@ class TMW_CR_Slot_Offer_Repository {
         return 'placeholder_only';
     }
 
+
+    /**
+     * @param string $offer_id Selected offer id.
+     * @param array<string,mixed> $settings Settings payload.
+     * @param array<string,string> $banner_data Banner data.
+     * @param string $country Country.
+     * @param array<string,array<string,mixed>> $legacy_catalog Legacy catalog.
+     *
+     * @return string
+     */
+    public function get_selected_offer_frontend_drop_reason( $offer_id, $settings, $banner_data, $country, $legacy_catalog ) {
+        $offer_id = (string) $offer_id;
+        $synced_offers = $this->get_synced_offers();
+        if ( '' === $offer_id || ! isset( $synced_offers[ $offer_id ] ) ) {
+            return 'unknown_frontend_drop';
+        }
+
+        $offer = $synced_offers[ $offer_id ];
+        $detected_types = $this->get_offer_type_keys( $offer );
+        if ( empty( $detected_types ) || empty( array_intersect( $detected_types, $this->get_allowed_offer_types( $settings ) ) ) ) {
+            return 'not_allowed_type';
+        }
+        if ( $this->is_offer_blocked_for_banner( $offer, $settings ) || $this->is_unavailable_account_pps_offer( $offer ) ) {
+            return 'inactive_or_unapproved';
+        }
+
+        $evaluation = $this->evaluate_offer_eligibility( $offer_id, $settings, $banner_data, $country, $legacy_catalog );
+        $effective = $evaluation['effective_offer'];
+        if ( ! empty( $effective ) && ! $this->is_valid_frontend_winner_cta_url( (string) ( $effective['cta_url'] ?? '' ) ) ) {
+            return 'invalid_cta';
+        }
+        if ( empty( $effective ) ) {
+            $eval_reason = (string) ( $evaluation['reason'] ?? '' );
+            if ( in_array( $eval_reason, array( 'missing_logo', 'logo_not_found' ), true ) ) { return 'missing_logo'; }
+            if ( false !== strpos( $eval_reason, 'country' ) ) { return 'country_blocked'; }
+            if ( false !== strpos( $eval_reason, 'status' ) || false !== strpos( $eval_reason, 'approval' ) ) { return 'inactive_or_unapproved'; }
+            if ( false !== strpos( $eval_reason, 'cta' ) || false !== strpos( $eval_reason, 'url' ) ) { return 'invalid_cta'; }
+            return 'unknown_frontend_drop';
+        }
+
+        return '';
+    }
+
     public function get_live_frontend_pool_audit( $slot_key, $settings, $banner_data, $country, $legacy_catalog ) {
         $pool        = $this->get_frontend_slot_offers( $slot_key, $settings, $banner_data, $country, $legacy_catalog );
         $selected_ids = $this->get_selected_offer_ids( $settings );

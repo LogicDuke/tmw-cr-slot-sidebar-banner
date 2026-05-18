@@ -1456,7 +1456,16 @@ class TMW_CR_Slot_Admin_Page {
                 if ( in_array( $offer_id, $live_pool_ids, true ) ) { continue; }
                 $selected_for_slot = in_array( $offer_id, $selected_ids, true );
                 $live_row = isset( $live_pool_index_map[ $offer_id ] ) ? (array) $live_pool_index_map[ $offer_id ] : array();
-                $reason = $selected_for_slot ? (string) ( $live_row['first_blocker'] ?? 'unknown_frontend_drop' ) : 'not_selected';
+                $reason = 'not_selected';
+                if ( $selected_for_slot ) {
+                    $reason = (string) ( $live_row['first_blocker'] ?? '' );
+                    if ( '' === $reason ) {
+                        $reason = (string) $this->offer_repository->get_selected_offer_frontend_drop_reason( $offer_id, $settings, array( 'cta_url' => (string) ( $settings['cta_url'] ?? '' ), 'cta_text' => (string) ( $settings['cta_text'] ?? '' ) ), $country, $legacy_catalog );
+                    }
+                    if ( '' === $reason ) {
+                        $reason = 'unknown_frontend_drop';
+                    }
+                }
                 $reason_action_map = array(
                     'not_allowed_type' => 'enable matching offer type or check payout type normalization',
                     'invalid_cta' => 'add/fix valid final_url_override',

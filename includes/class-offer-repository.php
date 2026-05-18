@@ -684,6 +684,20 @@ class TMW_CR_Slot_Offer_Repository {
     }
 
     /**
+     * @param string $brand_key Brand key.
+     *
+     * @return string
+     */
+    public function get_offer_brand_logo_filename( $brand_key ) {
+        $brand_key = sanitize_key( (string) $brand_key );
+        if ( '' === $brand_key ) {
+            return '';
+        }
+        $map = $this->get_offer_logo_filename_map();
+        return isset( $map[ $brand_key ] ) ? (string) $map[ $brand_key ] : '';
+    }
+
+    /**
      * @param array<string,mixed> $offer Offer row.
      *
      * @return string

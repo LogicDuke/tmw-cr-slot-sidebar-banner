@@ -2468,6 +2468,10 @@ $tests['offer_logo_url_uses_manifest_filename'] = function() {
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
     tmw_assert_contains( $repo->get_offer_logo_filename_from_manifest( '8835' ), $repo->get_offer_logo_url( array( 'id' => '8835', 'name' => 'OnlyFans - Renae Erica' ) ), 'Manifest filename should be used in logo URL.' );
 };
+$tests['offer_brand_logo_filename_helper_returns_expected_map_entry'] = function() {
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    tmw_assert_same( 'faphouse-80x80-transparent.png', $repo->get_offer_brand_logo_filename( 'faphouse' ), 'Public brand helper should return mapped logo filename.' );
+};
 
 $tests['offer_type_allowlist_pps_only_rejects_fallback_only'] = function() {
     tmw_reset_test_state();

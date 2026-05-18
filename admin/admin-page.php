@@ -1022,10 +1022,7 @@ class TMW_CR_Slot_Admin_Page {
             $offer_id = sanitize_text_field( (string) ( $offer['id'] ?? '' ) );
             $manifest_filename = '' !== $offer_id ? $this->offer_repository->get_offer_logo_filename_from_manifest( $offer_id ) : '';
             $brand_key = $this->offer_repository->get_offer_brand_key( (string) ( $offer['name'] ?? '' ) );
-            $brand_map = ( new ReflectionClass( $this->offer_repository ) )->getMethod( 'get_offer_logo_filename_map' );
-            $brand_map->setAccessible( true );
-            $brand_map_values = (array) $brand_map->invoke( $this->offer_repository );
-            $expected_brand_filename = isset( $brand_map_values[ $brand_key ] ) ? (string) $brand_map_values[ $brand_key ] : '';
+            $expected_brand_filename = $this->offer_repository->get_offer_brand_logo_filename( $brand_key );
             if ( '' !== $manifest_filename && file_exists( dirname( __DIR__ ) . '/assets/logos/80x80/' . $manifest_filename ) ) {
                 ++$manifest_logos_available_displayed;
             } elseif ( '' !== $manifest_filename ) {

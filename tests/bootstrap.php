@@ -51,6 +51,7 @@ function current_user_can() { return ! empty( $GLOBALS['tmw_test_current_user_ca
 function admin_url( $path = '' ) { return 'https://example.test/wp-admin/' . ltrim( $path, '/' ); }
 function wp_unslash( $value ) { return $value; }
 function wp_nonce_field() { echo '<input type="hidden" value="1" />'; }
+function wp_nonce_url( $url ) { return (string) $url; }
 function check_admin_referer() { if ( empty( $GLOBALS['tmw_test_nonce_ok'] ) ) { throw new Exception( 'bad nonce' ); } }
 function settings_fields() { echo '<input type="hidden" value="settings" />'; }
 function submit_button( $text = 'Submit', $type = 'primary', $name = 'submit', $wrap = true, $attributes = array() ) {

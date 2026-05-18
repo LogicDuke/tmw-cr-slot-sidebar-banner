@@ -519,8 +519,9 @@ class TMW_CR_Slot_Admin_Page {
 
         error_log( sprintf( '[TMW-BANNER-TYPE] allowed_types_saved allowed_types=%s', implode( ',', $allowed_types ) ) );
         error_log( sprintf( '[TMW-BANNER-TYPE] allowed_types_diagnostics selected_types=%s synced_type_counts=%s allowed_type_filter_count=%d', implode( ',', $allowed_types ), wp_json_encode( $type_counts ), count( $allowed_types ) ) );
+        error_log( '[TMW-BANNER-TYPE] allowed_types_saved_redirect include_all_offers=1' );
 
-        $this->redirect_with_notice_to_tab( 'success', 'Allowed offer types saved.', 'slot-setup' );
+        $this->redirect_with_notice_to_tab( 'success', 'Allowed offer types saved.', 'slot-setup', array( 'include_all_offers' => 1 ) );
     }
 
 
@@ -974,10 +975,17 @@ class TMW_CR_Slot_Admin_Page {
         $result         = $this->offer_repository->get_filtered_synced_offers_for_admin( $args, $settings );
         $offers         = $result['items'];
         $country        = strtoupper( TMW_CR_Slot_Geo_Helper::get_country_code() );
+        $legacy_catalog = TMW_CR_Slot_Sidebar_Banner::get_offer_catalog_defaults();
         $allowed_offer_types = $this->offer_repository->get_allowed_offer_types( $settings );
         $selected_count = 0;
         $selected_disallowed_count = 0;
         $displayed_pool_count = 0;
+        $synced_type_allowed_count = 0;
+        $frontend_ready_count = 0;
+        $missing_final_url_override_count = 0;
+        $missing_allowed_country_override_count = 0;
+        $missing_logo_count = 0;
+        $blocked_by_business_rule_count = 0;
         $filtered_offers = array();
 
         foreach ( $offers as $offer ) {
@@ -992,6 +1000,9 @@ class TMW_CR_Slot_Admin_Page {
             }
 
             $is_allowed_type = $this->offer_repository->is_offer_type_allowed( $offer, $settings );
+            if ( $is_allowed_type ) {
+                ++$synced_type_allowed_count;
+            }
             if ( $include_all && ! $is_selected && ! $is_allowed_type ) {
                 continue;
             }
@@ -1003,11 +1014,29 @@ class TMW_CR_Slot_Admin_Page {
             ++$displayed_pool_count;
             $offer['is_type_allowed_for_slot'] = $is_allowed_type;
             $filtered_offers[] = $offer;
+
+            $eligibility_summary = $this->offer_repository->get_offer_frontend_eligibility_summary( $offer, $settings, $country, $legacy_catalog );
+            if ( ! empty( $eligibility_summary['is_eligible'] ) ) {
+                ++$frontend_ready_count;
+            }
+            $block_reason = (string) ( $eligibility_summary['block_reason'] ?? '' );
+            if ( 'missing_valid_cta' === $block_reason ) {
+                ++$missing_final_url_override_count;
+            }
+            if ( 'country_not_allowed' === $block_reason ) {
+                ++$missing_allowed_country_override_count;
+            }
+            if ( 'missing_logo' === $block_reason ) {
+                ++$missing_logo_count;
+            }
+            if ( 'business_rule_blocked' === $block_reason || 'skipped_offer' === $block_reason || 'unavailable_account_offer' === $block_reason || 'not_allowed_type' === $block_reason ) {
+                ++$blocked_by_business_rule_count;
+            }
         }
 
         $offers = isset( $filtered_offers ) ? $filtered_offers : array();
         error_log( sprintf( '[TMW-BANNER-TYPE] slot_setup_pool allowed_types=%s total_synced_pool=%d displayed_pool_count=%d selected_count=%d selected_disallowed_count=%d', implode( ',', $allowed_offer_types ), count( $this->offer_repository->get_synced_offers() ), $displayed_pool_count, $selected_count, $selected_disallowed_count ) );
-        $legacy_catalog = TMW_CR_Slot_Sidebar_Banner::get_offer_catalog_defaults();
+        error_log( sprintf( '[TMW-BANNER-TYPE] slot_setup_visibility allowed_types=%s synced_type_allowed_count=%d displayed_setup_count=%d selected_count=%d frontend_ready_count=%d include_all=%s', implode( ',', $allowed_offer_types ), $synced_type_allowed_count, $displayed_pool_count, $selected_count, $frontend_ready_count, $include_all ? '1' : '0' ) );
 
         usort(
             $offers,
@@ -1083,7 +1112,7 @@ class TMW_CR_Slot_Admin_Page {
                 <?php
                 echo esc_html(
                     sprintf(
-                        'Allowed type filter: %1$s — %2$d offers available.',
+                        'Allowed type filter: %1$s — %2$d setup rows currently displayed.',
                         implode( ', ', $selected_type_labels ),
                         (int) $displayed_pool_count
                     )
@@ -1105,6 +1134,15 @@ class TMW_CR_Slot_Admin_Page {
                 );
                 ?>
             </p>
+
+            <p class="description"><?php echo esc_html( sprintf( 'Synced offers matching allowed types: %d', (int) $synced_type_allowed_count ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Setup rows currently displayed: %d', (int) $displayed_pool_count ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Selected display offers: %d', (int) $selected_count ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Frontend-ready offers: %d', (int) $frontend_ready_count ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Missing final URL override: %d', (int) $missing_final_url_override_count ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Missing allowed country override: %d', (int) $missing_allowed_country_override_count ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Missing logo: %d', (int) $missing_logo_count ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Blocked by business rule: %d', (int) $blocked_by_business_rule_count ) ); ?></p>
             <p>
                 <label>
                     <input type="checkbox" name="<?php echo esc_attr( $this->option_key ); ?>[enforce_skipped_offers_exclusion]" value="1" <?php checked( ! empty( $settings['enforce_skipped_offers_exclusion'] ) ); ?> />

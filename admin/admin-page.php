@@ -1459,7 +1459,7 @@ class TMW_CR_Slot_Admin_Page {
                     }
                 }
                 $reason_action_map = array(
-                    'not_allowed_type' => 'enable matching offer type or check payout type normalization',
+                    'not_allowed_type' => 'enable Revshare in allowed offer types',
                     'invalid_cta' => 'add/fix valid final_url_override',
                     'country_blocked' => 'add/fix allowed country override',
                     'missing_logo' => 'add/fix logo manifest/file',

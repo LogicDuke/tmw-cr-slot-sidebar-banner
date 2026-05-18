@@ -1771,6 +1771,10 @@ class TMW_CR_Slot_Offer_Repository {
      */
     public function get_offer_frontend_eligibility_summary( $offer, $settings, $country, $legacy_catalog = array() ) {
         $offer_id = (string) ( $offer['id'] ?? '' );
+        $status_audit = $this->get_offer_status_approval_audit( $offer );
+        if ( ! empty( $status_audit['status_blocked'] ) || ! empty( $status_audit['approval_blocked'] ) ) {
+            return array( 'is_eligible' => false, 'block_reason' => ! empty( $status_audit['status_blocked'] ) ? 'status_blocked' : 'approval_blocked' );
+        }
         if ( ! $this->is_offer_type_allowed( $offer, $settings ) ) {
             return array( 'is_eligible' => false, 'block_reason' => 'not_allowed_type' );
         }
@@ -1796,6 +1800,44 @@ class TMW_CR_Slot_Offer_Repository {
             return array( 'is_eligible' => false, 'block_reason' => 'missing_logo' );
         }
         return array( 'is_eligible' => true, 'block_reason' => 'valid' );
+    }
+
+    public function get_offer_status_approval_audit( $offer ) {
+        $raw_status          = strtolower( trim( (string) ( $offer['status'] ?? '' ) ) );
+        $raw_approval_status = strtolower( trim( (string) ( $offer['approval_status'] ?? '' ) ) );
+        $require_approval    = strtolower( trim( (string) ( $offer['require_approval'] ?? '' ) ) );
+        $approved            = strtolower( trim( (string) ( $offer['approved'] ?? $offer['is_approved'] ?? '' ) ) );
+        $normalized_status   = '' === $raw_status ? 'unknown' : $raw_status;
+        $active_values       = array( 'active', 'approved', 'enabled' );
+        $blocked_values      = array( 'inactive', 'paused', 'disabled', 'rejected', 'deleted', 'stopped', 'blocked', 'suspended' );
+        $status_blocked      = true;
+        if ( in_array( $normalized_status, $active_values, true ) ) {
+            $status_blocked = false;
+        } elseif ( in_array( $normalized_status, $blocked_values, true ) ) {
+            $status_blocked = true;
+        }
+        $approval_required   = in_array( $require_approval, array( '1', 'true', 'yes' ), true );
+        $normalized_approval = 'not_required';
+        $approval_blocked    = false;
+        if ( $approval_required ) {
+            $approved_values = array( '1', 'true', 'yes', 'approved', 'active' );
+            $approved_now = in_array( $approved, $approved_values, true ) || in_array( $raw_approval_status, $approved_values, true );
+            $normalized_approval = $approved_now ? 'approved' : 'unapproved';
+            $approval_blocked = ! $approved_now;
+            if ( 'unknown' === $normalized_status && $approved_now ) {
+                $status_blocked = false;
+            }
+        }
+        return array(
+            'raw_status' => $raw_status,
+            'raw_approval' => $raw_approval_status,
+            'require_approval' => $require_approval,
+            'normalized_status' => $normalized_status,
+            'normalized_approval' => $normalized_approval,
+            'status_blocked' => $status_blocked,
+            'approval_blocked' => $approval_blocked,
+            'active_approved' => ! $status_blocked && ! $approval_blocked,
+        );
     }
 
     /**

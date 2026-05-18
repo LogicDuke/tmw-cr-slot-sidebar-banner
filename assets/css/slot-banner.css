@@ -130,6 +130,11 @@
     box-shadow: 0 12px 24px rgba(255, 0, 110, 0.28);
 }
 
+
+.tmw-cr-slot-banner__spin:not(:disabled) {
+    animation: tmw-cr-slot-spin-pulse 1.8s ease-in-out infinite;
+}
+
 .tmw-cr-slot-banner__spin:disabled {
     cursor: not-allowed;
     opacity: 0.5;
@@ -326,5 +331,22 @@
 
     #container {
         --item-height: 100px;
+    }
+}
+
+@keyframes tmw-cr-slot-spin-pulse {
+    0%, 100% {
+        transform: translateY(0) scale(1);
+        box-shadow: 0 12px 24px rgba(255, 0, 110, 0.28);
+    }
+    50% {
+        transform: translateY(-1px) scale(1.03);
+        box-shadow: 0 16px 30px rgba(255, 0, 110, 0.42);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tmw-cr-slot-banner__spin:not(:disabled) {
+        animation: none;
     }
 }

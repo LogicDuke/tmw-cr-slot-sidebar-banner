@@ -5661,6 +5661,27 @@ $tests['frontend_spin_button_pulse_respects_reduced_motion'] = function() {
     tmw_assert_contains( 'animation: none;', $css_file, 'Reduced motion override should disable spin pulse animation.' );
 };
 
+$tests['frontend_spin_button_label_flash_css_exists'] = function() {
+    $css_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/css/slot-banner.css' );
+    tmw_assert_contains( '.tmw-cr-slot-banner__spin:not(:disabled) .tmw-cr-slot-banner__spin-label', $css_file, 'Enabled spin button label selector should exist for flash animation.' );
+    tmw_assert_contains( 'animation: tmw-cr-slot-spin-label-flash 0.9s ease-in-out infinite;', $css_file, 'Enabled spin button label should use the flash animation.' );
+    tmw_assert_contains( '@keyframes tmw-cr-slot-spin-label-flash', $css_file, 'Spin label flash keyframes should exist.' );
+};
+
+$tests['frontend_spin_button_label_flash_uses_white_and_black'] = function() {
+    $css_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/css/slot-banner.css' );
+    tmw_assert_contains( '@keyframes tmw-cr-slot-spin-label-flash', $css_file, 'Spin label flash keyframes should be defined.' );
+    tmw_assert_contains( 'color: #ffffff;', $css_file, 'Spin label flash should include white text state.' );
+    tmw_assert_contains( 'color: #000000;', $css_file, 'Spin label flash should include black text state.' );
+};
+
+$tests['frontend_spin_button_label_flash_respects_reduced_motion'] = function() {
+    $css_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/css/slot-banner.css' );
+    tmw_assert_contains( '@media (prefers-reduced-motion: reduce)', $css_file, 'Reduced motion media query should exist for spin label flash override.' );
+    tmw_assert_contains( '.tmw-cr-slot-banner__spin:not(:disabled) .tmw-cr-slot-banner__spin-label', $css_file, 'Reduced motion override should target the enabled spin button label selector.' );
+    tmw_assert_contains( 'animation: none;', $css_file, 'Reduced motion override should disable spin label flash animation.' );
+};
+
 $tests['frontend_winner_text_order_is_your_match_offer_is_ready'] = function() {
     $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
     $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );
@@ -5713,5 +5734,4 @@ echo "\nTotal: {$passes} passed, " . count( $failures ) . " failed\n";
 if ( ! empty( $failures ) ) {
     exit( 1 );
 }
-
 

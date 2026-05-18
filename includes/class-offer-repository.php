@@ -1749,10 +1749,14 @@ class TMW_CR_Slot_Offer_Repository {
         $offer_for_resolver['id'] = $offer_id;
         $expected_filename = $this->get_offer_logo_filename( $offer_for_resolver );
         if ( '' !== $expected_filename ) {
-            $local_path = rtrim( (string) TMW_CR_SLOT_BANNER_PATH, '/\\' ) . '/assets/logos/' . $expected_filename;
+            $local_path = rtrim( (string) TMW_CR_SLOT_BANNER_PATH, '/\\' ) . '/assets/logos/80x80/' . $expected_filename;
             return file_exists( $local_path ) ? 'mapped_local' : 'missing';
         }
-        $logo_url = $this->get_offer_logo_url( $offer_for_resolver, true );
+        $brand_key = $this->get_offer_brand_key( (string) ( $offer_for_resolver['name'] ?? '' ) );
+        if ( '' !== $brand_key && isset( $this->get_offer_logo_filename_map()[ $brand_key ] ) ) {
+            return 'missing';
+        }
+        $logo_url = $this->get_offer_logo_url( $offer_for_resolver );
         if ( '' !== $logo_url ) {
             return ( 0 === strpos( $logo_url, 'http://' ) || 0 === strpos( $logo_url, 'https://' ) ) ? 'auto_remote' : 'mapped_local';
         }

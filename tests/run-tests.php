@@ -3790,12 +3790,27 @@ $tests['logo_status_missing_when_brand_match_but_no_file_on_disk'] = function() 
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
     tmw_without_logo_file(
-        'jerkmate-80x80-transparent.png',
+        '80x80/jerkmate-80x80-transparent.png',
         static function () use ( $repo ) {
             $status = $repo->get_logo_status_for_offer_any( 'x4', array( 'id' => 'x4', 'name' => 'Jerkmate' ) );
             tmw_assert_same( 'missing', $status, 'Known mapped brand without disk file should return missing.' );
         }
     );
+};
+$tests['get_logo_status_for_offer_any_uses_manifest_logo_resolution'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $status = $repo->get_logo_status_for_offer_any( '8835', array( 'id' => '8835', 'name' => 'OnlyFans - Renae Erica' ) );
+    tmw_assert_same( 'mapped_local', $status, 'Manifest-backed local logo in assets/logos/80x80 should resolve as mapped_local.' );
+};
+$tests['manifest_logo_admin_diagnostics_match_frontend_resolution'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $offer = array( 'id' => '8835', 'name' => 'OnlyFans - Renae Erica' );
+    $status = $repo->get_logo_status_for_offer_any( '8835', $offer );
+    $logo_url = (string) $repo->get_offer_logo_url( $offer );
+    tmw_assert_same( 'mapped_local', $status, 'Admin logo status should match frontend manifest-first resolver outcome.' );
+    tmw_assert_contains( '/assets/logos/80x80/', $logo_url, 'Frontend resolver should return logo URL from /assets/logos/80x80/.' );
 };
 
 $tests['logo_filename_missing_file_does_not_reference_report_alias_state'] = function() {

@@ -445,6 +445,21 @@ class TMW_CR_Slot_Offer_Repository {
      * @return array<int,string>
      */
     public function get_offer_type_keys( $offer ) {
+        if ( empty( $offer['manual_offer_type'] ) ) {
+            $offer_id = sanitize_text_field( (string) ( $offer['id'] ?? '' ) );
+            if ( '' !== $offer_id ) {
+                $override = $this->get_offer_override( $offer_id );
+                if ( is_array( $override ) && isset( $override['manual_offer_type'] ) ) {
+                    $offer['manual_offer_type'] = $override['manual_offer_type'];
+                }
+            }
+        }
+
+        $manual_offer_type = $this->get_manual_offer_type( $offer );
+        if ( '' !== $manual_offer_type ) {
+            return array( $manual_offer_type );
+        }
+
         $offer_id = sanitize_text_field( (string) ( $offer['id'] ?? '' ) );
         $name_haystack = strtolower( (string) ( $offer['name'] ?? '' ) );
         $raw_payout_type = (string) ( $offer['payout_type'] ?? '' );
@@ -518,6 +533,49 @@ class TMW_CR_Slot_Offer_Repository {
         );
 
         return $types;
+    }
+
+    public function get_manual_offer_type( $offer ) {
+        $raw = sanitize_key( (string) ( $offer['manual_offer_type'] ?? '' ) );
+        if ( '' === $raw || 'auto' === $raw || ! in_array( $raw, self::ALLOWED_OFFER_TYPES, true ) ) {
+            return '';
+        }
+        return $raw;
+    }
+
+    public function get_effective_offer_type( $offer ) {
+        if ( empty( $offer['manual_offer_type'] ) ) {
+            $offer_id = sanitize_text_field( (string) ( $offer['id'] ?? '' ) );
+            if ( '' !== $offer_id ) {
+                $override = $this->get_offer_override( $offer_id );
+                if ( is_array( $override ) && isset( $override['manual_offer_type'] ) ) {
+                    $offer['manual_offer_type'] = $override['manual_offer_type'];
+                }
+            }
+        }
+
+        $manual_offer_type = $this->get_manual_offer_type( $offer );
+        if ( '' !== $manual_offer_type ) {
+            return array(
+                'type'   => $manual_offer_type,
+                'source' => 'manual override',
+            );
+        }
+
+        $normalized_payout_type = $this->normalize_filter_family_value( 'payout_type', (string) ( $offer['payout_type'] ?? '' ) );
+        if ( '' !== $normalized_payout_type && in_array( $normalized_payout_type, self::ALLOWED_OFFER_TYPES, true ) ) {
+            return array(
+                'type'   => $normalized_payout_type,
+                'source' => 'API normalized',
+            );
+        }
+
+        $fallback_types = $this->get_offer_type_keys( array_merge( $offer, array( 'manual_offer_type' => '' ) ) );
+
+        return array(
+            'type'   => (string) ( $fallback_types[0] ?? '' ),
+            'source' => 'name fallback',
+        );
     }
 
     public function is_offer_type_allowed( $offer, $settings ) {
@@ -3863,6 +3921,13 @@ class TMW_CR_Slot_Offer_Repository {
             'custom_slogan'     => ! empty( $override['custom_slogan'] ) ? sanitize_text_field( (string) $override['custom_slogan'] ) : '',
             'label_override'    => ! empty( $override['label_override'] ) ? sanitize_text_field( (string) $override['label_override'] ) : '',
             'notes'             => ! empty( $override['notes'] ) ? sanitize_textarea_field( (string) $override['notes'] ) : '',
+            'manual_offer_type' => ( static function ( $value ) {
+                $key = sanitize_key( (string) $value );
+                if ( '' === $key || 'auto' === $key || ! in_array( $key, self::ALLOWED_OFFER_TYPES, true ) ) {
+                    return '';
+                }
+                return $key;
+            } )( $override['manual_offer_type'] ?? '' ),
             'dashboard_tags'    => $this->sanitize_list_values( isset( $override['dashboard_tags'] ) ? $override['dashboard_tags'] : array() ),
             'dashboard_vertical' => ! empty( $override['dashboard_vertical'] ) ? sanitize_text_field( (string) $override['dashboard_vertical'] ) : '',
             'dashboard_performs_in' => $this->sanitize_country_codes( isset( $override['dashboard_performs_in'] ) ? $override['dashboard_performs_in'] : array() ),

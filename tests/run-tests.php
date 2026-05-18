@@ -87,7 +87,7 @@ class TMW_Test_Admin_Page extends TMW_CR_Slot_Admin_Page {
         $this->redirect_with_notice_to_tab( $notice_type, $message, 'overview' );
     }
 
-    protected function redirect_with_notice_to_tab( $notice_type, $message, $tab_slug = 'overview' ) {
+    protected function redirect_with_notice_to_tab( $notice_type, $message, $tab_slug = 'overview', $args = array() ) {
         if ( ! empty( $this->notice ) ) {
             return;
         }
@@ -96,6 +96,7 @@ class TMW_Test_Admin_Page extends TMW_CR_Slot_Admin_Page {
             'type'    => $notice_type,
             'message' => $message,
             'tab'     => $tab_slug,
+            'args'    => $args,
         );
     }
 
@@ -5839,3 +5840,84 @@ echo "\nTotal: {$passes} passed, " . count( $failures ) . " failed\n";
 if ( ! empty( $failures ) ) {
     exit( 1 );
 }
+
+
+$tests['allowed_types_save_redirects_to_include_all_offers'] = function() {
+    tmw_reset_test_state();
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    $_POST = array( 'allowed_offer_types' => array( 'revshare' ), '_wpnonce' => '1' );
+    $logs = tmw_capture_error_log( static function () use ( $page ) { $page->handle_save_allowed_types(); } );
+    tmw_assert_same( 1, (int) ( $page->notice['args']['include_all_offers'] ?? 0 ), 'Allowed types save should redirect with include_all_offers=1.' );
+    tmw_assert_contains( '[TMW-BANNER-TYPE] allowed_types_saved_redirect include_all_offers=1', $logs, 'Redirect log should be emitted.' );
+};
+$tests['slot_setup_counts_distinguish_synced_type_allowed_from_displayed_rows'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'revshare' ), 'slot_offer_ids' => array( '1' ) ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        '1' => array( 'id' => '1', 'name' => 'Offer PPS', 'status' => 'active', 'payout_type' => 'PPS' ),
+        '2' => array( 'id' => '2', 'name' => 'Offer RS', 'status' => 'active', 'payout_type' => 'RevShare' ),
+    ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $_GET = array( 'tab' => 'slot-setup' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Synced offers matching allowed types: 1', $html, 'Synced type-allowed count should be shown distinctly.' );
+    tmw_assert_contains( 'Setup rows currently displayed: 1', $html, 'Displayed row count should be shown distinctly.' );
+};
+$tests['slot_setup_show_all_matching_allowed_type_offers_link_exists'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Show all matching allowed-type offers', $html, 'Show-all link should exist.' );
+    tmw_assert_contains( 'include_all_offers=1', $html, 'Show-all link should preserve include_all_offers=1.' );
+};
+$tests['slot_setup_visibility_debug_log_exists'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1 );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    $logs = tmw_capture_error_log( static function () use ( $page ) { ob_start(); $page->render_page(); ob_end_clean(); } );
+    tmw_assert_contains( '[TMW-BANNER-TYPE] slot_setup_visibility', $logs, 'Slot setup visibility log should exist.' );
+};
+
+
+$tests['slot_setup_include_all_shows_unselected_allowed_type_offers'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'revshare' ), 'slot_offer_ids' => array() ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( '2' => array( 'id' => '2', 'name' => 'Revshare Offer', 'status' => 'active', 'payout_type' => 'RevShare' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1 );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Revshare Offer', $html, 'Include-all should show unselected allowed-type offers.' );
+};
+$tests['slot_setup_revshare_visible_when_revshare_allowed_and_include_all_enabled'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'revshare' ) ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( '9' => array( 'id' => '9', 'name' => 'RS Only', 'status' => 'active', 'payout_type' => 'revshare' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1 );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'RS Only', $html, 'Revshare should be visible when allowed and include-all is enabled.' );
+};
+$tests['slot_setup_revshare_not_auto_selected'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'revshare' ), 'slot_offer_ids' => array() ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $repo->save_synced_offers( array( '9' => array( 'id' => '9', 'name' => 'RS Not Selected', 'status' => 'active', 'payout_type' => 'revshare' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1 );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Not selected', $html, 'Revshare should remain unselected by default.' );
+};
+$tests['slot_setup_frontend_ready_count_requires_manual_final_url'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'revshare' ), 'slot_offer_ids' => array( '9' ) ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '9' => array( 'id' => '9', 'name' => 'RS Needs URL', 'status' => 'active', 'payout_type' => 'revshare' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1 );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Frontend-ready offers: 0', $html, 'Frontend-ready count should require manual final URL override.' );
+};

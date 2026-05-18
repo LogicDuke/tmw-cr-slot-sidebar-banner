@@ -229,6 +229,7 @@ function tmw_audit_build_remote_get_stub( $routes ) {
 
 $tests['admin_menu_registers_tmw_slot_banner_page'] = function() {
     tmw_reset_test_state();
+    $_SERVER['HTTP_CF_IPCOUNTRY'] = 'US';
     $GLOBALS['tmw_test_added_options_pages'] = array();
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
     $page->register_menu();
@@ -243,7 +244,7 @@ $tests['admin_menu_registers_tmw_slot_banner_page'] = function() {
 $tests['slot_setup_page_accessible_for_manage_options_user'] = function() {
     tmw_reset_test_state();
     $GLOBALS['tmw_test_current_user_can'] = true;
-    $_GET = array( 'tab' => 'slot-setup' );
+    $_GET = array( 'tab' => 'slot-setup', 'country' => 'US' );
 
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
 
@@ -5913,6 +5914,7 @@ $tests['offer_status_unapproved_required_is_still_blocked'] = function() {
 };
 $tests['frontend_readiness_still_requires_selected'] = function() {
     tmw_reset_test_state(); update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array() ) );
+    $_SERVER['HTTP_CF_IPCOUNTRY'] = 'US';
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ); $repo->save_synced_offers( array( 's1' => array( 'id' => 's1', 'name' => 'S1', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1 );
     ob_start(); $page->render_page(); $html = (string) ob_get_clean(); tmw_assert_contains( 'Not selected', $html, 'Not selected should still block frontend readiness.' );
@@ -5967,6 +5969,67 @@ $tests['live_pool_debug_log_exists'] = function() {
     tmw_reset_test_state(); $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
     $logs = tmw_capture_error_log( static function() use ( $repo ) { $repo->get_live_frontend_pool_audit( 'sidebar', array(), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() ); } );
     tmw_assert_contains( '[TMW-BANNER-POOL] live_pool', $logs, 'Live pool debug log should exist.' );
+};
+$tests['manual_ready_not_live_table_has_select_offer_action'] = function() {
+    $file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'admin/admin-page.php' );
+    tmw_assert_contains( 'Select for banner', $file, 'Manual-ready not-selected rows should show select action.' );
+};
+$tests['select_offer_action_adds_offer_to_slot_offer_ids'] = function() {
+    tmw_reset_test_state(); update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'slot_offer_ids' => array( '1' ) ) );
+    $_POST = array( '_wpnonce' => '1', 'offer_id' => '2', 'manual_audit_page' => 3 );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' ); $page->handle_select_offer();
+    tmw_assert_same( array( '1', '2' ), get_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY )['slot_offer_ids'], 'Select action should append offer id.' );
+};
+$tests['select_offer_action_preserves_existing_settings'] = function() {
+    tmw_reset_test_state(); update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'slot_offer_ids' => array( '1' ), 'allowed_offer_types' => array( 'pps' ) ) );
+    $_POST = array( '_wpnonce' => '1', 'offer_id' => '2' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' ); $page->handle_select_offer();
+    $saved = get_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY );
+    tmw_assert_same( array( 'pps' ), $saved['allowed_offer_types'], 'Other settings should be preserved.' );
+};
+$tests['select_offer_action_does_not_duplicate_existing_offer_id'] = function() {
+    tmw_reset_test_state(); update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'slot_offer_ids' => array( '1' ) ) );
+    $_POST = array( '_wpnonce' => '1', 'offer_id' => '1' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' ); $page->handle_select_offer();
+    tmw_assert_same( array( '1' ), get_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY )['slot_offer_ids'], 'Offer id should not duplicate.' );
+};
+    $tests['select_offer_action_requires_nonce'] = function() {
+    tmw_reset_test_state(); $GLOBALS['tmw_test_nonce_ok'] = false; $_REQUEST = array( 'offer_id' => '2' );
+    $thrown = false; $page = new TMW_CR_Slot_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    try { $page->handle_select_offer(); } catch ( Throwable $e ) { $thrown = true; }
+    tmw_assert_true( $thrown, 'Select action should require nonce.' );
+};
+$tests['select_offer_action_requires_capability'] = function() {
+    tmw_reset_test_state(); $GLOBALS['tmw_test_current_user_can'] = false; $_REQUEST = array( '_wpnonce' => '1', 'offer_id' => '2' );
+    $thrown = false; $page = new TMW_CR_Slot_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    try { $page->handle_select_offer(); } catch ( Throwable $e ) { $thrown = true; }
+    tmw_assert_true( $thrown, 'Select action should require capability.' );
+};
+$tests['select_offer_action_logs_result'] = function() {
+    tmw_reset_test_state(); $_POST = array( '_wpnonce' => '1', 'offer_id' => '2' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    $logs = tmw_capture_error_log( static function () use ( $page ) { $page->handle_select_offer(); } );
+    tmw_assert_contains( '[TMW-BANNER-POOL] manual_ready_select_offer offer_id=2', $logs, 'Select action should log result.' );
+};
+$tests['manual_ready_bulk_select_page_action_exists'] = function() {
+    $file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'admin/admin-page.php' );
+    tmw_assert_contains( 'Select all manual-ready offers on this page', $file, 'Bulk page action should render.' );
+};
+$tests['manual_ready_bulk_select_only_adds_visible_page_offer_ids'] = function() {
+    tmw_reset_test_state(); update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'slot_offer_ids' => array() ) );
+    $_POST = array( '_wpnonce' => '1', 'offer_ids' => array( '11', '12' ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' ); $page->handle_select_offer();
+    tmw_assert_same( array( '11', '12' ), get_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY )['slot_offer_ids'], 'Bulk should only add submitted ids.' );
+};
+$tests['live_pool_audit_reflects_selected_offer_after_action'] = function() {
+    tmw_reset_test_state(); update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array() ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( 'm3' => array( 'id' => 'm3', 'name' => 'Fanvue - Gamma', 'status' => 'active', 'payout_type' => 'pps' ) ) );
+    update_option( 'overrides', array( 'm3' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/m3', 'allowed_countries' => array( 'US' ) ) ) );
+    $_POST = array( '_wpnonce' => '1', 'offer_id' => 'm3' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); $page->handle_select_offer();
+    $audit = $repo->get_live_frontend_pool_audit( 'sidebar', get_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    tmw_assert_contains( 'm3', implode( ',', (array) ( $audit['selected_ids'] ?? array() ) ), 'Live pool audit should include selected id.' );
 };
 
 foreach ( $tests as $name => $test ) {

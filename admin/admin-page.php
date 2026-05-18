@@ -1446,20 +1446,38 @@ class TMW_CR_Slot_Admin_Page {
             </table>
             <?php
             $manual_not_live = array();
+            $live_pool_index_map = array();
+            foreach ( (array) $live_pool_rows as $live_pool_row ) {
+                $live_pool_index_map[ (string) ( $live_pool_row['offer_id'] ?? '' ) ] = $live_pool_row;
+            }
             foreach ( (array) $eligibility_rows as $row ) {
                 if ( 'eligible' !== (string) ( $row['eligibility_result'] ?? '' ) ) { continue; }
                 $offer_id = (string) ( $row['offer_id'] ?? '' );
                 if ( in_array( $offer_id, $live_pool_ids, true ) ) { continue; }
-                $reason = in_array( $offer_id, $selected_ids, true ) ? 'selected_pool_already_has_enough_offers' : 'not_selected';
+                $selected_for_slot = in_array( $offer_id, $selected_ids, true );
+                $live_row = isset( $live_pool_index_map[ $offer_id ] ) ? (array) $live_pool_index_map[ $offer_id ] : array();
+                $reason = $selected_for_slot ? (string) ( $live_row['first_blocker'] ?? 'unknown_frontend_drop' ) : 'not_selected';
+                $reason_action_map = array(
+                    'not_allowed_type' => 'enable matching offer type or check payout type normalization',
+                    'invalid_cta' => 'add/fix valid final_url_override',
+                    'country_blocked' => 'add/fix allowed country override',
+                    'missing_logo' => 'add/fix logo manifest/file',
+                    'inactive_or_unapproved' => 'check synced status/approval',
+                    'unknown_frontend_drop' => 'inspect [TMW-BANNER-POOL] logs',
+                    'not_selected' => 'select_offer',
+                );
                 $manual_not_live[] = array(
                     'offer_id' => $offer_id, 'offer_name' => (string) ( $row['offer_name'] ?? '' ), 'detected_type_keys' => (string) ( $row['offer_type_keys'] ?? '' ),
-                    'selected_for_slot' => in_array( $offer_id, $selected_ids, true ) ? 'yes' : 'no', 'reason_not_in_live_pool' => $reason,
-                    'suggested_admin_action' => ( 'not_selected' === $reason ? 'select_offer' : 'lower_priority_number' ),
+                    'allowed_types' => implode( ',', (array) ( $settings['allowed_offer_types'] ?? array() ) ),
+                    'selected_pool_index' => $selected_for_slot ? (string) array_search( $offer_id, $selected_ids, true ) : '',
+                    'live_pool_size' => (string) count( $live_pool_ids ),
+                    'selected_for_slot' => $selected_for_slot ? 'yes' : 'no', 'reason_not_in_live_pool' => $reason,
+                    'suggested_admin_action' => (string) ( $reason_action_map[ $reason ] ?? 'inspect [TMW-BANNER-POOL] logs' ),
                 );
                 if ( function_exists( 'error_log' ) ) { error_log( sprintf( '[TMW-BANNER-POOL] manual_ready_not_live offer_id=%s reason="%s" selected="%s" priority="%s"', $offer_id, $reason, in_array( $offer_id, $selected_ids, true ) ? 'yes' : 'no', (string) ( $settings['slot_offer_priority'][ $offer_id ] ?? '' ) ) ); }
             }
             ?>
-            <?php if ( ! empty( $manual_not_live ) ) : ?><p class="description" style="color:#b32d2e;"><strong><?php esc_html_e( 'Manual-ready offers exist but are not in the live banner pool. Select them in Offer Setup or adjust priorities.', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p><?php endif; ?>
+            <?php if ( ! empty( $manual_not_live ) ) : ?><p class="description" style="color:#b32d2e;"><strong><?php esc_html_e( 'Manual-ready offers exist but are not in the live banner pool. Use measured drop reasons to fix eligibility blockers.', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p><?php endif; ?>
             <h3><?php esc_html_e( 'Manual-ready but not in live pool', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
             <?php $manual_not_live_page = $this->get_positive_query_int( 'manual_not_live_page', (int) $manual_audit_pagination['current_page'] ); ?>
             <?php $manual_not_live_pagination = $this->paginate_rows( $manual_not_live, $manual_not_live_page, 25 ); ?>
@@ -1505,8 +1523,8 @@ class TMW_CR_Slot_Admin_Page {
                     <button type="submit" class="button button-secondary">Select all Fanvue manual-ready offers</button>
                 </form>
             <?php endif; ?>
-            <table class="widefat striped"><thead><tr><th>offer ID</th><th>offer name</th><th>detected type keys</th><th>selected for slot</th><th>reason not in live pool</th><th>suggested admin action</th></tr></thead><tbody>
-            <?php foreach ( (array) $manual_not_live_pagination['rows'] as $row ) : ?><tr><td><?php echo esc_html( (string) $row['offer_id'] ); ?></td><td><?php echo esc_html( (string) $row['offer_name'] ); ?></td><td><?php echo esc_html( (string) $row['detected_type_keys'] ); ?></td><td><?php echo esc_html( (string) $row['selected_for_slot'] ); ?></td><td><?php echo esc_html( (string) $row['reason_not_in_live_pool'] ); ?></td><td><?php echo esc_html( (string) $row['suggested_admin_action'] ); ?><?php if ( current_user_can( 'manage_options' ) && 'select_offer' === (string) ( $row['suggested_admin_action'] ?? '' ) && 'not_selected' === (string) ( $row['reason_not_in_live_pool'] ?? '' ) ) : ?> <a class="button button-small" href="<?php echo esc_url( wp_nonce_url( add_query_arg( array( 'action' => 'tmw_cr_slot_banner_select_offer', 'offer_id' => (string) $row['offer_id'], 'tab' => 'slot-setup', 'manual_audit_page' => (int) $manual_audit_pagination['current_page'], 'manual_not_live_page' => (int) $manual_not_live_pagination['current_page'] ), admin_url( 'admin-post.php' ) ), 'tmw_cr_slot_banner_select_offer' ) ); ?>">Select for banner</a><?php endif; ?></td></tr><?php endforeach; ?>
+            <table class="widefat striped"><thead><tr><th>offer ID</th><th>offer name</th><th>Detected frontend types</th><th>Allowed types</th><th>Selected pool index</th><th>Live pool size</th><th>selected for slot</th><th>Frontend drop reason</th><th>suggested admin action</th></tr></thead><tbody>
+            <?php foreach ( (array) $manual_not_live_pagination['rows'] as $row ) : ?><tr><td><?php echo esc_html( (string) $row['offer_id'] ); ?></td><td><?php echo esc_html( (string) $row['offer_name'] ); ?></td><td><?php echo esc_html( (string) $row['detected_type_keys'] ); ?></td><td><?php echo esc_html( (string) $row['allowed_types'] ); ?></td><td><?php echo esc_html( (string) $row['selected_pool_index'] ); ?></td><td><?php echo esc_html( (string) $row['live_pool_size'] ); ?></td><td><?php echo esc_html( (string) $row['selected_for_slot'] ); ?></td><td><?php echo esc_html( (string) $row['reason_not_in_live_pool'] ); ?></td><td><?php echo esc_html( (string) $row['suggested_admin_action'] ); ?><?php if ( current_user_can( 'manage_options' ) && 'select_offer' === (string) ( $row['suggested_admin_action'] ?? '' ) && 'not_selected' === (string) ( $row['reason_not_in_live_pool'] ?? '' ) ) : ?> <a class="button button-small" href="<?php echo esc_url( wp_nonce_url( add_query_arg( array( 'action' => 'tmw_cr_slot_banner_select_offer', 'offer_id' => (string) $row['offer_id'], 'tab' => 'slot-setup', 'manual_audit_page' => (int) $manual_audit_pagination['current_page'], 'manual_not_live_page' => (int) $manual_not_live_pagination['current_page'] ), admin_url( 'admin-post.php' ) ), 'tmw_cr_slot_banner_select_offer' ) ); ?>">Select for banner</a><?php endif; ?></td></tr><?php endforeach; ?>
             </tbody></table>
             <?php $this->render_audit_pagination( (int) $manual_not_live_pagination['current_page'], (int) $manual_not_live_pagination['total_pages'], 'manual_not_live_page', array( 'manual_audit_page', 'pps_audit_page', 'pps_audit_filter', 'pps_audit_search' ) ); ?>
             <?php $pps_expansion_rows = $this->offer_repository->get_pps_expansion_readiness_audit_rows( $settings, array( 'cta_url' => (string) ( $settings['cta_url'] ?? '' ), 'cta_text' => (string) ( $settings['cta_text'] ?? '' ) ) ); ?>

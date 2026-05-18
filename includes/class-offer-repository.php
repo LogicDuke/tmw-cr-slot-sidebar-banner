@@ -445,8 +445,11 @@ class TMW_CR_Slot_Offer_Repository {
      * @return array<int,string>
      */
     public function get_offer_type_keys( $offer ) {
+        $offer_id = sanitize_text_field( (string) ( $offer['id'] ?? '' ) );
         $name_haystack = strtolower( (string) ( $offer['name'] ?? '' ) );
-        $payout_haystack = strtolower( (string) ( $offer['payout_type'] ?? '' ) );
+        $raw_payout_type = (string) ( $offer['payout_type'] ?? '' );
+        $payout_haystack = strtolower( $raw_payout_type );
+        $normalized_payout_type = $this->normalize_filter_family_value( 'payout_type', $raw_payout_type );
         $revshare_lifetime_pattern = '/\brevshare\s+lifetime\b/i';
         $patterns = array(
             'fallback'  => '/\b(group\s+fallback|custom\s+fallback)\b/i',
@@ -483,6 +486,26 @@ class TMW_CR_Slot_Offer_Repository {
                     $name_haystack = (string) preg_replace( $revshare_lifetime_pattern, ' ', $name_haystack );
                     $payout_haystack = (string) preg_replace( $revshare_lifetime_pattern, ' ', $payout_haystack );
                 }
+            }
+        }
+
+
+        if ( '' !== $normalized_payout_type ) {
+            if ( in_array( $normalized_payout_type, self::ALLOWED_OFFER_TYPES, true ) && ! in_array( $normalized_payout_type, $types, true ) ) {
+                $types[] = $normalized_payout_type;
+                $positions[ $normalized_payout_type ] = 9000;
+            }
+
+            if ( sanitize_key( $raw_payout_type ) !== $normalized_payout_type ) {
+                error_log(
+                    sprintf(
+                        '[TMW-BANNER-TYPE-NORM] offer_id=%s payout_type="%s" normalized="%s" detected_types=%s',
+                        '' !== $offer_id ? $offer_id : 'unknown',
+                        sanitize_text_field( $raw_payout_type ),
+                        $normalized_payout_type,
+                        wp_json_encode( array_values( array_unique( $types ) ) )
+                    )
+                );
             }
         }
 
@@ -1916,6 +1939,22 @@ class TMW_CR_Slot_Offer_Repository {
      *
      * @return array<int,array<string,string>>
      */
+
+    protected function log_frontend_pool_drop( $offer, $reason, $settings, $detected_types = array() ) {
+        $offer_id = sanitize_text_field( (string) ( $offer['id'] ?? '' ) );
+        $allowed_types = $this->get_allowed_offer_types( $settings );
+        error_log(
+            sprintf(
+                '[TMW-BANNER-POOL] selected_dropped offer_id=%s reason=%s types=%s allowed_types=%s payout_type="%s"',
+                '' !== $offer_id ? $offer_id : 'unknown',
+                sanitize_key( (string) $reason ),
+                wp_json_encode( array_values( array_unique( array_map( 'sanitize_key', (array) $detected_types ) ) ) ),
+                wp_json_encode( $allowed_types ),
+                sanitize_text_field( (string) ( $offer['payout_type'] ?? '' ) )
+            )
+        );
+    }
+
     public function get_frontend_slot_offers( $slot_key, $settings, $banner_data, $country, $legacy_catalog ) {
         unset( $slot_key );
 
@@ -1936,18 +1975,23 @@ class TMW_CR_Slot_Offer_Repository {
             $selected_id = (string) $selected_id;
 
             if ( isset( $synced_offers[ $selected_id ] ) ) {
-                if ( ! $this->is_offer_type_allowed( $synced_offers[ $selected_id ], $settings ) ) {
+                $selected_offer = $synced_offers[ $selected_id ];
+                $detected_types = $this->get_offer_type_keys( $selected_offer );
+                if ( empty( $detected_types ) || empty( array_intersect( $detected_types, $this->get_allowed_offer_types( $settings ) ) ) ) {
                     ++$skipped_type_disallowed_count;
+                    $this->log_frontend_pool_drop( $selected_offer, 'not_allowed_type', $settings, $detected_types );
                     continue;
                 }
                 if ( $this->should_exclude_skipped_frontend_offer( $selected_id, $skipped_offer_ids, $excluded_during_pool_build ) ) {
                     continue;
                 }
-                if ( $this->is_offer_blocked_for_banner( $synced_offers[ $selected_id ], $settings ) ) {
+                if ( $this->is_offer_blocked_for_banner( $selected_offer, $settings ) ) {
+                    $this->log_frontend_pool_drop( $selected_offer, 'inactive_or_unapproved', $settings, $detected_types );
                     continue;
                 }
-                if ( $this->is_unavailable_account_pps_offer( $synced_offers[ $selected_id ] ) ) {
-                    $this->log_unavailable_account_offer_excluded( $synced_offers[ $selected_id ] );
+                if ( $this->is_unavailable_account_pps_offer( $selected_offer ) ) {
+                    $this->log_unavailable_account_offer_excluded( $selected_offer );
+                    $this->log_frontend_pool_drop( $selected_offer, 'inactive_or_unapproved', $settings, $detected_types );
                     continue;
                 }
                 ++$type_allowed_count;
@@ -1957,9 +2001,17 @@ class TMW_CR_Slot_Offer_Repository {
 
                 if ( ! empty( $effective ) ) {
                     if ( ! $this->is_valid_frontend_winner_cta_url( (string) ( $effective['cta_url'] ?? '' ) ) ) {
+                        $this->log_frontend_pool_drop( $selected_offer, 'invalid_cta', $settings, $detected_types );
                         continue;
                     }
                     $offers[] = $effective;
+                } else {
+                    $reason = 'unknown_frontend_drop';
+                    if ( in_array( (string) $evaluation['reason'], array( 'missing_logo', 'logo_not_found' ), true ) ) { $reason = 'missing_logo'; }
+                    elseif ( false !== strpos( (string) $evaluation['reason'], 'country' ) ) { $reason = 'country_blocked'; }
+                    elseif ( false !== strpos( (string) $evaluation['reason'], 'status' ) || false !== strpos( (string) $evaluation['reason'], 'approval' ) ) { $reason = 'inactive_or_unapproved'; }
+                    elseif ( false !== strpos( (string) $evaluation['reason'], 'cta' ) || false !== strpos( (string) $evaluation['reason'], 'url' ) ) { $reason = 'invalid_cta'; }
+                    $this->log_frontend_pool_drop( $selected_offer, $reason, $settings, $detected_types );
                 }
             }
         }
@@ -2010,9 +2062,17 @@ class TMW_CR_Slot_Offer_Repository {
 
                 if ( ! empty( $effective ) ) {
                     if ( ! $this->is_valid_frontend_winner_cta_url( (string) ( $effective['cta_url'] ?? '' ) ) ) {
+                        $this->log_frontend_pool_drop( $selected_offer, 'invalid_cta', $settings, $detected_types );
                         continue;
                     }
                     $offers[] = $effective;
+                } else {
+                    $reason = 'unknown_frontend_drop';
+                    if ( in_array( (string) $evaluation['reason'], array( 'missing_logo', 'logo_not_found' ), true ) ) { $reason = 'missing_logo'; }
+                    elseif ( false !== strpos( (string) $evaluation['reason'], 'country' ) ) { $reason = 'country_blocked'; }
+                    elseif ( false !== strpos( (string) $evaluation['reason'], 'status' ) || false !== strpos( (string) $evaluation['reason'], 'approval' ) ) { $reason = 'inactive_or_unapproved'; }
+                    elseif ( false !== strpos( (string) $evaluation['reason'], 'cta' ) || false !== strpos( (string) $evaluation['reason'], 'url' ) ) { $reason = 'invalid_cta'; }
+                    $this->log_frontend_pool_drop( $selected_offer, $reason, $settings, $detected_types );
                 }
             }
         }
@@ -4005,6 +4065,8 @@ class TMW_CR_Slot_Offer_Repository {
                 'cpa_percentage' => 'revshare',
                 'revshare' => 'revshare',
                 'revenue_share' => 'revshare',
+                'revenueshare' => 'revshare',
+                'revsharelifetime' => 'revshare_lifetime',
                 'cpa' => 'multi_cpa',
                 'cpa_flat' => 'revshare_lifetime',
                 'revshare_lifetime' => 'revshare_lifetime',

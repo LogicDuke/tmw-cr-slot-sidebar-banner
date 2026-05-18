@@ -5405,10 +5405,10 @@ $tests['frontend_post_spin_cta_text_decoration_none'] = function() {
     tmw_assert_contains( 'border-bottom: 0 !important;', $css_file, 'CTA pseudo elements should not render underline borders.' );
 };
 
-$tests['plugin_version_bumped_to_198'] = function() {
+$tests['plugin_version_bumped_to_199'] = function() {
     $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
-    tmw_assert_contains( 'Version: 1.9.8', $plugin_file, 'Plugin header version should be 1.9.8.' );
-    tmw_assert_contains( "define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.8' );", $plugin_file, 'Asset version constant should be 1.9.8.' );
+    tmw_assert_contains( 'Version: 1.9.9', $plugin_file, 'Plugin header version should be 1.9.8.' );
+    tmw_assert_contains( "define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.9' );", $plugin_file, 'Asset version constant should be 1.9.8.' );
 };
 
 
@@ -5961,6 +5961,44 @@ $tests['live_frontend_pool_audit_uses_get_frontend_slot_offers'] = function() {
     }
     tmw_assert_same( wp_json_encode( $frontend_ids ), wp_json_encode( $audit['pool_ids'] ), 'Audit must use exact frontend pool method result.' );
 };
+
+$tests['offer_type_detection_normalizes_crakrevenue_enums'] = function() {
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    tmw_assert_true( in_array( 'revshare', $repository->get_offer_type_keys( array( 'id' => '10393', 'name' => 'Fanvue Model', 'payout_type' => 'cpa_percentage' ) ), true ), 'cpa_percentage => revshare' );
+    tmw_assert_true( in_array( 'revshare_lifetime', $repository->get_offer_type_keys( array( 'name' => 'Fanvue Model', 'payout_type' => 'cpa_flat' ) ), true ), 'cpa_flat => revshare_lifetime' );
+    tmw_assert_true( in_array( 'revshare', $repository->get_offer_type_keys( array( 'name' => 'Fanvue Model', 'payout_type' => 'revenue_share' ) ), true ), 'revenue_share => revshare' );
+    tmw_assert_true( in_array( 'revshare', $repository->get_offer_type_keys( array( 'name' => 'Fanvue Model', 'payout_type' => 'Revenue Share' ) ), true ), 'Revenue Share => revshare' );
+    tmw_assert_true( in_array( 'revshare_lifetime', $repository->get_offer_type_keys( array( 'name' => 'Fanvue Model', 'payout_type' => 'revshare_lifetime' ) ), true ), 'revshare_lifetime => revshare_lifetime' );
+    tmw_assert_true( in_array( 'revshare_lifetime', $repository->get_offer_type_keys( array( 'name' => 'Fanvue Model', 'payout_type' => 'RevShareLifetime' ) ), true ), 'RevShareLifetime => revshare_lifetime' );
+    tmw_assert_true( in_array( 'pps', $repository->get_offer_type_keys( array( 'name' => 'Fanvue Model', 'payout_type' => 'pps' ) ), true ), 'pps => pps' );
+};
+
+$tests['frontend_pool_includes_selected_fanvue_cpa_percentage_revshare'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '10393' => array( 'id' => '10393', 'name' => 'Fanvue - Example Model', 'status' => 'active', 'payout_type' => 'cpa_percentage' ) ) );
+    update_option( 'overrides', array( '10393' => array( 'enabled' => 1, 'final_url_override' => 'https://t.acust-9.com/383520/10393/0?aff_sub5=SF_006OG000004lmDN', 'allowed_countries' => array( 'US' ) ) ) );
+    $settings = array( 'slot_offer_ids' => array( '10393' ), 'allowed_offer_types' => array( 'revshare' ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => 'https://base.test', 'cta_text' => 'CTA' ), 'US', array() );
+    tmw_assert_contains( '10393', wp_json_encode( $offers ), 'Fanvue cpa_percentage selected offer should be included in frontend pool.' );
+};
+
+$tests['manual_ready_not_live_no_false_priority_guidance_for_type_failure'] = function() {
+    $file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'admin/admin-page.php' );
+    tmw_assert_true( false === strpos( $file, 'selected_pool_already_has_enough_offers' ), 'Misleading selected_pool_already_has_enough_offers must be removed.' );
+    tmw_assert_true( false === strpos( $file, 'lower_priority_number' ), 'Misleading lower_priority_number must be removed.' );
+};
+
+$tests['pps_detection_and_frontend_behavior_regression'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '8780' => array( 'id' => '8780', 'name' => 'Jerkmate - PPS', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    update_option( 'overrides', array( '8780' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/a', 'allowed_countries' => array( 'US' ) ) ) );
+    tmw_assert_true( in_array( 'pps', $repo->get_offer_type_keys( array( 'name' => 'Jerkmate - PPS', 'payout_type' => 'PPS' ) ), true ), 'PPS detection should remain intact.' );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '8780' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    tmw_assert_contains( '8780', wp_json_encode( $offers ), 'PPS frontend eligibility should remain intact when enabled.' );
+};
+
 $tests['manual_offer_display_audit_warning_exists'] = function() {
     tmw_reset_test_state(); $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' ); $_GET = array( 'tab' => 'slot-setup' );
     ob_start(); $page->render_page(); $html = (string) ob_get_clean(); tmw_assert_contains( 'This table only checks manual final URL and country override readiness.', $html, 'Manual audit warning should exist.' );

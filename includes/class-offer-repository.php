@@ -8,7 +8,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 class TMW_CR_Slot_Offer_Repository {
-    const ALLOWED_OFFER_TYPES = array( 'pps', 'revshare', 'soi', 'doi', 'cpa', 'cpl', 'cpc', 'cpi', 'cpm', 'smartlink', 'fallback' );
+    const ALLOWED_OFFER_TYPES = array( 'pps', 'revshare_lifetime', 'revshare', 'soi', 'doi', 'cpa', 'cpl', 'cpc', 'cpi', 'cpm', 'smartlink', 'fallback' );
     const UNAVAILABLE_ACCOUNT_PPS_OFFER_IDS = array( '9647', '9781' );
     const ELIGIBILITY_REASON_MISSING_FINAL_URL = 'missing_final_url';
     const ELIGIBILITY_REASON_INVALID_FINAL_URL = 'invalid_final_url';
@@ -445,10 +445,12 @@ class TMW_CR_Slot_Offer_Repository {
     public function get_offer_type_keys( $offer ) {
         $name_haystack = strtolower( (string) ( $offer['name'] ?? '' ) );
         $payout_haystack = strtolower( (string) ( $offer['payout_type'] ?? '' ) );
+        $revshare_lifetime_pattern = '/\brevshare\s+lifetime\b/i';
         $patterns = array(
             'fallback'  => '/\b(group\s+fallback|custom\s+fallback)\b/i',
             'smartlink' => '/\bsmartlink\b/i',
-            'revshare'  => '/\brevshare(\s+lifetime)?\b/i',
+            'revshare_lifetime' => $revshare_lifetime_pattern,
+            'revshare'  => '/\brevshare\b/i',
             'soi'       => '/\bsoi\b/i',
             'doi'       => '/\bdoi\b/i',
             'cpa'       => '/\b(multi[\s-]*cpa|cpa)\b/i',
@@ -465,12 +467,20 @@ class TMW_CR_Slot_Offer_Repository {
             if ( preg_match( $pattern, $name_haystack, $matches, PREG_OFFSET_CAPTURE ) ) {
                 $types[] = $key;
                 $positions[ $key ] = (int) $matches[0][1];
+                if ( 'revshare_lifetime' === $key ) {
+                    $name_haystack = (string) preg_replace( $revshare_lifetime_pattern, ' ', $name_haystack );
+                    $payout_haystack = (string) preg_replace( $revshare_lifetime_pattern, ' ', $payout_haystack );
+                }
                 continue;
             }
 
             if ( preg_match( $pattern, $payout_haystack, $matches, PREG_OFFSET_CAPTURE ) ) {
                 $types[] = $key;
                 $positions[ $key ] = 10000 + (int) $matches[0][1];
+                if ( 'revshare_lifetime' === $key ) {
+                    $name_haystack = (string) preg_replace( $revshare_lifetime_pattern, ' ', $name_haystack );
+                    $payout_haystack = (string) preg_replace( $revshare_lifetime_pattern, ' ', $payout_haystack );
+                }
             }
         }
 

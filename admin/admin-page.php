@@ -37,6 +37,7 @@ class TMW_CR_Slot_Admin_Page {
         add_action( 'admin_post_tmw_cr_slot_banner_import_allowed_country_overrides', array( $this, 'handle_import_allowed_country_overrides' ) );
         add_action( 'admin_post_tmw_cr_slot_banner_import_both_overrides', array( $this, 'handle_import_both_overrides' ) );
         add_action( 'admin_post_tmw_cr_slot_import_skipped_offers', array( $this, 'handle_import_skipped_offers' ) );
+        add_action( 'admin_post_tmw_cr_slot_banner_save_allowed_types', array( $this, 'handle_save_allowed_types' ) );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_dashboard_assets' ) );
     }
 
@@ -479,6 +480,47 @@ class TMW_CR_Slot_Admin_Page {
             ),
             'slot-setup'
         );
+    }
+
+    /**
+     * @return void
+     */
+    public function handle_save_allowed_types() {
+        $this->assert_admin_action( 'tmw_cr_slot_banner_save_allowed_types' );
+
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( esc_html__( 'You are not allowed to perform this action.', 'tmw-cr-slot-sidebar-banner' ) );
+        }
+
+        $settings = get_option( $this->option_key, array() );
+        if ( ! is_array( $settings ) ) {
+            $settings = array();
+        }
+
+        $allowed_types = TMW_CR_Slot_Offer_Repository::sanitize_allowed_offer_types(
+            isset( $_POST['allowed_offer_types'] ) ? wp_unslash( $_POST['allowed_offer_types'] ) : array()
+        );
+        $settings['allowed_offer_types'] = $allowed_types;
+        update_option( $this->option_key, $settings, false );
+
+        $type_counts = array();
+        foreach ( (array) $this->offer_repository->get_synced_offers() as $offer ) {
+            if ( ! is_array( $offer ) ) {
+                continue;
+            }
+            foreach ( (array) $this->offer_repository->get_offer_type_keys( $offer ) as $type_key ) {
+                if ( ! isset( $type_counts[ $type_key ] ) ) {
+                    $type_counts[ $type_key ] = 0;
+                }
+                ++$type_counts[ $type_key ];
+            }
+        }
+        ksort( $type_counts );
+
+        error_log( sprintf( '[TMW-BANNER-TYPE] allowed_types_saved allowed_types=%s', implode( ',', $allowed_types ) ) );
+        error_log( sprintf( '[TMW-BANNER-TYPE] allowed_types_diagnostics selected_types=%s synced_type_counts=%s allowed_type_filter_count=%d', implode( ',', $allowed_types ), wp_json_encode( $type_counts ), count( $allowed_types ) ) );
+
+        $this->redirect_with_notice_to_tab( 'success', 'Allowed offer types saved.', 'slot-setup' );
     }
 
 
@@ -994,8 +1036,29 @@ class TMW_CR_Slot_Admin_Page {
             <?php submit_button( __( 'Refresh View', 'tmw-cr-slot-sidebar-banner' ), 'secondary', '', false ); ?>
         </form>
 
-        <form method="post" action="options.php">
-            <?php settings_fields( 'tmw_cr_slot_banner' ); ?>
+        <?php
+        $type_labels = array(
+            'pps' => 'PPS',
+            'revshare' => 'Revshare',
+            'revshare_lifetime' => 'Revshare Lifetime',
+            'soi' => 'SOI',
+            'doi' => 'DOI',
+            'cpa' => 'CPA / Multi-CPA',
+            'cpl' => 'CPL / PPL',
+            'cpc' => 'CPC / PPC',
+            'cpi' => 'CPI',
+            'cpm' => 'CPM',
+            'smartlink' => 'Smartlink',
+            'fallback' => 'Fallback offers',
+        );
+        $selected_type_labels = array();
+        foreach ( $allowed_offer_types as $allowed_type_key ) {
+            $selected_type_labels[] = isset( $type_labels[ $allowed_type_key ] ) ? $type_labels[ $allowed_type_key ] : strtoupper( str_replace( '_', ' ', (string) $allowed_type_key ) );
+        }
+        ?>
+        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+            <?php wp_nonce_field( 'tmw_cr_slot_banner_save_allowed_types' ); ?>
+            <input type="hidden" name="action" value="tmw_cr_slot_banner_save_allowed_types" />
             <h3><?php esc_html_e( 'Allowed offer types for live banner', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
             <p class="description"><?php esc_html_e( 'Choose which offer types may appear in the frontend offer/sidebar banner. Logo display in admin is brand-level and remains unaffected.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
             <?php
@@ -1006,39 +1069,31 @@ class TMW_CR_Slot_Admin_Page {
                     ++$type_allowed_count;
                 }
             }
-            $type_labels = array(
-                'pps' => 'PPS',
-                'revshare' => 'Revshare',
-                'soi' => 'SOI',
-                'doi' => 'DOI',
-                'cpa' => 'CPA / Multi-CPA',
-                'cpl' => 'CPL / PPL',
-                'cpc' => 'CPC / PPC',
-                'cpi' => 'CPI',
-                'cpm' => 'CPM',
-                'smartlink' => 'Smartlink',
-                'fallback' => 'Fallback offers',
-            );
             ?>
             <p>
                 <?php foreach ( $type_labels as $type_key => $type_label ) : ?>
                     <label style="display:inline-block;min-width:180px;margin:0 12px 8px 0;">
-                        <input type="checkbox" name="<?php echo esc_attr( $this->option_key ); ?>[allowed_offer_types][]" value="<?php echo esc_attr( $type_key ); ?>" <?php checked( in_array( $type_key, $allowed_offer_types, true ) ); ?> />
+                        <input type="checkbox" name="allowed_offer_types[]" value="<?php echo esc_attr( $type_key ); ?>" <?php checked( in_array( $type_key, $allowed_offer_types, true ) ); ?> />
                         <?php echo esc_html( $type_label ); ?>
                     </label>
                 <?php endforeach; ?>
             </p>
+            <?php submit_button( __( 'Save Allowed Offer Types', 'tmw-cr-slot-sidebar-banner' ), 'primary', 'submit', false ); ?>
             <p class="description">
                 <?php
                 echo esc_html(
                     sprintf(
                         'Allowed type filter: %1$s — %2$d offers available.',
-                        implode( ' + ', array_map( 'ucfirst', $allowed_offer_types ) ),
+                        implode( ', ', $selected_type_labels ),
                         (int) $displayed_pool_count
                     )
                 );
                 ?>
             </p>
+        </form>
+
+        <form method="post" action="options.php">
+            <?php settings_fields( 'tmw_cr_slot_banner' ); ?>
             <p class="description">
                 <?php
                 echo esc_html(

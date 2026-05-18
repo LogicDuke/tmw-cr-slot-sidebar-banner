@@ -200,6 +200,7 @@ class TMW_CR_Slot_Admin_Page {
                         'allowed_countries'  => isset( $override['allowed_countries'] ) ? sanitize_text_field( (string) $override['allowed_countries'] ) : '',
                         'blocked_countries'  => isset( $override['blocked_countries'] ) ? sanitize_text_field( (string) $override['blocked_countries'] ) : '',
                         'notes'              => isset( $override['notes'] ) ? sanitize_textarea_field( (string) $override['notes'] ) : '',
+                        'manual_offer_type'  => isset( $override['manual_offer_type'] ) ? sanitize_key( (string) $override['manual_offer_type'] ) : '',
                         'dashboard_tags'     => isset( $override['dashboard_tags'] ) ? sanitize_text_field( (string) $override['dashboard_tags'] ) : '',
                         'dashboard_vertical' => isset( $override['dashboard_vertical'] ) ? sanitize_text_field( (string) $override['dashboard_vertical'] ) : '',
                         'dashboard_performs_in' => isset( $override['dashboard_performs_in'] ) ? sanitize_text_field( (string) $override['dashboard_performs_in'] ) : '',
@@ -1459,7 +1460,7 @@ class TMW_CR_Slot_Admin_Page {
                     }
                 }
                 $reason_action_map = array(
-                    'not_allowed_type' => 'enable Revshare in allowed offer types',
+                    'not_allowed_type' => 'Enable the matching offer type in allowed offer types or set manual offer type override.',
                     'invalid_cta' => 'add/fix valid final_url_override',
                     'country_blocked' => 'add/fix allowed country override',
                     'missing_logo' => 'add/fix logo manifest/file',
@@ -1663,6 +1664,7 @@ class TMW_CR_Slot_Admin_Page {
                             $allowed_raw = ! empty( $override['allowed_countries'] ) ? implode( ',', (array) $override['allowed_countries'] ) : '';
                             $blocked_raw = ! empty( $override['blocked_countries'] ) ? implode( ',', (array) $override['blocked_countries'] ) : '';
                             $eligible    = $this->offer_repository->is_offer_allowed_for_country( $offer_id, $country, $override, $offer, array() );
+                            $effective_type = $this->offer_repository->get_effective_offer_type( array_merge( $offer, array( 'manual_offer_type' => (string) ( $override['manual_offer_type'] ?? '' ) ) ) );
                             $effective_image = $this->offer_repository->get_effective_image( $offer_id, $settings, array(), $offer, $override, $legacy_catalog );
                             $effective_url   = $this->offer_repository->get_effective_cta_url( $offer_id, $settings, array( 'cta_url' => (string) $settings['cta_url'] ), $offer, $override );
                             $image_status    = $this->offer_repository->get_image_status_for_offer( $offer_id, $settings, $legacy_catalog );
@@ -1695,6 +1697,22 @@ class TMW_CR_Slot_Admin_Page {
                                     <input type="text" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][custom_cta_text]" value="<?php echo esc_attr( (string) ( $override['custom_cta_text'] ?? '' ) ); ?>" placeholder="<?php esc_attr_e( 'Custom CTA text', 'tmw-cr-slot-sidebar-banner' ); ?>" />
                                     <p class="description"><?php echo esc_html( 'Fallback CTA: ' . $generated_cta ); ?></p>
                                     <input type="text" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][label_override]" value="<?php echo esc_attr( (string) ( $override['label_override'] ?? '' ) ); ?>" placeholder="<?php esc_attr_e( 'Label override', 'tmw-cr-slot-sidebar-banner' ); ?>" />
+                                    <select name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][manual_offer_type]">
+                                        <option value="" <?php selected( (string) ( $override['manual_offer_type'] ?? '' ), '' ); ?>>Auto</option>
+                                        <option value="pps" <?php selected( (string) ( $override['manual_offer_type'] ?? '' ), 'pps' ); ?>>PPS</option>
+                                        <option value="revshare" <?php selected( (string) ( $override['manual_offer_type'] ?? '' ), 'revshare' ); ?>>Revshare</option>
+                                        <option value="revshare_lifetime" <?php selected( (string) ( $override['manual_offer_type'] ?? '' ), 'revshare_lifetime' ); ?>>Revshare Lifetime</option>
+                                        <option value="soi" <?php selected( (string) ( $override['manual_offer_type'] ?? '' ), 'soi' ); ?>>SOI</option>
+                                        <option value="doi" <?php selected( (string) ( $override['manual_offer_type'] ?? '' ), 'doi' ); ?>>DOI</option>
+                                        <option value="cpa" <?php selected( (string) ( $override['manual_offer_type'] ?? '' ), 'cpa' ); ?>>CPA / Multi-CPA</option>
+                                        <option value="cpl" <?php selected( (string) ( $override['manual_offer_type'] ?? '' ), 'cpl' ); ?>>CPL / PPL</option>
+                                        <option value="cpc" <?php selected( (string) ( $override['manual_offer_type'] ?? '' ), 'cpc' ); ?>>CPC / PPC</option>
+                                        <option value="cpi" <?php selected( (string) ( $override['manual_offer_type'] ?? '' ), 'cpi' ); ?>>CPI</option>
+                                        <option value="cpm" <?php selected( (string) ( $override['manual_offer_type'] ?? '' ), 'cpm' ); ?>>CPM</option>
+                                        <option value="smartlink" <?php selected( (string) ( $override['manual_offer_type'] ?? '' ), 'smartlink' ); ?>>Smartlink</option>
+                                        <option value="fallback" <?php selected( (string) ( $override['manual_offer_type'] ?? '' ), 'fallback' ); ?>>Fallback</option>
+                                    </select>
+                                    <p class="description"><?php echo esc_html( sprintf( 'Effective type: %s (%s)', (string) ( $effective_type['type'] ?? '' ), (string) ( $effective_type['source'] ?? '' ) ) ); ?></p>
                                     <textarea class="large-text" rows="2" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][notes]" placeholder="<?php esc_attr_e( 'Internal notes', 'tmw-cr-slot-sidebar-banner' ); ?>"><?php echo esc_textarea( (string) ( $override['notes'] ?? '' ) ); ?></textarea>
                                 </td>
                                 <td><input type="text" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][allowed_countries]" value="<?php echo esc_attr( $allowed_raw ); ?>" placeholder="US,CA,GB" /></td>

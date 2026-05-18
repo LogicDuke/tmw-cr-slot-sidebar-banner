@@ -5405,10 +5405,10 @@ $tests['frontend_post_spin_cta_text_decoration_none'] = function() {
     tmw_assert_contains( 'border-bottom: 0 !important;', $css_file, 'CTA pseudo elements should not render underline borders.' );
 };
 
-$tests['plugin_version_bumped_to_199'] = function() {
+$tests['plugin_version_bumped_to_1910'] = function() {
     $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
-    tmw_assert_contains( 'Version: 1.9.9', $plugin_file, 'Plugin header version should be 1.9.8.' );
-    tmw_assert_contains( "define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.9' );", $plugin_file, 'Asset version constant should be 1.9.8.' );
+    tmw_assert_contains( 'Version: 1.9.10', $plugin_file, 'Plugin header version should be 1.9.10.' );
+    tmw_assert_contains( "define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.10' );", $plugin_file, 'Asset version constant should be 1.9.10.' );
 };
 
 
@@ -5973,6 +5973,37 @@ $tests['offer_type_detection_normalizes_crakrevenue_enums'] = function() {
     tmw_assert_true( in_array( 'pps', $repository->get_offer_type_keys( array( 'name' => 'Fanvue - Mai', 'payout_type' => 'pps' ) ), true ), 'pps => pps' );
 };
 
+$tests['manual_offer_type_override_priority_and_effective_source'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '10393' => array( 'id' => '10393', 'name' => 'Fanvue - Mai PPS', 'status' => 'active', 'payout_type' => 'cpa_percentage' ) ) );
+    $repo->save_offer_overrides( array( '10393' => array( 'enabled' => 1, 'manual_offer_type' => 'revshare' ) ) );
+    $types = $repo->get_offer_type_keys( array( 'id' => '10393', 'name' => 'Fanvue - Mai PPS', 'payout_type' => 'cpa_percentage' ) );
+    tmw_assert_same( 'revshare', (string) ( $types[0] ?? '' ), 'Manual revshare override must be highest priority.' );
+    $effective = $repo->get_effective_offer_type( array( 'id' => '10393', 'name' => 'Fanvue - Mai PPS', 'payout_type' => 'cpa_percentage' ) );
+    tmw_assert_same( 'revshare', (string) ( $effective['type'] ?? '' ), 'Effective type should be manual revshare.' );
+    tmw_assert_same( 'manual override', (string) ( $effective['source'] ?? '' ), 'Effective type source should be manual override.' );
+
+    $repo->save_offer_overrides( array( '10393' => array( 'enabled' => 1, 'manual_offer_type' => 'revshare_lifetime' ) ) );
+    $types = $repo->get_offer_type_keys( array( 'id' => '10393', 'name' => 'Fanvue - Mai PPS', 'payout_type' => 'cpa_percentage' ) );
+    tmw_assert_same( 'revshare_lifetime', (string) ( $types[0] ?? '' ), 'Manual revshare_lifetime override must win over raw/name.' );
+};
+
+$tests['frontend_pool_respects_manual_offer_type_override'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '10393' => array( 'id' => '10393', 'name' => 'Fanvue - Mai PPS', 'status' => 'active', 'payout_type' => 'pps' ) ) );
+    $repo->save_offer_overrides( array( '10393' => array( 'enabled' => 1, 'manual_offer_type' => 'revshare', 'final_url_override' => 'https://trk.example.test/fanvue', 'allowed_countries' => array( 'US' ) ) ) );
+    $settings_allowed = array( 'slot_offer_ids' => array( '10393' ), 'allowed_offer_types' => array( 'revshare' ) );
+    $offers_allowed = $repo->get_frontend_slot_offers( 'sidebar', $settings_allowed, array( 'cta_url' => 'https://base.test', 'cta_text' => 'CTA' ), 'US', array() );
+    tmw_assert_contains( '10393', wp_json_encode( $offers_allowed ), 'Selected Fanvue with manual revshare should appear when revshare is allowed.' );
+    $settings_blocked = array( 'slot_offer_ids' => array( '10393' ), 'allowed_offer_types' => array( 'pps' ) );
+    $offers_blocked = $repo->get_frontend_slot_offers( 'sidebar', $settings_blocked, array( 'cta_url' => 'https://base.test', 'cta_text' => 'CTA' ), 'US', array() );
+    tmw_assert_true( false === strpos( wp_json_encode( $offers_blocked ), '10393' ), 'Selected Fanvue should be blocked when revshare is not allowed.' );
+    $summary = $repo->get_offer_frontend_eligibility_summary( array( 'id' => '10393', 'name' => 'Fanvue - Mai PPS', 'status' => 'active', 'payout_type' => 'pps' ), $settings_blocked, 'US', array() );
+    tmw_assert_same( 'not_allowed_type', (string) ( $summary['block_reason'] ?? '' ), 'Blocked offer must report not_allowed_type.' );
+};
+
 $tests['frontend_pool_includes_selected_fanvue_cpa_percentage_revshare'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
@@ -6011,7 +6042,7 @@ $tests['manual_ready_not_live_selected_type_blocked_shows_not_allowed_type_reaso
     ob_start(); $page->render_page(); $html = (string) ob_get_clean();
     tmw_assert_contains( 'not_allowed_type', $html, 'Type-blocked selected manual-ready offer should show not_allowed_type reason.' );
     tmw_assert_true( false === strpos( $html, 'unknown_frontend_drop' ), 'Type-blocked selected manual-ready offer should not show unknown_frontend_drop.' );
-    tmw_assert_contains( 'enable Revshare in allowed offer types', $html, 'Type-blocked selected manual-ready offer should recommend enabling Revshare.' );
+    tmw_assert_contains( 'Enable the matching offer type in allowed offer types or set manual offer type override.', $html, 'Type-blocked selected manual-ready offer should recommend manual offer type override or allowed type update.' );
 };
 
 $tests['manual_offer_display_audit_warning_exists'] = function() {

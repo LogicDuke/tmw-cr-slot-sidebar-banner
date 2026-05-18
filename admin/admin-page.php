@@ -1446,22 +1446,14 @@ class TMW_CR_Slot_Admin_Page {
             </table>
             <?php
             $manual_not_live = array();
-            $live_pool_index_map = array();
-            foreach ( (array) $live_pool_rows as $live_pool_row ) {
-                $live_pool_index_map[ (string) ( $live_pool_row['offer_id'] ?? '' ) ] = $live_pool_row;
-            }
             foreach ( (array) $eligibility_rows as $row ) {
                 if ( 'eligible' !== (string) ( $row['eligibility_result'] ?? '' ) ) { continue; }
                 $offer_id = (string) ( $row['offer_id'] ?? '' );
                 if ( in_array( $offer_id, $live_pool_ids, true ) ) { continue; }
                 $selected_for_slot = in_array( $offer_id, $selected_ids, true );
-                $live_row = isset( $live_pool_index_map[ $offer_id ] ) ? (array) $live_pool_index_map[ $offer_id ] : array();
                 $reason = 'not_selected';
                 if ( $selected_for_slot ) {
-                    $reason = (string) ( $live_row['first_blocker'] ?? '' );
-                    if ( '' === $reason ) {
-                        $reason = (string) $this->offer_repository->get_selected_offer_frontend_drop_reason( $offer_id, $settings, array( 'cta_url' => (string) ( $settings['cta_url'] ?? '' ), 'cta_text' => (string) ( $settings['cta_text'] ?? '' ) ), $country, $legacy_catalog );
-                    }
+                    $reason = (string) $this->offer_repository->get_selected_offer_frontend_drop_reason( $offer_id, $settings, array( 'cta_url' => (string) ( $settings['cta_url'] ?? '' ), 'cta_text' => (string) ( $settings['cta_text'] ?? '' ) ), $country, $legacy_catalog );
                     if ( '' === $reason ) {
                         $reason = 'unknown_frontend_drop';
                     }

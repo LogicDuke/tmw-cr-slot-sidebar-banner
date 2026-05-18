@@ -2044,7 +2044,7 @@ class TMW_CR_Slot_Offer_Repository {
 
                 if ( ! empty( $effective ) ) {
                     if ( ! $this->is_valid_frontend_winner_cta_url( (string) ( $effective['cta_url'] ?? '' ) ) ) {
-                        $this->log_frontend_pool_drop( $selected_offer, 'invalid_cta', $settings, $detected_types );
+                        $this->log_frontend_pool_drop( $synced_offer, 'invalid_cta', $settings, $fallback_detected_types );
                         continue;
                     }
                     $offers[] = $effective;
@@ -2054,7 +2054,7 @@ class TMW_CR_Slot_Offer_Repository {
                     elseif ( false !== strpos( (string) $evaluation['reason'], 'country' ) ) { $reason = 'country_blocked'; }
                     elseif ( false !== strpos( (string) $evaluation['reason'], 'status' ) || false !== strpos( (string) $evaluation['reason'], 'approval' ) ) { $reason = 'inactive_or_unapproved'; }
                     elseif ( false !== strpos( (string) $evaluation['reason'], 'cta' ) || false !== strpos( (string) $evaluation['reason'], 'url' ) ) { $reason = 'invalid_cta'; }
-                    $this->log_frontend_pool_drop( $selected_offer, $reason, $settings, $detected_types );
+                    $this->log_frontend_pool_drop( $synced_offer, $reason, $settings, $fallback_detected_types );
                 }
             }
         }
@@ -2087,7 +2087,8 @@ class TMW_CR_Slot_Offer_Repository {
                 if ( ! $this->is_offer_allowed_for_country( $offer_id, $country, $override, $synced_offer, $legacy_catalog ) ) {
                     continue;
                 }
-                if ( ! $this->is_offer_type_allowed( $synced_offer, $settings ) ) {
+                $fallback_detected_types = $this->get_offer_type_keys( $synced_offer );
+                if ( empty( $fallback_detected_types ) || empty( array_intersect( $fallback_detected_types, $this->get_allowed_offer_types( $settings ) ) ) ) {
                     ++$skipped_type_disallowed_count;
                     continue;
                 }
@@ -2105,7 +2106,7 @@ class TMW_CR_Slot_Offer_Repository {
 
                 if ( ! empty( $effective ) ) {
                     if ( ! $this->is_valid_frontend_winner_cta_url( (string) ( $effective['cta_url'] ?? '' ) ) ) {
-                        $this->log_frontend_pool_drop( $selected_offer, 'invalid_cta', $settings, $detected_types );
+                        $this->log_frontend_pool_drop( $synced_offer, 'invalid_cta', $settings, $fallback_detected_types );
                         continue;
                     }
                     $offers[] = $effective;
@@ -2115,7 +2116,7 @@ class TMW_CR_Slot_Offer_Repository {
                     elseif ( false !== strpos( (string) $evaluation['reason'], 'country' ) ) { $reason = 'country_blocked'; }
                     elseif ( false !== strpos( (string) $evaluation['reason'], 'status' ) || false !== strpos( (string) $evaluation['reason'], 'approval' ) ) { $reason = 'inactive_or_unapproved'; }
                     elseif ( false !== strpos( (string) $evaluation['reason'], 'cta' ) || false !== strpos( (string) $evaluation['reason'], 'url' ) ) { $reason = 'invalid_cta'; }
-                    $this->log_frontend_pool_drop( $selected_offer, $reason, $settings, $detected_types );
+                    $this->log_frontend_pool_drop( $synced_offer, $reason, $settings, $fallback_detected_types );
                 }
             }
         }

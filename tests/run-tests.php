@@ -6010,6 +6010,7 @@ $tests['manual_ready_not_live_selected_type_blocked_shows_not_allowed_type_reaso
     $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1 );
     ob_start(); $page->render_page(); $html = (string) ob_get_clean();
     tmw_assert_contains( 'not_allowed_type', $html, 'Type-blocked selected manual-ready offer should show not_allowed_type reason.' );
+    tmw_assert_true( false === strpos( $html, 'unknown_frontend_drop' ), 'Type-blocked selected manual-ready offer should not show unknown_frontend_drop.' );
 };
 
 $tests['manual_offer_display_audit_warning_exists'] = function() {

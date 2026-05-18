@@ -5867,6 +5867,64 @@ $tests['frontend_result_hidden_before_first_win'] = function() {
 $tests['frontend_three_match_reveal_logic_unchanged'] = $tests['finish_spin_reveals_only_on_three_reel_match'];
 $tests['frontend_cta_final_url_override_behavior_unchanged'] = $tests['offer_override_resolution_and_country_filters'];
 $tests['frontend_preview_url_not_used_as_cta_still_passes'] = $tests['offer_override_resolution_and_country_filters'];
+$tests['offer_status_active_dashboard_approved_is_not_status_blocked'] = function() {
+    tmw_reset_test_state(); $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $audit = $repo->get_offer_status_approval_audit( array( 'id' => '1', 'status' => 'active', 'require_approval' => '1', 'approval_status' => 'approved' ) );
+    tmw_assert_true( empty( $audit['status_blocked'] ) && empty( $audit['approval_blocked'] ), 'Active + approved should not be status/approval blocked.' );
+};
+$tests['offer_status_require_approval_zero_is_not_approval_blocked'] = function() {
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ); $audit = $repo->get_offer_status_approval_audit( array( 'status' => 'active', 'require_approval' => '0' ) );
+    tmw_assert_true( empty( $audit['approval_blocked'] ), 'require_approval=0 should not be approval blocked.' );
+};
+$tests['offer_status_require_approval_false_is_not_approval_blocked'] = function() {
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ); $audit = $repo->get_offer_status_approval_audit( array( 'status' => 'active', 'require_approval' => 'false' ) );
+    tmw_assert_true( empty( $audit['approval_blocked'] ), 'require_approval=false should not be approval blocked.' );
+};
+$tests['offer_status_inactive_is_still_blocked'] = function() {
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ); $audit = $repo->get_offer_status_approval_audit( array( 'status' => 'inactive' ) );
+    tmw_assert_true( ! empty( $audit['status_blocked'] ), 'Inactive should remain blocked.' );
+};
+$tests['offer_status_unapproved_required_is_still_blocked'] = function() {
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ); $audit = $repo->get_offer_status_approval_audit( array( 'status' => 'active', 'require_approval' => '1', 'approval_status' => 'pending' ) );
+    tmw_assert_true( ! empty( $audit['approval_blocked'] ), 'Unapproved required offer should remain blocked.' );
+};
+$tests['frontend_readiness_still_requires_selected'] = function() {
+    tmw_reset_test_state(); update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array() ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ); $repo->save_synced_offers( array( 's1' => array( 'id' => 's1', 'name' => 'S1', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1 );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean(); tmw_assert_contains( 'Not selected', $html, 'Not selected should still block frontend readiness.' );
+};
+$tests['frontend_readiness_still_requires_final_url_override'] = function() {
+    tmw_reset_test_state(); update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'revshare' ), 'slot_offer_ids' => array( '9' ) ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' ); $repo->save_synced_offers( array( '9' => array( 'id' => '9', 'name' => 'RS Needs URL', 'status' => 'active', 'payout_type' => 'revshare' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1 );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean(); tmw_assert_contains( 'Frontend-ready offers: 0', $html, 'Manual final URL override is still required.' );
+};
+$tests['frontend_readiness_still_requires_allowed_countries'] = function() {
+    tmw_reset_test_state(); $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array( '10366' => array( 'id' => '10366', 'name' => 'NaughtyCharm - PPS', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    update_option( 'overrides', array( '10366' => array( 'final_url_override' => 'https://example.test/final', 'allowed_countries' => array( 'US' ) ) ) );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', array(), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    tmw_assert_true( false === strpos( wp_json_encode( $offers ), '10366' ), 'Country allowlist should still block non-allowed country.' );
+};
+$tests['frontend_readiness_still_requires_logo'] = function() {
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    update_option( 'tmw_cr_slot_banner_offer_overrides', array( 'x-no-logo' => array( 'final_url_override' => 'https://example.test/final', 'allowed_countries' => array( 'US' ) ) ) );
+    $summary = $repo->get_offer_frontend_eligibility_summary( array( 'id' => 'x-no-logo', 'name' => 'Unknown Brand PPS', 'status' => 'active', 'payout_type' => 'PPS' ), array( 'allowed_offer_types' => array( 'pps' ) ), 'US', array() );
+    tmw_assert_same( 'missing_logo', (string) ( $summary['block_reason'] ?? '' ), 'Missing logo should still block frontend readiness.' );
+};
+$tests['status_diagnostics_render_raw_and_normalized_fields'] = function() {
+    tmw_reset_test_state(); update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'slot_offer_ids' => array( 'x1' ), 'allowed_offer_types' => array( 'pps' ) ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ); $repo->save_synced_offers( array( 'x1' => array( 'id' => 'x1', 'name' => 'X1', 'status' => 'active', 'require_approval' => '0', 'payout_type' => 'PPS' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); $_GET = array( 'tab' => 'offers' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean(); tmw_assert_contains( 'Raw status=', $html, 'Diagnostics should render raw/normalized status fields.' );
+};
+$tests['status_debug_log_exists'] = function() {
+    tmw_reset_test_state(); update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'slot_offer_ids' => array( 'x2' ), 'allowed_offer_types' => array( 'pps' ) ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ); $repo->save_synced_offers( array( 'x2' => array( 'id' => 'x2', 'name' => 'X2', 'status' => 'active', 'require_approval' => '0', 'payout_type' => 'PPS' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); $_GET = array( 'tab' => 'offers' );
+    $logs = tmw_capture_error_log( static function () use ( $page ) { ob_start(); $page->render_page(); ob_end_clean(); } ); tmw_assert_contains( '[TMW-BANNER-STATUS]', $logs, 'Status debug log should exist.' );
+};
 
 foreach ( $tests as $name => $test ) {
     try {

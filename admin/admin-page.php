@@ -898,9 +898,13 @@ class TMW_CR_Slot_Admin_Page {
                         $allowed   = $this->offer_repository->is_offer_allowed_for_country( $offer_id, $country, $override, $offer, $legacy_catalog );
                         $is_active = empty( $offer['status'] ) || 'active' === strtolower( (string) $offer['status'] );
                         $is_unavailable = $this->offer_repository->is_offer_unavailable_account_pps( $offer );
+                        $status_audit = $this->offer_repository->get_offer_status_approval_audit( $offer );
                         $eligibility_summary = $this->offer_repository->get_offer_frontend_eligibility_summary( $offer, $settings, $country, $legacy_catalog );
-                        $block_reason_labels = array( 'valid' => 'Valid', 'not_allowed_type' => 'Not allowed type', 'business_rule_blocked' => 'Business rule blocked', 'unavailable_account_offer' => 'Unavailable for account', 'missing_valid_cta' => 'Missing valid CTA', 'country_not_allowed' => 'Country not allowed', 'missing_logo' => 'Missing logo', 'skipped_offer' => 'Skipped offer' );
+                        $block_reason_labels = array( 'valid' => 'Valid', 'status_blocked' => 'Status blocked', 'approval_blocked' => 'Approval blocked', 'not_allowed_type' => 'Not allowed type', 'business_rule_blocked' => 'Business rule blocked', 'unavailable_account_offer' => 'Unavailable for account', 'missing_valid_cta' => 'Missing valid CTA', 'country_not_allowed' => 'Country not allowed', 'missing_logo' => 'Missing logo', 'skipped_offer' => 'Skipped offer' );
                         $logo_status_labels = array( 'manual_override' => 'Manual override', 'mapped_local' => 'Mapped local', 'auto_remote' => 'Remote', 'placeholder_only' => 'Placeholder only', 'missing' => 'Missing' );
+                        if ( ! empty( $status_audit['active_approved'] ) && empty( $eligibility_summary['is_eligible'] ) && function_exists( 'error_log' ) ) {
+                            error_log( sprintf( '[TMW-BANNER-STATUS] offer_id=%s raw_status="%s" raw_approval="%s" require_approval="%s" normalized_status="%s" normalized_approval="%s" blocker="%s"', sanitize_text_field( $offer_id ), sanitize_text_field( (string) ( $status_audit['raw_status'] ?? '' ) ), sanitize_text_field( (string) ( $status_audit['raw_approval'] ?? '' ) ), sanitize_text_field( (string) ( $status_audit['require_approval'] ?? '' ) ), sanitize_text_field( (string) ( $status_audit['normalized_status'] ?? '' ) ), sanitize_text_field( (string) ( $status_audit['normalized_approval'] ?? '' ) ), sanitize_text_field( (string) ( $eligibility_summary['block_reason'] ?? 'unknown' ) ) ) );
+                        }
                         ?>
                         <tr>
                             <td>
@@ -939,11 +943,18 @@ class TMW_CR_Slot_Admin_Page {
                                 <?php endif; ?>
                             </td>
                             <td><?php $this->render_badge( ! empty( $offer['is_featured'] ) ? 'Yes' : 'No', ! empty( $offer['is_featured'] ) ? 'featured' : 'muted' ); ?></td>
-                            <td><?php $this->render_badge( '1' === (string) ( $offer['require_approval'] ?? '' ) ? 'Required' : 'No', 'approval' ); ?></td>
+                            <td>
+                                <?php $this->render_badge( '1' === (string) ( $offer['require_approval'] ?? '' ) ? 'Required' : 'No', 'approval' ); ?>
+                                <br /><small class="description"><?php echo esc_html( 'Raw=' . (string) ( $status_audit['raw_approval'] ?? '' ) . ' / Normalized=' . (string) ( $status_audit['normalized_approval'] ?? '' ) ); ?></small>
+                            </td>
                             <td><?php $this->render_image_status_badge( (string) ( $offer['image_status'] ?? '' ) ); ?></td>
                             <td><?php $this->render_badge( (string) ( $logo_status_labels[ (string) ( $offer['logo_status'] ?? '' ) ] ?? 'Unknown' ), 'status' ); ?></td>
                             <td><?php $this->render_badge( ! empty( $eligibility_summary['is_eligible'] ) ? 'Eligible' : 'Excluded', ! empty( $eligibility_summary['is_eligible'] ) ? 'selected' : 'muted' ); ?></td>
-                            <td><?php $this->render_badge( (string) ( $block_reason_labels[ (string) ( $eligibility_summary['block_reason'] ?? '' ) ] ?? 'Unknown' ), 'muted' ); ?></td>
+                            <td>
+                                <?php $this->render_badge( (string) ( $block_reason_labels[ (string) ( $eligibility_summary['block_reason'] ?? '' ) ] ?? 'Unknown' ), 'muted' ); ?>
+                                <br /><small class="description"><?php echo esc_html( 'Raw status=' . (string) ( $status_audit['raw_status'] ?? '' ) . ' / Norm=' . (string) ( $status_audit['normalized_status'] ?? '' ) . ' / Final=' . ( ! empty( $status_audit['active_approved'] ) ? 'active-approved' : 'blocked' ) ); ?></small>
+                            </td>
+                            
                             <td><?php $this->render_badge( ! empty( $offer['is_selected_for_slot'] ) ? 'Selected for offer display' : 'Not selected', ! empty( $offer['is_selected_for_slot'] ) ? 'selected' : 'muted' ); ?></td>
                             <td><?php $this->render_badge( ( $is_active && $allowed ) ? 'Eligible' : 'Excluded', ( $is_active && $allowed ) ? 'selected' : 'muted' ); ?></td>
                             <td><?php $this->render_badge( $allowed ? 'Allowed' : 'Blocked', $allowed ? 'featured' : 'muted' ); ?></td>

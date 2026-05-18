@@ -5880,6 +5880,14 @@ $tests['offer_status_require_approval_false_is_not_approval_blocked'] = function
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ); $audit = $repo->get_offer_status_approval_audit( array( 'status' => 'active', 'require_approval' => 'false' ) );
     tmw_assert_true( empty( $audit['approval_blocked'] ), 'require_approval=false should not be approval blocked.' );
 };
+$tests['offer_status_empty_is_unknown_not_active'] = function() {
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ); $audit = $repo->get_offer_status_approval_audit( array( 'status' => '' ) );
+    tmw_assert_same( 'unknown', (string) $audit['normalized_status'], 'Empty status should normalize to unknown, not active.' );
+};
+$tests['offer_status_empty_is_status_blocked_without_positive_signal'] = function() {
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ); $audit = $repo->get_offer_status_approval_audit( array( 'status' => '', 'require_approval' => '0' ) );
+    tmw_assert_true( ! empty( $audit['status_blocked'] ), 'Empty status should be blocked without explicit positive signal.' );
+};
 $tests['offer_status_inactive_is_still_blocked'] = function() {
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ); $audit = $repo->get_offer_status_approval_audit( array( 'status' => 'inactive' ) );
     tmw_assert_true( ! empty( $audit['status_blocked'] ), 'Inactive should remain blocked.' );

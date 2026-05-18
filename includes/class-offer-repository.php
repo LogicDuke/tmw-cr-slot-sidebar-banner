@@ -1807,8 +1807,15 @@ class TMW_CR_Slot_Offer_Repository {
         $raw_approval_status = strtolower( trim( (string) ( $offer['approval_status'] ?? '' ) ) );
         $require_approval    = strtolower( trim( (string) ( $offer['require_approval'] ?? '' ) ) );
         $approved            = strtolower( trim( (string) ( $offer['approved'] ?? $offer['is_approved'] ?? '' ) ) );
-        $normalized_status   = '' === $raw_status ? 'active' : $raw_status;
-        $status_blocked      = 'active' !== $normalized_status;
+        $normalized_status   = '' === $raw_status ? 'unknown' : $raw_status;
+        $active_values       = array( 'active', 'approved', 'enabled' );
+        $blocked_values      = array( 'inactive', 'paused', 'disabled', 'rejected', 'deleted', 'stopped', 'blocked', 'suspended' );
+        $status_blocked      = true;
+        if ( in_array( $normalized_status, $active_values, true ) ) {
+            $status_blocked = false;
+        } elseif ( in_array( $normalized_status, $blocked_values, true ) ) {
+            $status_blocked = true;
+        }
         $approval_required   = in_array( $require_approval, array( '1', 'true', 'yes' ), true );
         $normalized_approval = 'not_required';
         $approval_blocked    = false;
@@ -1817,6 +1824,9 @@ class TMW_CR_Slot_Offer_Repository {
             $approved_now = in_array( $approved, $approved_values, true ) || in_array( $raw_approval_status, $approved_values, true );
             $normalized_approval = $approved_now ? 'approved' : 'unapproved';
             $approval_blocked = ! $approved_now;
+            if ( 'unknown' === $normalized_status && $approved_now ) {
+                $status_blocked = false;
+            }
         }
         return array(
             'raw_status' => $raw_status,

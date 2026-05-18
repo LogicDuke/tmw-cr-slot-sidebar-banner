@@ -5690,6 +5690,27 @@ $tests['frontend_winner_text_order_is_your_match_offer_is_ready'] = function() {
     tmw_assert_contains( "POST_SPIN_RESULT_SUFFIX = 'is ready'", $js_file, 'Winner label suffix should be is ready.' );
 };
 
+
+$tests['frontend_banner_headline_has_notranslate_class'] = function() {
+    $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
+    tmw_assert_contains( 'class="tmw-cr-slot-banner__headline notranslate"', $plugin_file, 'Headline should include notranslate class in PHP markup.' );
+};
+
+$tests['frontend_banner_headline_has_translate_no_attribute'] = function() {
+    $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
+    tmw_assert_contains( 'class="tmw-cr-slot-banner__headline notranslate" translate="no" data-no-translate="1"', $plugin_file, 'Headline should include translate=no and data-no-translate in PHP markup.' );
+};
+
+$tests['frontend_banner_subheadline_has_notranslate_class'] = function() {
+    $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
+    tmw_assert_contains( 'class="tmw-cr-slot-banner__subheadline notranslate"', $plugin_file, 'Subheadline should include notranslate class in PHP markup.' );
+};
+
+$tests['frontend_banner_subheadline_has_translate_no_attribute'] = function() {
+    $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
+    tmw_assert_contains( 'class="tmw-cr-slot-banner__subheadline notranslate" translate="no" data-no-translate="1"', $plugin_file, 'Subheadline should include translate=no and data-no-translate in PHP markup.' );
+};
+
 $tests['frontend_winner_offer_name_has_notranslate_class'] = function() {
     $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
     $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );

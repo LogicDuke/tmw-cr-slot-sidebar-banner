@@ -361,8 +361,8 @@ class TMW_CR_Slot_Sidebar_Banner {
             data-debug-enabled="<?php echo esc_attr( ( defined( 'WP_DEBUG' ) && WP_DEBUG ) ? '1' : '0' ); ?>"
         >
             <header class="tmw-cr-slot-banner__header">
-                <h3 class="tmw-cr-slot-banner__headline"><?php echo esc_html( $banner_data['headline'] ); ?></h3>
-                <p class="tmw-cr-slot-banner__subheadline"><?php echo esc_html( $banner_data['subheadline'] ); ?></p>
+                <h3 class="tmw-cr-slot-banner__headline notranslate" translate="no" data-no-translate="1"><?php echo esc_html( $banner_data['headline'] ); ?></h3>
+                <p class="tmw-cr-slot-banner__subheadline notranslate" translate="no" data-no-translate="1"><?php echo esc_html( $banner_data['subheadline'] ); ?></p>
             </header>
 
             <div class="tmw-cr-slot-banner__machine" role="group" aria-label="<?php esc_attr_e( 'CrackRevenue offer banner', 'tmw-cr-slot-sidebar-banner' ); ?>">

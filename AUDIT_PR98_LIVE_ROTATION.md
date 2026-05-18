@@ -109,3 +109,32 @@ The code path to validate each is:
 - not skipped/excluded
 
 Use `[TMW-BANNER-POOL] selected_dropped` and live `data-slot-offers` HTML to confirm per-offer outcome in production.
+
+
+## Test status verification (base vs PR branch)
+Re-ran the required commands on both branches:
+- PR branch: `codex/audit-live-slot-rotation-pr98`
+- Base branch: `work` (repository base branch available in this checkout)
+
+### Commands run on each branch
+- `php tests/run-tests.php`
+- `php tests/run-tests.php 2>&1 | grep "^\[FAIL\]" || true`
+- `php tests/run-tests.php 2>&1 | tail -n 10`
+
+### Result
+- PR branch: `Total: 430 passed, 0 failed` (exit 0)
+- Base branch (`work`): `Total: 430 passed, 0 failed` (exit 0)
+- `grep "^[FAIL]"` output: empty on both branches.
+
+### Note about earlier "428 passed, 2 failed" observation
+An earlier run in this environment showed transient failures while the workspace had local test-artifact/logo state changes. After rerunning with a clean stash/branch comparison, both base and PR branches pass with **0 failures**. Therefore there are no currently reproducible failing tests attributable to this audit-only PR.
+
+## Live production verification checklist
+1. Confirm **Allowed offer types** includes both **Revshare** and **Revshare Lifetime**.
+2. Confirm expected offer IDs are still selected in `slot_offer_ids`.
+3. Check logs for missing brands and verify they are **not** dropped as:
+   - `[TMW-BANNER-POOL] selected_dropped ... reason=not_allowed_type`
+4. Inspect `/slot-test/` page source and verify expected IDs exist in `data-slot-offers` JSON.
+5. Purge AWEmpire cache / page cache / object cache.
+6. Reload `/slot-test/` in an incognito window.
+7. Spin 20 times and record whether each expected brand appears.

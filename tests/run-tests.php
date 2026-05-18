@@ -1089,7 +1089,7 @@ $tests['slot_setup_shows_winner_mode_diagnostics'] = function() {
         )
     );
     $page = new TMW_CR_Slot_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repository, 'sidebar' );
-    $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1 );
+    $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1, 'tmw_run_full_audit' => 1 );
 
     ob_start();
     $page->render_page();
@@ -3422,6 +3422,8 @@ $tests['offers_tab_payout_filter_for_pps_returns_only_pps_offers'] = function() 
 class TMW_Test_Audit_Repo extends TMW_CR_Slot_Offer_Repository {
     public $manual_rows = array();
     public $pps_rows = array();
+    public $manual_audit_calls = 0;
+    public $pps_audit_calls = 0;
 
     /**
      * Return injected manual audit rows for Slot Setup rendering tests.
@@ -3433,6 +3435,7 @@ class TMW_Test_Audit_Repo extends TMW_CR_Slot_Offer_Repository {
      * @return array<int,array<string,mixed>>
      */
     public function get_manual_winner_eligibility_audit_rows( $settings, $banner_data = array(), $country = '', $legacy_catalog = array() ) {
+        ++$this->manual_audit_calls;
         return $this->manual_rows;
     }
 
@@ -3444,6 +3447,7 @@ class TMW_Test_Audit_Repo extends TMW_CR_Slot_Offer_Repository {
      * @return array<int,array<string,mixed>>
      */
     public function get_pps_expansion_readiness_audit_rows( $settings, $banner_data = array() ) {
+        ++$this->pps_audit_calls;
         return $this->pps_rows;
     }
 
@@ -3466,6 +3470,35 @@ class TMW_Test_Audit_Repo extends TMW_CR_Slot_Offer_Repository {
         );
     }
 }
+
+$tests['slot_setup_skips_heavy_audits_by_default'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup' );
+    $repo = new TMW_Test_Audit_Repo( 'o', 'm' );
+    $repo->manual_rows = tmw_make_audit_rows( 3, 'MAN' );
+    $repo->pps_rows = tmw_make_audit_rows( 3, 'PPS' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_true( false === strpos( $html, 'Manual offer display audit' ), 'Manual audit table should be deferred by default.' );
+    tmw_assert_true( false === strpos( $html, 'PPS expansion readiness audit' ), 'PPS audit table should be deferred by default.' );
+    tmw_assert_same( 0, (int) $repo->manual_audit_calls, 'Default slot setup render must not call manual audit rows.' );
+    tmw_assert_same( 0, (int) $repo->pps_audit_calls, 'Default slot setup render must not call PPS audit rows.' );
+};
+
+$tests['slot_setup_runs_heavy_audits_when_requested'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup', 'tmw_run_full_audit' => 1 );
+    $repo = new TMW_Test_Audit_Repo( 'o', 'm' );
+    $repo->manual_rows = tmw_make_audit_rows( 1, 'MAN' );
+    $repo->pps_rows = tmw_make_audit_rows( 1, 'PPS' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Manual offer display audit', $html, 'Manual audit should render when requested.' );
+    tmw_assert_contains( 'PPS expansion readiness audit', $html, 'PPS audit should render when requested.' );
+    tmw_assert_same( 1, (int) $repo->manual_audit_calls, 'Requested full audit should call manual audit rows once.' );
+    tmw_assert_same( 1, (int) $repo->pps_audit_calls, 'Requested full audit should call PPS audit rows once.' );
+};
+
 
 /**
  * Build synthetic audit rows with predictable IDs/names for pagination and filter assertions.
@@ -3525,7 +3558,7 @@ function tmw_make_pps_filter_rows() {
 
 $tests['pps_audit_default_pagination_25_rows'] = function() {
     tmw_reset_test_state();
-    $_GET = array( 'tab' => 'slot-setup' );
+    $_GET = array( 'tab' => 'slot-setup', 'tmw_run_full_audit' => 1 );
     $repo = new TMW_Test_Audit_Repo( 'o', 'm' );
     $repo->pps_rows = tmw_make_audit_rows( 60, 'PPS' );
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
@@ -3550,7 +3583,7 @@ $tests['pps_audit_pagination_page_2_returns_rows_26_through_50'] = function() {
 };
 
 $tests['manual_audit_default_pagination_25_rows'] = function() {
-    tmw_reset_test_state(); $_GET = array( 'tab' => 'slot-setup' );
+    tmw_reset_test_state(); $_GET = array( 'tab' => 'slot-setup', 'tmw_run_full_audit' => 1 );
     $repo = new TMW_Test_Audit_Repo( 'o', 'm' ); $repo->manual_rows = tmw_make_audit_rows( 60, 'MAN' );
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
     ob_start(); $page->render_page(); $html = (string) ob_get_clean();
@@ -5922,7 +5955,7 @@ $tests['frontend_readiness_still_requires_selected'] = function() {
 $tests['frontend_readiness_still_requires_final_url_override'] = function() {
     tmw_reset_test_state(); update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'revshare' ), 'slot_offer_ids' => array( '9' ) ) );
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' ); $repo->save_synced_offers( array( '9' => array( 'id' => '9', 'name' => 'RS Needs URL', 'status' => 'active', 'payout_type' => 'revshare' ) ) );
-    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1 );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1, 'tmw_run_full_audit' => 1 );
     ob_start(); $page->render_page(); $html = (string) ob_get_clean(); tmw_assert_contains( 'Frontend-ready offers: 0', $html, 'Manual final URL override is still required.' );
 };
 $tests['frontend_readiness_still_requires_allowed_countries'] = function() {
@@ -5947,7 +5980,7 @@ $tests['status_diagnostics_render_raw_and_normalized_fields'] = function() {
 $tests['status_debug_log_exists'] = function() {
     tmw_reset_test_state(); update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'slot_offer_ids' => array( 'x2' ), 'allowed_offer_types' => array( 'pps' ) ) );
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ); $repo->save_synced_offers( array( 'x2' => array( 'id' => 'x2', 'name' => 'X2', 'status' => 'active', 'require_approval' => '0', 'payout_type' => 'PPS' ) ) );
-    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); $_GET = array( 'tab' => 'offers' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); $_GET = array( 'tab' => 'offers', 'tmw_run_status_audit' => 1 );
     $logs = tmw_capture_error_log( static function () use ( $page ) { ob_start(); $page->render_page(); ob_end_clean(); } ); tmw_assert_contains( '[TMW-BANNER-STATUS]', $logs, 'Status debug log should exist.' );
 };
 $tests['live_frontend_pool_audit_uses_get_frontend_slot_offers'] = function() {
@@ -6038,7 +6071,7 @@ $tests['manual_ready_not_live_selected_type_blocked_shows_not_allowed_type_reaso
     $repo->save_synced_offers( array( '10393' => array( 'id' => '10393', 'name' => 'Fanvue - Mai', 'status' => 'active', 'payout_type' => 'cpa_percentage' ) ) );
     update_option( 'overrides', array( '10393' => array( 'enabled' => 1, 'final_url_override' => 'https://t.acust-9.com/383520/10393/0?aff_sub5=SF_006OG000004lmDN', 'allowed_countries' => array( 'US' ) ) ) );
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
-    $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1 );
+    $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1, 'tmw_run_full_audit' => 1 );
     ob_start(); $page->render_page(); $html = (string) ob_get_clean();
     tmw_assert_contains( 'not_allowed_type', $html, 'Type-blocked selected manual-ready offer should show not_allowed_type reason.' );
     tmw_assert_true( false === strpos( $html, 'unknown_frontend_drop' ), 'Type-blocked selected manual-ready offer should not show unknown_frontend_drop.' );
@@ -6046,7 +6079,7 @@ $tests['manual_ready_not_live_selected_type_blocked_shows_not_allowed_type_reaso
 };
 
 $tests['manual_offer_display_audit_warning_exists'] = function() {
-    tmw_reset_test_state(); $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' ); $_GET = array( 'tab' => 'slot-setup' );
+    tmw_reset_test_state(); $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' ); $_GET = array( 'tab' => 'slot-setup', 'tmw_run_full_audit' => 1 );
     ob_start(); $page->render_page(); $html = (string) ob_get_clean(); tmw_assert_contains( 'This table only checks manual final URL and country override readiness.', $html, 'Manual audit warning should exist.' );
 };
 $tests['live_pool_debug_log_exists'] = function() {

@@ -1133,6 +1133,7 @@ class TMW_CR_Slot_Offer_Repository {
             'per_page'          => 25,
             'selected_only'     => false,
             'include_all'       => false,
+            'defer_row_details' => true,
         );
 
         $query       = wp_parse_args( (array) $args, $defaults );
@@ -1152,6 +1153,7 @@ class TMW_CR_Slot_Offer_Repository {
         $image       = strtolower( trim( (string) $query['image_status'] ) );
         $logo_status = strtolower( trim( (string) $query['logo_status'] ) );
         $active_filters = array();
+        $defer_row_details = ! empty( $query['defer_row_details'] );
         $offers         = array_values( $this->get_synced_offers() );
         $legacy_catalog = $this->get_default_legacy_catalog();
         $filtered       = array();
@@ -1222,22 +1224,34 @@ class TMW_CR_Slot_Offer_Repository {
                 continue;
             }
 
-            $image_status = $this->get_image_status_for_offer( $offer_id, $settings, $legacy_catalog );
-            if ( '' !== $image && $image !== $image_status ) {
-                continue;
+            $image_status = '';
+            if ( '' !== $image ) {
+                $image_status = $this->get_image_status_for_offer( $offer_id, $settings, $legacy_catalog );
+                if ( $image !== $image_status ) {
+                    continue;
+                }
             }
-            $offer_logo_status = $this->get_logo_status_for_offer_any( $offer_id, $offer, $settings, $legacy_catalog );
-            if ( '' !== $logo_status && $logo_status !== $offer_logo_status ) {
-                continue;
+            $offer_logo_status = '';
+            if ( '' !== $logo_status ) {
+                $offer_logo_status = $this->get_logo_status_for_offer_any( $offer_id, $offer, $settings, $legacy_catalog );
+                if ( $logo_status !== $offer_logo_status ) {
+                    continue;
+                }
             }
 
             $offer['dashboard_metadata']   = $offer_meta;
             $offer['is_selected_for_slot'] = $is_selected;
-            $offer['image_status']         = $image_status;
-            $offer['logo_status']          = $offer_logo_status;
-            $offer['brand_key']            = $this->get_offer_brand_key( (string) ( $offer['name'] ?? '' ) );
-            $offer['logo_filename']        = $this->get_offer_logo_filename( $offer );
-            $offer['logo_url']             = $this->get_offer_logo_url( $offer );
+            if ( ! $defer_row_details || '' !== $image ) {
+                $offer['image_status'] = $image_status;
+            }
+            if ( ! $defer_row_details || '' !== $logo_status ) {
+                $offer['logo_status'] = $offer_logo_status;
+            }
+            if ( ! $defer_row_details ) {
+                $offer['brand_key']     = $this->get_offer_brand_key( (string) ( $offer['name'] ?? '' ) );
+                $offer['logo_filename'] = $this->get_offer_logo_filename( $offer );
+                $offer['logo_url']      = $this->get_offer_logo_url( $offer );
+            }
             $filtered[]                    = $offer;
         }
 
@@ -1282,7 +1296,7 @@ class TMW_CR_Slot_Offer_Repository {
         );
 
         $total    = count( $filtered );
-        $per_page = max( 1, (int) $query['per_page'] );
+        $per_page = min( 50, max( 1, (int) $query['per_page'] ) );
         $page     = max( 1, (int) $query['page'] );
         $pages    = max( 1, (int) ceil( $total / $per_page ) );
         if ( $page > $pages ) {
@@ -1308,8 +1322,27 @@ class TMW_CR_Slot_Offer_Repository {
             error_log( sprintf( '[TMW-BANNER-OFFERS-FILTER] active=%s total=%d matched=%d zero_reason=%s', implode( ',', $active_filters ), count( $offers ), $total, sanitize_key( $zero_reason ) ) );
         }
 
+        $items = array_slice( $filtered, $offset, $per_page );
+        if ( $defer_row_details ) {
+            foreach ( $items as $item_index => $item ) {
+                $item_id = (string) ( $item['id'] ?? '' );
+                if ( '' === $item_id ) {
+                    continue;
+                }
+                if ( ! isset( $items[ $item_index ]['image_status'] ) ) {
+                    $items[ $item_index ]['image_status'] = $this->get_image_status_for_offer( $item_id, $settings, $legacy_catalog );
+                }
+                if ( ! isset( $items[ $item_index ]['logo_status'] ) ) {
+                    $items[ $item_index ]['logo_status'] = $this->get_logo_status_for_offer_any( $item_id, $item, $settings, $legacy_catalog );
+                }
+                $items[ $item_index ]['brand_key']     = $this->get_offer_brand_key( (string) ( $item['name'] ?? '' ) );
+                $items[ $item_index ]['logo_filename'] = $this->get_offer_logo_filename( $item );
+                $items[ $item_index ]['logo_url']      = $this->get_offer_logo_url( $item );
+            }
+        }
+
         return array(
-            'items'    => array_slice( $filtered, $offset, $per_page ),
+            'items'    => $items,
             'total'    => $total,
             'page'     => $page,
             'per_page' => $per_page,

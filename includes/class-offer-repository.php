@@ -9,6 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class TMW_CR_Slot_Offer_Repository {
     const ALLOWED_OFFER_TYPES = array( 'pps', 'revshare_lifetime', 'revshare', 'soi', 'doi', 'cpa', 'cpl', 'cpc', 'cpi', 'cpm', 'smartlink', 'fallback' );
+    // Values accepted for the per-offer manual type override. Blank / 'auto' = no override (falls back to normalized payout_type).
+    const ALLOWED_MANUAL_OFFER_TYPES = array( 'pps', 'revshare_lifetime', 'revshare', 'soi', 'doi', 'cpa', 'cpl', 'cpc', 'cpi', 'cpm', 'smartlink', 'fallback' );
     const UNAVAILABLE_ACCOUNT_PPS_OFFER_IDS = array( '9647', '9781' );
     const ELIGIBILITY_REASON_MISSING_FINAL_URL = 'missing_final_url';
     const ELIGIBILITY_REASON_INVALID_FINAL_URL = 'invalid_final_url';
@@ -40,6 +42,25 @@ class TMW_CR_Slot_Offer_Repository {
     protected $skipped_offers_option_key;
     /** @var array<string,array<string,string>>|null */
     protected $offer_logo_manifest_rows = null;
+
+    /**
+     * Per-request memoization of sanitized offer overrides. Sanitization is heavy
+     * (one full sanitize_offer_override per row) and admin pages call this 5+ times
+     * per render. Invalidated automatically when the underlying raw option payload
+     * changes (via content hash), so direct update_option() writes — common in
+     * tests and migrations — are picked up on the next read.
+     *
+     * @var array<string,array<string,mixed>>|null
+     */
+    protected $offer_overrides_cache = null;
+
+    /**
+     * Hash of the raw option payload backing $offer_overrides_cache. Compared on
+     * each read; mismatch forces re-sanitization.
+     *
+     * @var string|null
+     */
+    protected $offer_overrides_cache_hash = null;
 
     /**
      * @param string $offers_option_key     Option key for synced offers.
@@ -413,21 +434,28 @@ class TMW_CR_Slot_Offer_Repository {
     public function get_offer_overrides() {
         $overrides = get_option( $this->overrides_option_key, array() );
         if ( ! is_array( $overrides ) ) {
-            return array();
+            $overrides = array();
+        }
+
+        // Cheap hash of the raw payload — md5(serialize()) is much cheaper than
+        // looping every row through sanitize_offer_override() across 5+ admin reads.
+        $hash = md5( serialize( $overrides ) );
+        if ( null !== $this->offer_overrides_cache && $hash === $this->offer_overrides_cache_hash ) {
+            return $this->offer_overrides_cache;
         }
 
         $clean = array();
-
         foreach ( $overrides as $offer_id => $override ) {
             $offer_id = sanitize_text_field( (string) $offer_id );
             if ( '' === $offer_id || ! is_array( $override ) ) {
                 continue;
             }
-
             $clean[ $offer_id ] = $this->sanitize_offer_override( $override );
         }
 
-        return $clean;
+        $this->offer_overrides_cache      = $clean;
+        $this->offer_overrides_cache_hash = $hash;
+        return $this->offer_overrides_cache;
     }
 
     /**
@@ -440,87 +468,119 @@ class TMW_CR_Slot_Offer_Repository {
     }
 
     /**
+     * Returns the per-offer manual offer-type override, or '' when not set / not valid.
+     *
+     * Source precedence:
+     *   1. inline $offer['manual_offer_type'] (e.g. in tests or pre-merged payloads)
+     *   2. saved offer override (manual_offer_type stored in offer_overrides option)
+     *
      * @param array<string,mixed> $offer Offer payload.
      *
-     * @return array<int,string>
+     * @return string One of self::ALLOWED_MANUAL_OFFER_TYPES, or '' for auto / blank.
      */
-    public function get_offer_type_keys( $offer ) {
-        if ( empty( $offer['manual_offer_type'] ) ) {
-            $offer_id = sanitize_text_field( (string) ( $offer['id'] ?? '' ) );
-            if ( '' !== $offer_id ) {
-                $override = $this->get_offer_override( $offer_id );
-                if ( is_array( $override ) && isset( $override['manual_offer_type'] ) ) {
-                    $offer['manual_offer_type'] = $override['manual_offer_type'];
-                }
-            }
-        }
-
-        $manual_offer_type = $this->get_manual_offer_type( $offer );
-        if ( '' !== $manual_offer_type ) {
-            return array( $manual_offer_type );
+    public function get_manual_offer_type( $offer ) {
+        $inline = isset( $offer['manual_offer_type'] ) ? sanitize_key( (string) $offer['manual_offer_type'] ) : '';
+        if ( '' !== $inline && in_array( $inline, self::ALLOWED_MANUAL_OFFER_TYPES, true ) ) {
+            return $inline;
         }
 
         $offer_id = sanitize_text_field( (string) ( $offer['id'] ?? '' ) );
-        $name_haystack = strtolower( (string) ( $offer['name'] ?? '' ) );
+        if ( '' === $offer_id ) {
+            return '';
+        }
+
+        $override = $this->get_offer_override( $offer_id );
+        $stored   = isset( $override['manual_offer_type'] ) ? sanitize_key( (string) $override['manual_offer_type'] ) : '';
+        if ( '' !== $stored && in_array( $stored, self::ALLOWED_MANUAL_OFFER_TYPES, true ) ) {
+            return $stored;
+        }
+
+        return '';
+    }
+
+    /**
+     * Returns the effective offer type and the source of that decision.
+     *
+     * Source precedence:
+     *   1. 'manual'  - per-offer manual_offer_type override
+     *   2. 'api'     - normalized raw payout_type from CR API
+     *   3. 'name'    - legacy name-based regex fallback
+     *
+     * @param array<string,mixed> $offer Offer payload.
+     *
+     * @return array{type:string,source:string}
+     */
+    public function get_effective_offer_type( $offer ) {
+        $manual = $this->get_manual_offer_type( $offer );
+        if ( '' !== $manual ) {
+            return array( 'type' => $manual, 'source' => 'manual' );
+        }
+
         $raw_payout_type = (string) ( $offer['payout_type'] ?? '' );
-        $payout_haystack = strtolower( $raw_payout_type );
-        $normalized_payout_type = $this->normalize_filter_family_value( 'payout_type', $raw_payout_type );
+        if ( '' !== trim( $raw_payout_type ) ) {
+            $normalized = $this->normalize_filter_family_value( 'payout_type', $raw_payout_type );
+            if ( '' !== $normalized && in_array( $normalized, self::ALLOWED_OFFER_TYPES, true ) ) {
+                return array( 'type' => $normalized, 'source' => 'api' );
+            }
+        }
+
+        $name_keys = $this->detect_offer_type_keys_from_name( (string) ( $offer['name'] ?? '' ), $raw_payout_type );
+        if ( ! empty( $name_keys ) ) {
+            return array( 'type' => $name_keys[0], 'source' => 'name' );
+        }
+
+        return array( 'type' => '', 'source' => '' );
+    }
+
+    /**
+     * Legacy name + raw-payout regex detection, used as a fallback ONLY when there's no
+     * manual override and no usable normalized payout_type. Kept intentionally simple.
+     *
+     * @param string $name Offer display name.
+     * @param string $raw_payout_type Raw payout_type from CR API.
+     *
+     * @return array<int,string>
+     */
+    protected function detect_offer_type_keys_from_name( $name, $raw_payout_type ) {
+        $name_haystack   = strtolower( (string) $name );
+        $payout_haystack = strtolower( (string) $raw_payout_type );
+
         $revshare_lifetime_pattern = '/\brevshare\s+lifetime\b/i';
         $patterns = array(
-            'fallback'  => '/\b(group\s+fallback|custom\s+fallback)\b/i',
-            'smartlink' => '/\bsmartlink\b/i',
+            'fallback'          => '/\b(group\s+fallback|custom\s+fallback)\b/i',
+            'smartlink'         => '/\bsmartlink\b/i',
             'revshare_lifetime' => $revshare_lifetime_pattern,
-            'revshare'  => '/\brevshare\b/i',
-            'soi'       => '/\bsoi\b/i',
-            'doi'       => '/\bdoi\b/i',
-            'cpa'       => '/\b(multi[\s-]*cpa|cpa)\b/i',
-            'cpl'       => '/\b(ppl|cpl)\b/i',
-            'cpc'       => '/\b(ppc|cpc)\b/i',
-            'cpi'       => '/\bcpi\b/i',
-            'cpm'       => '/\bcpm\b/i',
-            'pps'       => '/\bpps\b/i',
+            'revshare'          => '/\brevshare\b/i',
+            'soi'               => '/\bsoi\b/i',
+            'doi'               => '/\bdoi\b/i',
+            'cpa'               => '/\b(multi[\s-]*cpa|cpa)\b/i',
+            'cpl'               => '/\b(ppl|cpl)\b/i',
+            'cpc'               => '/\b(ppc|cpc)\b/i',
+            'cpi'               => '/\bcpi\b/i',
+            'cpm'               => '/\bcpm\b/i',
+            'pps'               => '/\bpps\b/i',
         );
 
-        $types = array();
+        $types     = array();
         $positions = array();
         foreach ( $patterns as $key => $pattern ) {
             if ( preg_match( $pattern, $name_haystack, $matches, PREG_OFFSET_CAPTURE ) ) {
-                $types[] = $key;
+                $types[]           = $key;
                 $positions[ $key ] = (int) $matches[0][1];
                 if ( 'revshare_lifetime' === $key ) {
-                    $name_haystack = (string) preg_replace( $revshare_lifetime_pattern, ' ', $name_haystack );
+                    $name_haystack   = (string) preg_replace( $revshare_lifetime_pattern, ' ', $name_haystack );
                     $payout_haystack = (string) preg_replace( $revshare_lifetime_pattern, ' ', $payout_haystack );
                 }
                 continue;
             }
 
             if ( preg_match( $pattern, $payout_haystack, $matches, PREG_OFFSET_CAPTURE ) ) {
-                $types[] = $key;
+                $types[]           = $key;
                 $positions[ $key ] = 10000 + (int) $matches[0][1];
                 if ( 'revshare_lifetime' === $key ) {
-                    $name_haystack = (string) preg_replace( $revshare_lifetime_pattern, ' ', $name_haystack );
+                    $name_haystack   = (string) preg_replace( $revshare_lifetime_pattern, ' ', $name_haystack );
                     $payout_haystack = (string) preg_replace( $revshare_lifetime_pattern, ' ', $payout_haystack );
                 }
-            }
-        }
-
-
-        if ( '' !== $normalized_payout_type ) {
-            if ( in_array( $normalized_payout_type, self::ALLOWED_OFFER_TYPES, true ) && ! in_array( $normalized_payout_type, $types, true ) ) {
-                $types[] = $normalized_payout_type;
-                $positions[ $normalized_payout_type ] = 9000;
-            }
-
-            if ( sanitize_key( $raw_payout_type ) !== $normalized_payout_type ) {
-                error_log(
-                    sprintf(
-                        '[TMW-BANNER-TYPE-NORM] offer_id=%s payout_type="%s" normalized="%s" detected_types=%s',
-                        '' !== $offer_id ? $offer_id : 'unknown',
-                        sanitize_text_field( $raw_payout_type ),
-                        $normalized_payout_type,
-                        wp_json_encode( array_values( array_unique( $types ) ) )
-                    )
-                );
             }
         }
 
@@ -535,47 +595,49 @@ class TMW_CR_Slot_Offer_Repository {
         return $types;
     }
 
-    public function get_manual_offer_type( $offer ) {
-        $raw = sanitize_key( (string) ( $offer['manual_offer_type'] ?? '' ) );
-        if ( '' === $raw || 'auto' === $raw || ! in_array( $raw, self::ALLOWED_OFFER_TYPES, true ) ) {
-            return '';
-        }
-        return $raw;
-    }
-
-    public function get_effective_offer_type( $offer ) {
-        if ( empty( $offer['manual_offer_type'] ) ) {
-            $offer_id = sanitize_text_field( (string) ( $offer['id'] ?? '' ) );
-            if ( '' !== $offer_id ) {
-                $override = $this->get_offer_override( $offer_id );
-                if ( is_array( $override ) && isset( $override['manual_offer_type'] ) ) {
-                    $offer['manual_offer_type'] = $override['manual_offer_type'];
-                }
-            }
-        }
-
-        $manual_offer_type = $this->get_manual_offer_type( $offer );
-        if ( '' !== $manual_offer_type ) {
-            return array(
-                'type'   => $manual_offer_type,
-                'source' => 'manual override',
-            );
+    /**
+     * Effective offer-type families for an offer.
+     *
+     * Precedence:
+     *   1. manual_offer_type override (short-circuits to a single family)
+     *   2. normalized raw payout_type from CR API + name-based detection union
+     *      (name-based detection retained for legacy data / multi-family offers)
+     *
+     * Callers that gate frontend pool / allowlists rely on this method, so the manual
+     * override is automatically respected by:
+     *   - is_offer_type_allowed()
+     *   - frontend slot pool eligibility
+     *   - admin diagnostics that display "Detected types" / "Offer Type Keys"
+     *
+     * @param array<string,mixed> $offer Offer payload.
+     *
+     * @return array<int,string>
+     */
+    public function get_offer_type_keys( $offer ) {
+        // Manual override has absolute priority.
+        $manual = $this->get_manual_offer_type( $offer );
+        if ( '' !== $manual ) {
+            return array( $manual );
         }
 
-        $normalized_payout_type = $this->normalize_filter_family_value( 'payout_type', (string) ( $offer['payout_type'] ?? '' ) );
-        if ( '' !== $normalized_payout_type && in_array( $normalized_payout_type, self::ALLOWED_OFFER_TYPES, true ) ) {
-            return array(
-                'type'   => $normalized_payout_type,
-                'source' => 'API normalized',
-            );
+        $raw_payout_type        = (string) ( $offer['payout_type'] ?? '' );
+        $normalized_payout_type = $this->normalize_filter_family_value( 'payout_type', $raw_payout_type );
+
+        // Name + raw regex detection (legacy fallback path, still useful for multi-family
+        // offers like "Live Jasmin Revshare Lifetime PPS").
+        $types = $this->detect_offer_type_keys_from_name( (string) ( $offer['name'] ?? '' ), $raw_payout_type );
+
+        // Append the normalized payout_type from CR API if not already detected. We keep
+        // any name-derived match at the head of the list so callers that pick the first
+        // element preserve their existing semantics for established offers (e.g. PPS-named
+        // offers that have a raw cpa_flat payout_type still surface as PPS first).
+        if ( '' !== $normalized_payout_type
+            && in_array( $normalized_payout_type, self::ALLOWED_OFFER_TYPES, true )
+            && ! in_array( $normalized_payout_type, $types, true ) ) {
+            $types[] = $normalized_payout_type;
         }
 
-        $fallback_types = $this->get_offer_type_keys( array_merge( $offer, array( 'manual_offer_type' => '' ) ) );
-
-        return array(
-            'type'   => (string) ( $fallback_types[0] ?? '' ),
-            'source' => 'name fallback',
-        );
+        return array_values( array_unique( $types ) );
     }
 
     public function is_offer_type_allowed( $offer, $settings ) {
@@ -2496,28 +2558,6 @@ class TMW_CR_Slot_Offer_Repository {
      *
      * @return array<string,string>
      */
-    protected function normalize_synced_offer( $offer, $banner_data, $image_map ) {
-        $offer_id = (string) ( $offer['id'] ?? '' );
-
-        if ( '' === $offer_id ) {
-            return array();
-        }
-
-        if ( ! empty( $offer['status'] ) && 'active' !== strtolower( (string) $offer['status'] ) ) {
-            return array();
-        }
-
-        $image = $this->resolve_synced_offer_image( $offer, array( 'offer_image_overrides' => $image_map ), array() );
-
-        return array(
-            'id'       => $offer_id,
-            'name'     => (string) ( $offer['name'] ?? $offer_id ),
-            'image'    => $image,
-            'cta_url'  => $this->build_cta_url( $banner_data, $offer ),
-            'cta_text' => (string) ( $banner_data['cta_text'] ?? '' ),
-        );
-    }
-
     /**
      * @param array<string,mixed>  $offer Legacy catalog offer.
      * @param array<string,string> $banner_data Banner data.
@@ -2810,7 +2850,9 @@ class TMW_CR_Slot_Offer_Repository {
 
         $allowed = isset( $override['allowed_countries'] ) ? $this->sanitize_country_names( $override['allowed_countries'] ) : array();
         if ( ! empty( $allowed ) && ! $this->is_country_allowed_by_name_or_alias( $country, $allowed ) ) {
-            error_log( sprintf( '[TMW-BANNER-COUNTRY] country_excluded offer_id=%1$s visitor_country="%2$s" reason="not_allowed"', $offer_id, $country ) );
+            if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+                error_log( sprintf( '[TMW-BANNER-COUNTRY] country_excluded offer_id=%1$s visitor_country="%2$s" reason="not_allowed"', $offer_id, $country ) );
+            }
             return false;
         }
 
@@ -3058,6 +3100,9 @@ class TMW_CR_Slot_Offer_Repository {
     }
 
     protected function log_eligibility_event( $offer_id, $reason, $country ) {
+        if ( ! ( defined( 'WP_DEBUG' ) && WP_DEBUG ) ) {
+            return;
+        }
         if ( self::ELIGIBILITY_REASON_VALID === $reason ) {
             error_log( sprintf( '[TMW-BANNER-ELIGIBILITY] offer_id=%1$s result=eligible country="%2$s"', (string) $offer_id, (string) $country ) );
             return;
@@ -3339,15 +3384,6 @@ class TMW_CR_Slot_Offer_Repository {
         }
 
         return false;
-    }
-
-    protected function log_tracking_url_synced( $offer_id, $url ) {
-        $host = (string) parse_url( (string) $url, PHP_URL_HOST );
-        error_log( sprintf( '[TMW-BANNER-LINK] tracking_url_synced offer_id=%1$s host="%2$s"', sanitize_text_field( (string) $offer_id ), sanitize_text_field( strtolower( $host ) ) ) );
-    }
-
-    protected function log_tracking_url_missing( $offer_id, $reason ) {
-        error_log( sprintf( '[TMW-BANNER-LINK] tracking_url_missing offer_id=%1$s reason="%2$s"', sanitize_text_field( (string) $offer_id ), sanitize_key( (string) $reason ) ) );
     }
 
     protected function log_frontend_cta_source( $offer_id, $source ) {
@@ -3911,6 +3947,12 @@ class TMW_CR_Slot_Offer_Repository {
      * @return array<string,mixed>
      */
     protected function sanitize_offer_override( $override ) {
+        $manual_offer_type = isset( $override['manual_offer_type'] ) ? sanitize_key( (string) $override['manual_offer_type'] ) : '';
+        if ( '' !== $manual_offer_type && ! in_array( $manual_offer_type, self::ALLOWED_MANUAL_OFFER_TYPES, true ) ) {
+            // Treat 'auto' or any unknown value as no override.
+            $manual_offer_type = '';
+        }
+
         return array(
             'enabled'           => ! isset( $override['enabled'] ) || ! empty( $override['enabled'] ) ? 1 : 0,
             'final_url_override' => ! empty( $override['final_url_override'] ) ? esc_url_raw( (string) $override['final_url_override'] ) : '',
@@ -3920,14 +3962,8 @@ class TMW_CR_Slot_Offer_Repository {
             'custom_cta_text'   => ! empty( $override['custom_cta_text'] ) ? sanitize_text_field( (string) $override['custom_cta_text'] ) : '',
             'custom_slogan'     => ! empty( $override['custom_slogan'] ) ? sanitize_text_field( (string) $override['custom_slogan'] ) : '',
             'label_override'    => ! empty( $override['label_override'] ) ? sanitize_text_field( (string) $override['label_override'] ) : '',
+            'manual_offer_type' => $manual_offer_type,
             'notes'             => ! empty( $override['notes'] ) ? sanitize_textarea_field( (string) $override['notes'] ) : '',
-            'manual_offer_type' => ( static function ( $value ) {
-                $key = sanitize_key( (string) $value );
-                if ( '' === $key || 'auto' === $key || ! in_array( $key, self::ALLOWED_OFFER_TYPES, true ) ) {
-                    return '';
-                }
-                return $key;
-            } )( $override['manual_offer_type'] ?? '' ),
             'dashboard_tags'    => $this->sanitize_list_values( isset( $override['dashboard_tags'] ) ? $override['dashboard_tags'] : array() ),
             'dashboard_vertical' => ! empty( $override['dashboard_vertical'] ) ? sanitize_text_field( (string) $override['dashboard_vertical'] ) : '',
             'dashboard_performs_in' => $this->sanitize_country_codes( isset( $override['dashboard_performs_in'] ) ? $override['dashboard_performs_in'] : array() ),

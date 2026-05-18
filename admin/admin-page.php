@@ -43,6 +43,86 @@ class TMW_CR_Slot_Admin_Page {
     }
 
     /**
+     * Cap for paginated admin tables. Default 25, hard-capped at 50.
+     */
+    const ADMIN_PER_PAGE_DEFAULT = 25;
+    const ADMIN_PER_PAGE_MAX     = 50;
+
+    /**
+     * Returns the per-page size for admin pagination, clamped to [1, ADMIN_PER_PAGE_MAX].
+     * Reads ?per_page= from $_GET when present.
+     *
+     * @param int $default Default per-page size.
+     *
+     * @return int
+     */
+    protected function admin_per_page( $default = self::ADMIN_PER_PAGE_DEFAULT ) {
+        $requested = isset( $_GET['per_page'] ) ? (int) $_GET['per_page'] : (int) $default;
+        if ( $requested < 1 ) {
+            $requested = (int) $default;
+        }
+        if ( $requested > self::ADMIN_PER_PAGE_MAX ) {
+            $requested = self::ADMIN_PER_PAGE_MAX;
+        }
+        return $requested;
+    }
+
+    /**
+     * Light Admin Mode toggle. When ?tmw_light_admin=1 is set, all heavy audit
+     * sections are skipped regardless of any other audit query flags.
+     */
+    protected function is_light_admin_mode() {
+        return ! empty( $_GET['tmw_light_admin'] );
+    }
+
+    /**
+     * Returns true when the operator has explicitly requested a heavy audit.
+     * Used to gate render of: Manual offer display audit, Live frontend pool audit,
+     * Manual-ready but not in live pool, Logo coverage report.
+     *
+     * Triggers:
+     *   - tmw_run_full_audit=1     (canonical, recommended)
+     *   - tmw_run_live_pool_audit=1, tmw_run_logo_audit=1 (granular variants, still counted as heavy)
+     *   - include_all_offers=1     (legacy compatibility — kept so existing operator workflows
+     *                               and the linked filter buttons keep showing audits)
+     *
+     * Light admin mode beats everything.
+     */
+    protected function is_heavy_audit_requested() {
+        if ( $this->is_light_admin_mode() ) {
+            return false;
+        }
+        if ( ! empty( $_GET['tmw_run_full_audit'] ) ) {
+            return true;
+        }
+        if ( ! empty( $_GET['tmw_run_live_pool_audit'] ) ) {
+            return true;
+        }
+        if ( ! empty( $_GET['tmw_run_logo_audit'] ) ) {
+            return true;
+        }
+        if ( ! empty( $_GET['include_all_offers'] ) ) {
+            return true;
+        }
+        // Operator paging through an existing audit table = they want to see it.
+        if ( ! empty( $_GET['manual_audit_page'] ) || ! empty( $_GET['manual_not_live_page'] ) || ! empty( $_GET['pps_audit_page'] ) ) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Returns true when noisy per-offer admin debug logs should fire.
+     * Only emits when WP_DEBUG is on, or the operator explicitly asked for the full audit.
+     */
+    protected function admin_debug_logging_enabled() {
+        if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+            return true;
+        }
+        return ! empty( $_GET['tmw_run_full_audit'] );
+    }
+
+    /**
      * @return void
      */
     public function register_menu() {
@@ -197,10 +277,10 @@ class TMW_CR_Slot_Admin_Page {
                         'custom_cta_text'    => isset( $override['custom_cta_text'] ) ? sanitize_text_field( (string) $override['custom_cta_text'] ) : '',
                         'custom_slogan'      => isset( $override['custom_slogan'] ) ? sanitize_text_field( (string) $override['custom_slogan'] ) : '',
                         'label_override'     => isset( $override['label_override'] ) ? sanitize_text_field( (string) $override['label_override'] ) : '',
+                        'manual_offer_type'  => isset( $override['manual_offer_type'] ) ? sanitize_key( (string) $override['manual_offer_type'] ) : '',
                         'allowed_countries'  => isset( $override['allowed_countries'] ) ? sanitize_text_field( (string) $override['allowed_countries'] ) : '',
                         'blocked_countries'  => isset( $override['blocked_countries'] ) ? sanitize_text_field( (string) $override['blocked_countries'] ) : '',
                         'notes'              => isset( $override['notes'] ) ? sanitize_textarea_field( (string) $override['notes'] ) : '',
-                        'manual_offer_type'  => isset( $override['manual_offer_type'] ) ? sanitize_key( (string) $override['manual_offer_type'] ) : '',
                         'dashboard_tags'     => isset( $override['dashboard_tags'] ) ? sanitize_text_field( (string) $override['dashboard_tags'] ) : '',
                         'dashboard_vertical' => isset( $override['dashboard_vertical'] ) ? sanitize_text_field( (string) $override['dashboard_vertical'] ) : '',
                         'dashboard_performs_in' => isset( $override['dashboard_performs_in'] ) ? sanitize_text_field( (string) $override['dashboard_performs_in'] ) : '',
@@ -998,7 +1078,7 @@ class TMW_CR_Slot_Admin_Page {
                         $eligibility_summary = $this->offer_repository->get_offer_frontend_eligibility_summary( $offer, $settings, $country, $legacy_catalog );
                         $block_reason_labels = array( 'valid' => 'Valid', 'status_blocked' => 'Status blocked', 'approval_blocked' => 'Approval blocked', 'not_allowed_type' => 'Not allowed type', 'business_rule_blocked' => 'Business rule blocked', 'unavailable_account_offer' => 'Unavailable for account', 'missing_valid_cta' => 'Missing valid CTA', 'country_not_allowed' => 'Country not allowed', 'missing_logo' => 'Missing logo', 'skipped_offer' => 'Skipped offer' );
                         $logo_status_labels = array( 'manual_override' => 'Manual override', 'mapped_local' => 'Mapped local', 'auto_remote' => 'Remote', 'placeholder_only' => 'Placeholder only', 'missing' => 'Missing' );
-                        if ( ! empty( $status_audit['active_approved'] ) && empty( $eligibility_summary['is_eligible'] ) && function_exists( 'error_log' ) ) {
+                        if ( ! empty( $status_audit['active_approved'] ) && empty( $eligibility_summary['is_eligible'] ) && $this->admin_debug_logging_enabled() && function_exists( 'error_log' ) ) {
                             error_log( sprintf( '[TMW-BANNER-STATUS] offer_id=%s raw_status="%s" raw_approval="%s" require_approval="%s" normalized_status="%s" normalized_approval="%s" blocker="%s"', sanitize_text_field( $offer_id ), sanitize_text_field( (string) ( $status_audit['raw_status'] ?? '' ) ), sanitize_text_field( (string) ( $status_audit['raw_approval'] ?? '' ) ), sanitize_text_field( (string) ( $status_audit['require_approval'] ?? '' ) ), sanitize_text_field( (string) ( $status_audit['normalized_status'] ?? '' ) ), sanitize_text_field( (string) ( $status_audit['normalized_approval'] ?? '' ) ), sanitize_text_field( (string) ( $eligibility_summary['block_reason'] ?? 'unknown' ) ) ) );
                         }
                         ?>
@@ -1159,8 +1239,10 @@ class TMW_CR_Slot_Admin_Page {
         }
 
         $offers = isset( $filtered_offers ) ? $filtered_offers : array();
-        error_log( sprintf( '[TMW-BANNER-TYPE] slot_setup_pool allowed_types=%s total_synced_pool=%d displayed_pool_count=%d selected_count=%d selected_disallowed_count=%d', implode( ',', $allowed_offer_types ), count( $this->offer_repository->get_synced_offers() ), $displayed_pool_count, $selected_count, $selected_disallowed_count ) );
-        error_log( sprintf( '[TMW-BANNER-TYPE] slot_setup_visibility allowed_types=%s synced_type_allowed_count=%d displayed_setup_count=%d selected_count=%d frontend_ready_count=%d include_all=%s', implode( ',', $allowed_offer_types ), $synced_type_allowed_count, $displayed_pool_count, $selected_count, $frontend_ready_count, $include_all ? '1' : '0' ) );
+        if ( $this->admin_debug_logging_enabled() ) {
+            error_log( sprintf( '[TMW-BANNER-TYPE] slot_setup_pool allowed_types=%s total_synced_pool=%d displayed_pool_count=%d selected_count=%d selected_disallowed_count=%d', implode( ',', $allowed_offer_types ), count( $this->offer_repository->get_synced_offers() ), $displayed_pool_count, $selected_count, $selected_disallowed_count ) );
+            error_log( sprintf( '[TMW-BANNER-TYPE] slot_setup_visibility allowed_types=%s synced_type_allowed_count=%d displayed_setup_count=%d selected_count=%d frontend_ready_count=%d include_all=%s', implode( ',', $allowed_offer_types ), $synced_type_allowed_count, $displayed_pool_count, $selected_count, $frontend_ready_count, $include_all ? '1' : '0' ) );
+        }
 
         usort(
             $offers,
@@ -1376,7 +1458,7 @@ class TMW_CR_Slot_Admin_Page {
             <p class="description"><?php echo esc_html( sprintf( 'Invalid manual URL overrides rejected: %d', (int) $manual_diag['invalid_manual_url_overrides_rejected'] ) ); ?></p>
             <?php
             $manual_override_rows = array();
-            foreach ( $this->offer_repository->get_offer_overrides() as $diag_offer_id => $diag_override ) {
+            foreach ( $all_offer_overrides_for_audit as $diag_offer_id => $diag_override ) {
                 if ( ! is_array( $diag_override ) || empty( $diag_override['final_url_override'] ) ) {
                     continue;
                 }
@@ -1390,7 +1472,7 @@ class TMW_CR_Slot_Admin_Page {
             <?php endif; ?>
             <?php
             $manual_country_rows = array();
-            foreach ( $this->offer_repository->get_offer_overrides() as $country_offer_id => $country_override ) {
+            foreach ( $all_offer_overrides_for_audit as $country_offer_id => $country_override ) {
                 $allowed = ! empty( $country_override['allowed_countries'] ) ? $this->offer_repository->get_sanitized_country_names( $country_override['allowed_countries'] ) : array();
                 if ( empty( $allowed ) ) {
                     continue;
@@ -1403,9 +1485,10 @@ class TMW_CR_Slot_Admin_Page {
                 <p class="description"><?php esc_html_e( 'Saved manual allowed country overrides:', 'tmw-cr-slot-sidebar-banner' ); ?></p>
                 <p class="description"><code><?php echo esc_html( implode( '; ', $manual_country_rows ) ); ?></code></p>
             <?php endif; ?>
+            <?php if ( $this->is_heavy_audit_requested() ) : ?>
             <?php $eligibility_rows = $this->offer_repository->get_manual_winner_eligibility_audit_rows( $settings, array( 'cta_url' => (string) ( $settings['cta_url'] ?? '' ), 'cta_text' => (string) ( $settings['cta_text'] ?? '' ) ), $country, $legacy_catalog ); ?>
             <?php $manual_audit_page = $this->get_positive_query_int( 'manual_audit_page', 1 ); ?>
-            <?php $manual_audit_pagination = $this->paginate_rows( $eligibility_rows, $manual_audit_page, 25 ); ?>
+            <?php $manual_audit_pagination = $this->paginate_rows( $eligibility_rows, $manual_audit_page, $this->admin_per_page() ); ?>
             <h3><?php esc_html_e( 'Manual offer display audit', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
             <p class="description" style="color:#b32d2e;"><strong><?php esc_html_e( 'This table only checks manual final URL and country override readiness. It does not mean the offer is selected into the live frontend pool. See Live frontend pool audit below.', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
             <?php $this->render_audit_pagination( (int) $manual_audit_pagination['current_page'], (int) $manual_audit_pagination['total_pages'], 'manual_audit_page', array( 'pps_audit_page', 'pps_audit_filter', 'pps_audit_search' ) ); ?>
@@ -1460,7 +1543,7 @@ class TMW_CR_Slot_Admin_Page {
                     }
                 }
                 $reason_action_map = array(
-                    'not_allowed_type' => 'Enable the matching offer type in allowed offer types or set manual offer type override.',
+                    'not_allowed_type' => 'Enable the matching offer type in allowed offer types',
                     'invalid_cta' => 'add/fix valid final_url_override',
                     'country_blocked' => 'add/fix allowed country override',
                     'missing_logo' => 'add/fix logo manifest/file',
@@ -1476,7 +1559,7 @@ class TMW_CR_Slot_Admin_Page {
                     'selected_for_slot' => $selected_for_slot ? 'yes' : 'no', 'reason_not_in_live_pool' => $reason,
                     'suggested_admin_action' => (string) ( $reason_action_map[ $reason ] ?? 'inspect [TMW-BANNER-POOL] logs' ),
                 );
-                if ( function_exists( 'error_log' ) ) { error_log( sprintf( '[TMW-BANNER-POOL] manual_ready_not_live offer_id=%s reason="%s" selected="%s" priority="%s"', $offer_id, $reason, in_array( $offer_id, $selected_ids, true ) ? 'yes' : 'no', (string) ( $settings['slot_offer_priority'][ $offer_id ] ?? '' ) ) ); }
+                if ( $this->admin_debug_logging_enabled() && function_exists( 'error_log' ) ) { error_log( sprintf( '[TMW-BANNER-POOL] manual_ready_not_live offer_id=%s reason="%s" selected="%s" priority="%s"', $offer_id, $reason, in_array( $offer_id, $selected_ids, true ) ? 'yes' : 'no', (string) ( $settings['slot_offer_priority'][ $offer_id ] ?? '' ) ) ); }
             }
             ?>
             <?php if ( ! empty( $manual_not_live ) ) : ?><p class="description" style="color:#b32d2e;"><strong><?php esc_html_e( 'Manual-ready offers exist but are not in the live banner pool. Use measured drop reasons to fix eligibility blockers.', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p><?php endif; ?>
@@ -1591,13 +1674,14 @@ class TMW_CR_Slot_Admin_Page {
                 </tbody>
             </table>
             <?php $this->render_audit_pagination( (int) $pps_audit_pagination['current_page'], (int) $pps_audit_pagination['total_pages'], 'pps_audit_page', array( 'manual_audit_page', 'pps_audit_filter', 'pps_audit_search' ) ); ?>
+            <?php endif; // is_heavy_audit_requested ?>
             <?php if ( 0 === count( $eligible_winner_offers ) ) : ?>
                 <p class="description" style="color:#b32d2e;"><strong><?php esc_html_e( 'No eligible display offers. Add valid manual final URL overrides for selected offers.', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
             <?php endif; ?>
             <p class="description" style="color:#b32d2e;"><strong><?php esc_html_e( 'CrackRevenue API does not provide usable final CTA URLs in the current offer response. Add the affiliate tracking URL manually as final_url_override.', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
             <p class="description"><?php esc_html_e( 'Selection mode: forced three-logo match', 'tmw-cr-slot-sidebar-banner' ); ?></p>
             <p class="description"><?php esc_html_e( 'Final display behavior: one selected offer shown across the animated selector', 'tmw-cr-slot-sidebar-banner' ); ?></p>
-            <?php if ( current_user_can( 'manage_options' ) ) : ?>
+            <?php if ( current_user_can( 'manage_options' ) && $this->is_heavy_audit_requested() ) : ?>
                 <?php $url_audit = $this->offer_repository->get_cr_url_field_audit_summary( $settings ); ?>
                 <h3><?php esc_html_e( 'CR URL field audit', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
                 <ul>
@@ -1664,7 +1748,6 @@ class TMW_CR_Slot_Admin_Page {
                             $allowed_raw = ! empty( $override['allowed_countries'] ) ? implode( ',', (array) $override['allowed_countries'] ) : '';
                             $blocked_raw = ! empty( $override['blocked_countries'] ) ? implode( ',', (array) $override['blocked_countries'] ) : '';
                             $eligible    = $this->offer_repository->is_offer_allowed_for_country( $offer_id, $country, $override, $offer, array() );
-                            $effective_type = $this->offer_repository->get_effective_offer_type( array_merge( $offer, array( 'manual_offer_type' => (string) ( $override['manual_offer_type'] ?? '' ) ) ) );
                             $effective_image = $this->offer_repository->get_effective_image( $offer_id, $settings, array(), $offer, $override, $legacy_catalog );
                             $effective_url   = $this->offer_repository->get_effective_cta_url( $offer_id, $settings, array( 'cta_url' => (string) $settings['cta_url'] ), $offer, $override );
                             $image_status    = $this->offer_repository->get_image_status_for_offer( $offer_id, $settings, $legacy_catalog );
@@ -1697,22 +1780,50 @@ class TMW_CR_Slot_Admin_Page {
                                     <input type="text" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][custom_cta_text]" value="<?php echo esc_attr( (string) ( $override['custom_cta_text'] ?? '' ) ); ?>" placeholder="<?php esc_attr_e( 'Custom CTA text', 'tmw-cr-slot-sidebar-banner' ); ?>" />
                                     <p class="description"><?php echo esc_html( 'Fallback CTA: ' . $generated_cta ); ?></p>
                                     <input type="text" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][label_override]" value="<?php echo esc_attr( (string) ( $override['label_override'] ?? '' ) ); ?>" placeholder="<?php esc_attr_e( 'Label override', 'tmw-cr-slot-sidebar-banner' ); ?>" />
-                                    <select name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][manual_offer_type]">
-                                        <option value="" <?php selected( (string) ( $override['manual_offer_type'] ?? '' ), '' ); ?>>Auto</option>
-                                        <option value="pps" <?php selected( (string) ( $override['manual_offer_type'] ?? '' ), 'pps' ); ?>>PPS</option>
-                                        <option value="revshare" <?php selected( (string) ( $override['manual_offer_type'] ?? '' ), 'revshare' ); ?>>Revshare</option>
-                                        <option value="revshare_lifetime" <?php selected( (string) ( $override['manual_offer_type'] ?? '' ), 'revshare_lifetime' ); ?>>Revshare Lifetime</option>
-                                        <option value="soi" <?php selected( (string) ( $override['manual_offer_type'] ?? '' ), 'soi' ); ?>>SOI</option>
-                                        <option value="doi" <?php selected( (string) ( $override['manual_offer_type'] ?? '' ), 'doi' ); ?>>DOI</option>
-                                        <option value="cpa" <?php selected( (string) ( $override['manual_offer_type'] ?? '' ), 'cpa' ); ?>>CPA / Multi-CPA</option>
-                                        <option value="cpl" <?php selected( (string) ( $override['manual_offer_type'] ?? '' ), 'cpl' ); ?>>CPL / PPL</option>
-                                        <option value="cpc" <?php selected( (string) ( $override['manual_offer_type'] ?? '' ), 'cpc' ); ?>>CPC / PPC</option>
-                                        <option value="cpi" <?php selected( (string) ( $override['manual_offer_type'] ?? '' ), 'cpi' ); ?>>CPI</option>
-                                        <option value="cpm" <?php selected( (string) ( $override['manual_offer_type'] ?? '' ), 'cpm' ); ?>>CPM</option>
-                                        <option value="smartlink" <?php selected( (string) ( $override['manual_offer_type'] ?? '' ), 'smartlink' ); ?>>Smartlink</option>
-                                        <option value="fallback" <?php selected( (string) ( $override['manual_offer_type'] ?? '' ), 'fallback' ); ?>>Fallback</option>
-                                    </select>
-                                    <p class="description"><?php echo esc_html( sprintf( 'Effective type: %s (%s)', (string) ( $effective_type['type'] ?? '' ), (string) ( $effective_type['source'] ?? '' ) ) ); ?></p>
+                                    <?php
+                                    $manual_type_value   = isset( $override['manual_offer_type'] ) ? sanitize_key( (string) $override['manual_offer_type'] ) : '';
+                                    $effective_type_info = $this->offer_repository->get_effective_offer_type( is_array( $offer ) ? $offer : array() );
+                                    $effective_type      = (string) ( $effective_type_info['type'] ?? '' );
+                                    $effective_source    = (string) ( $effective_type_info['source'] ?? '' );
+                                    $manual_type_choices = array(
+                                        ''                  => __( 'Auto (use API / name)', 'tmw-cr-slot-sidebar-banner' ),
+                                        'pps'               => 'PPS',
+                                        'revshare'          => 'Revshare',
+                                        'revshare_lifetime' => 'Revshare Lifetime',
+                                        'soi'               => 'SOI',
+                                        'doi'               => 'DOI',
+                                        'cpa'               => 'CPA',
+                                        'cpl'               => 'CPL',
+                                        'cpc'               => 'CPC',
+                                        'cpi'               => 'CPI',
+                                        'cpm'               => 'CPM',
+                                        'smartlink'         => 'Smartlink',
+                                        'fallback'          => 'Fallback',
+                                    );
+                                    $source_labels = array(
+                                        'manual' => __( 'manual override', 'tmw-cr-slot-sidebar-banner' ),
+                                        'api'    => __( 'API normalized', 'tmw-cr-slot-sidebar-banner' ),
+                                        'name'   => __( 'name fallback', 'tmw-cr-slot-sidebar-banner' ),
+                                    );
+                                    ?>
+                                    <label>
+                                        <span class="screen-reader-text"><?php esc_html_e( 'Manual offer type override', 'tmw-cr-slot-sidebar-banner' ); ?></span>
+                                        <select name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][manual_offer_type]">
+                                            <?php foreach ( $manual_type_choices as $manual_choice_key => $manual_choice_label ) : ?>
+                                                <option value="<?php echo esc_attr( (string) $manual_choice_key ); ?>" <?php selected( $manual_type_value, (string) $manual_choice_key ); ?>><?php echo esc_html( (string) $manual_choice_label ); ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </label>
+                                    <p class="description">
+                                        <?php esc_html_e( 'Manual offer type override. Choose Auto to use the API-normalized payout_type. Highest precedence.', 'tmw-cr-slot-sidebar-banner' ); ?>
+                                        <?php if ( '' !== $effective_type ) : ?>
+                                            <br /><strong><?php esc_html_e( 'Effective type:', 'tmw-cr-slot-sidebar-banner' ); ?></strong>
+                                            <code><?php echo esc_html( $effective_type ); ?></code>
+                                            <?php if ( isset( $source_labels[ $effective_source ] ) ) : ?>
+                                                (<?php echo esc_html( (string) $source_labels[ $effective_source ] ); ?>)
+                                            <?php endif; ?>
+                                        <?php endif; ?>
+                                    </p>
                                     <textarea class="large-text" rows="2" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][notes]" placeholder="<?php esc_attr_e( 'Internal notes', 'tmw-cr-slot-sidebar-banner' ); ?>"><?php echo esc_textarea( (string) ( $override['notes'] ?? '' ) ); ?></textarea>
                                 </td>
                                 <td><input type="text" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][allowed_countries]" value="<?php echo esc_attr( $allowed_raw ); ?>" placeholder="US,CA,GB" /></td>

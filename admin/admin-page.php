@@ -1653,6 +1653,13 @@ class TMW_CR_Slot_Admin_Page {
                     <?php if ( empty( $offers ) ) : ?>
                         <tr><td colspan="11"><?php esc_html_e( 'No offers available for slot setup yet. Sync offers first.', 'tmw-cr-slot-sidebar-banner' ); ?></td></tr>
                     <?php else : ?>
+                        <?php
+                        $effective_type_source_labels = array(
+                            'manual' => 'manual override',
+                            'api'    => 'API normalized',
+                            'name'   => 'name fallback',
+                        );
+                        ?>
                         <?php foreach ( $offers as $offer ) : ?>
                             <?php
                             $offer_id    = (string) ( $offer['id'] ?? '' );
@@ -1665,11 +1672,6 @@ class TMW_CR_Slot_Admin_Page {
                             $blocked_raw = ! empty( $override['blocked_countries'] ) ? implode( ',', (array) $override['blocked_countries'] ) : '';
                             $eligible    = $this->offer_repository->is_offer_allowed_for_country( $offer_id, $country, $override, $offer, array() );
                             $effective_type = $this->offer_repository->get_effective_offer_type( array_merge( $offer, array( 'manual_offer_type' => (string) ( $override['manual_offer_type'] ?? '' ) ) ) );
-                            $effective_type_source_labels = array(
-                                'manual' => 'manual override',
-                                'api'    => 'API normalized',
-                                'name'   => 'name fallback',
-                            );
                             $effective_type_source = (string) ( $effective_type['source'] ?? '' );
                             $effective_type_source_label = (string) ( $effective_type_source_labels[ $effective_type_source ] ?? $effective_type_source );
                             $effective_image = $this->offer_repository->get_effective_image( $offer_id, $settings, array(), $offer, $override, $legacy_catalog );

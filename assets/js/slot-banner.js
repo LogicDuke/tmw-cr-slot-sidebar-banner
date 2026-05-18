@@ -2,7 +2,10 @@
     var BASE_SPINNING_DURATION = 2600;
     var COLUMN_SPINNING_DURATION = 450;
     var ICONS_PER_REEL = 40;
-    var POST_SPIN_RESULT_LABEL = 'Your match is ready';
+    var POST_SPIN_RESULT_LABEL = 'Your match';
+    var POST_SPIN_RESULT_SUFFIX = 'is ready';
+    var INITIAL_SPIN_BUTTON_TEXT = '>>> SPIN NOW <<<';
+    var REPEAT_SPIN_BUTTON_TEXT = '>>> SPIN AGAIN <<<';
     var POST_SPIN_CTA_TEXT = 'VISIT OFFER';
 
     function appendTrackingParam(anchor, param, value) {
@@ -335,6 +338,22 @@
         label.textContent = safeText;
     }
 
+    function setSpinButtonText(state, text) {
+        if (!state || !state.spinButton) {
+            return;
+        }
+
+        var label = state.spinButton.querySelector('.tmw-cr-slot-banner__spin-label');
+        var safeText = typeof text === 'string' ? text : '';
+
+        if (label) {
+            label.textContent = safeText;
+            return;
+        }
+
+        state.spinButton.textContent = safeText;
+    }
+
     function setCtaVisibility(state, isVisible) {
         if (!state || !state.cta) {
             return;
@@ -358,6 +377,10 @@
 
         if (state.offerNameTarget) {
             state.offerNameTarget.textContent = '';
+        }
+
+        if (state.resultSuffixTarget) {
+            state.resultSuffixTarget.textContent = '';
         }
 
         setOfferSloganVisibility(state.offerSloganTarget, '', '', state.debugEnabled);
@@ -395,6 +418,17 @@
 
         if (state.offerNameTarget) {
             state.offerNameTarget.textContent = sanitizeFrontendOfferName(matchingOffer.name) || getOfferAbbreviation(matchingOffer);
+            state.offerNameTarget.classList.add('notranslate');
+            state.offerNameTarget.setAttribute('translate', 'no');
+            state.offerNameTarget.setAttribute('data-no-translate', '1');
+
+            if (state.debugEnabled && window.console && typeof window.console.debug === 'function') {
+                window.console.debug('[TMW-CR-CTA] winner_name_notranslate_applied offer_id=' + (matchingOffer.id || ''));
+            }
+        }
+
+        if (state.resultSuffixTarget) {
+            state.resultSuffixTarget.textContent = POST_SPIN_RESULT_SUFFIX;
         }
 
         setOfferSloganVisibility(state.offerSloganTarget, '', matchingOffer.id || '', state.debugEnabled);
@@ -435,6 +469,13 @@
             state.spinButton.disabled = false;
         }
 
+        if (state.hasSpun) {
+            setSpinButtonText(state, REPEAT_SPIN_BUTTON_TEXT);
+            if (state.debugEnabled && window.console && typeof window.console.debug === 'function') {
+                window.console.debug('[TMW-CR-CTA] spin_button_label_updated label="spin_again"');
+            }
+        }
+
         if (!results.length || !isThreeReelWin(results)) {
             if (state.debugEnabled && window.console && typeof window.console.debug === 'function') {
                 window.console.debug('[TMW-CR-CTA] no_reveal_without_three_match');
@@ -469,6 +510,7 @@
         }
 
         state.isSpinning = true;
+        state.hasSpun = true;
         state.banner.classList.add('tmw-cr-slot-banner--spinning');
         state.banner.classList.remove('tmw-cr-slot-banner--win');
 
@@ -528,6 +570,7 @@
         var offerNameTarget = banner.querySelector('.tmw-cr-slot-banner__offer-name');
         var resultLabel = banner.querySelector('.tmw-cr-slot-banner__result-label');
         var offerSloganTarget = banner.querySelector('.tmw-cr-slot-banner__offer-slogan');
+        var resultSuffixTarget = banner.querySelector('.tmw-cr-slot-banner__result-suffix');
         var defaultResultLabel = resultLabel ? resultLabel.textContent : '';
         var param = banner.getAttribute('data-subid-param');
         var value = banner.getAttribute('data-subid-value');
@@ -560,12 +603,14 @@
             defaultCtaUrl: defaultCtaUrl,
             defaultOfferName: defaultOfferName,
             offerSloganTarget: offerSloganTarget,
+            resultSuffixTarget: resultSuffixTarget,
             defaultSlogan: defaultSlogan,
             param: param,
             value: value,
             isSpinning: false,
             hasWin: false,
             currentWinningOffer: null,
+            hasSpun: false,
             debugEnabled: debugEnabled
         };
 
@@ -577,6 +622,11 @@
         }
 
         setInitialItems(state);
+
+        setSpinButtonText(state, INITIAL_SPIN_BUTTON_TEXT);
+        if (debugEnabled && window.console && typeof window.console.debug === 'function') {
+            window.console.debug('[TMW-CR-CTA] spin_button_label_updated label="spin_now"');
+        }
 
         applyPreWinState(state);
 

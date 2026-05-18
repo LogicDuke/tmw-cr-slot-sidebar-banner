@@ -381,7 +381,8 @@ class TMW_CR_Slot_Sidebar_Banner {
             <div class="tmw-cr-slot-banner__footer tmw-cr-slot-banner__footer--hidden" aria-hidden="true">
                 <p class="tmw-cr-slot-banner__result">
                     <span class="tmw-cr-slot-banner__result-label"></span>
-                    <span class="tmw-cr-slot-banner__offer-name"></span>
+                    <span class="tmw-cr-slot-banner__offer-name notranslate" translate="no" data-no-translate="1"></span>
+                    <span class="tmw-cr-slot-banner__result-suffix"></span>
                 </p>
                 <p class="tmw-cr-slot-banner__offer-slogan" aria-hidden="true"></p>
                 <a class="tmw-cr-slot-banner__cta" href="<?php echo esc_url( $slot_data['initial_cta_url'] ); ?>"<?php echo $cta_target; ?> hidden aria-hidden="true">

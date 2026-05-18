@@ -5237,7 +5237,7 @@ $tests['frontend_banner_wording_v198'] = function() {
     $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
     $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );
     tmw_assert_contains( 'SPIN NOW', $plugin_file, 'Spin button default should be SPIN NOW.' );
-    tmw_assert_contains( "POST_SPIN_RESULT_LABEL = 'Your match is ready'", $js_file, 'Result label should use Your match is ready in frontend JS state updates.' );
+    tmw_assert_contains( "POST_SPIN_RESULT_LABEL = 'Your match'", $js_file, 'Result label should use Your match in frontend JS state updates.' );
     tmw_assert_contains( 'showWinResult(state, matchingOffer);', $js_file, 'Post-spin JS should only set result text in win state.' );
     tmw_assert_contains( "POST_SPIN_CTA_TEXT = 'VISIT OFFER'", $js_file, 'Post-spin JS should force VISIT OFFER CTA copy.' );
     tmw_assert_contains( 'sanitizeFrontendOfferName(matchingOffer.name)', $js_file, 'Post-spin JS should sanitize the visible offer name.' );
@@ -5636,6 +5636,67 @@ $tests['audit_logging_tag_exists_and_api_key_not_logged_raw'] = function() {
     tmw_assert_contains( 'redact_url_for_log', $client_file, 'API key redaction helper must remain available.' );
 };
 
+$tests['frontend_spin_button_initial_label_has_arrows'] = function() {
+    $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );
+    tmw_assert_contains( ">>> SPIN NOW <<<", $js_file, 'Initial spin button label should include exact arrow-wrapped SPIN NOW text.' );
+    tmw_assert_contains( 'spin_button_label_updated label="spin_now"', $js_file, 'JS should log spin_now label updates.' );
+};
+
+$tests['frontend_spin_button_changes_to_spin_again_after_first_spin'] = function() {
+    $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );
+    tmw_assert_contains( ">>> SPIN AGAIN <<<", $js_file, 'Post-first-spin label should include exact arrow-wrapped SPIN AGAIN text.' );
+    tmw_assert_contains( 'state.hasSpun = true;', $js_file, 'JS should track first completed spin in state.' );
+    tmw_assert_contains( 'spin_button_label_updated label="spin_again"', $js_file, 'JS should log spin_again label updates.' );
+};
+
+$tests['frontend_spin_button_pulse_css_exists'] = function() {
+    $css_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/css/slot-banner.css' );
+    tmw_assert_contains( '.tmw-cr-slot-banner__spin:not(:disabled)', $css_file, 'Enabled spin button should have a pulse/attention animation selector.' );
+    tmw_assert_contains( '@keyframes tmw-cr-slot-spin-pulse', $css_file, 'Spin button pulse keyframes should exist.' );
+};
+
+$tests['frontend_spin_button_pulse_respects_reduced_motion'] = function() {
+    $css_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/css/slot-banner.css' );
+    tmw_assert_contains( '@media (prefers-reduced-motion: reduce)', $css_file, 'Spin pulse should be wrapped with reduced motion media query support.' );
+    tmw_assert_contains( 'animation: none;', $css_file, 'Reduced motion override should disable spin pulse animation.' );
+};
+
+$tests['frontend_winner_text_order_is_your_match_offer_is_ready'] = function() {
+    $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
+    $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );
+    tmw_assert_contains( '<span class="tmw-cr-slot-banner__result-suffix"></span>', $plugin_file, 'Markup should include a winner result suffix span after offer name.' );
+    tmw_assert_contains( "POST_SPIN_RESULT_LABEL = 'Your match'", $js_file, 'Winner label prefix should be Your match.' );
+    tmw_assert_contains( "POST_SPIN_RESULT_SUFFIX = 'is ready'", $js_file, 'Winner label suffix should be is ready.' );
+};
+
+$tests['frontend_winner_offer_name_has_notranslate_class'] = function() {
+    $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
+    $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );
+    tmw_assert_contains( 'class="tmw-cr-slot-banner__offer-name notranslate"', $plugin_file, 'Offer-name span should include notranslate class in PHP markup.' );
+    tmw_assert_contains( "state.offerNameTarget.classList.add('notranslate')", $js_file, 'JS should enforce notranslate class on winning offer name updates.' );
+};
+
+$tests['frontend_winner_offer_name_has_translate_no_attribute'] = function() {
+    $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
+    $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );
+    tmw_assert_contains( 'translate="no"', $plugin_file, 'Offer-name span should include translate=no in PHP markup.' );
+    tmw_assert_contains( 'data-no-translate="1"', $plugin_file, 'Offer-name span should include data-no-translate flag in PHP markup.' );
+    tmw_assert_contains( "state.offerNameTarget.setAttribute('translate', 'no')", $js_file, 'JS should enforce translate=no attribute on winner name.' );
+    tmw_assert_contains( "state.offerNameTarget.setAttribute('data-no-translate', '1')", $js_file, 'JS should enforce data-no-translate attribute on winner name.' );
+    tmw_assert_contains( 'winner_name_notranslate_applied offer_id=', $js_file, 'JS should emit notranslate debug trace with offer id.' );
+};
+
+$tests['frontend_result_hidden_before_first_win'] = function() {
+    $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );
+    tmw_assert_contains( 'function hideResultArea(state)', $js_file, 'Pre-win helper should exist.' );
+    tmw_assert_contains( "state.resultSuffixTarget.textContent = '';", $js_file, 'Pre-win helper should clear result suffix.' );
+    tmw_assert_contains( 'applyPreWinState(state);', $js_file, 'Banner should initialize in hidden pre-win state before first spin/win.' );
+};
+
+$tests['frontend_three_match_reveal_logic_unchanged'] = $tests['finish_spin_reveals_only_on_three_reel_match'];
+$tests['frontend_cta_final_url_override_behavior_unchanged'] = $tests['offer_override_resolution_and_country_filters'];
+$tests['frontend_preview_url_not_used_as_cta_still_passes'] = $tests['offer_override_resolution_and_country_filters'];
+
 foreach ( $tests as $name => $test ) {
     try {
         $test();
@@ -5652,3 +5713,5 @@ echo "\nTotal: {$passes} passed, " . count( $failures ) . " failed\n";
 if ( ! empty( $failures ) ) {
     exit( 1 );
 }
+
+

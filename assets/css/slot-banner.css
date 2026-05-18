@@ -135,6 +135,10 @@
     animation: tmw-cr-slot-spin-pulse 1.8s ease-in-out infinite;
 }
 
+.tmw-cr-slot-banner__spin:not(:disabled) .tmw-cr-slot-banner__spin-label {
+    animation: tmw-cr-slot-spin-label-flash 0.9s ease-in-out infinite;
+}
+
 .tmw-cr-slot-banner__spin:disabled {
     cursor: not-allowed;
     opacity: 0.5;
@@ -345,8 +349,21 @@
     }
 }
 
+@keyframes tmw-cr-slot-spin-label-flash {
+    0%, 100% {
+        color: #ffffff;
+    }
+    50% {
+        color: #000000;
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .tmw-cr-slot-banner__spin:not(:disabled) {
+        animation: none;
+    }
+
+    .tmw-cr-slot-banner__spin:not(:disabled) .tmw-cr-slot-banner__spin-label {
         animation: none;
     }
 }

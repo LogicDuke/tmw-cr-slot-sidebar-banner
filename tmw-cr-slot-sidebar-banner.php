@@ -3,7 +3,7 @@
  * Plugin Name: TMW CR Offer Sidebar Banner
  * Plugin URI: https://themilisofialtd.com/
  * Description: Displays a geo-targeted CrackRevenue offer recommendation banner with an animated offer selector in sidebar areas via shortcode or template tag.
- * Version: 1.9.4
+ * Version: 1.9.10
  * Author: The Milisofia LTD
  * Author URI: https://themilisofialtd.com/
  * License: GPL2
@@ -15,13 +15,14 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.4' );
+define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.10' );
 define( 'TMW_CR_SLOT_BANNER_PATH', plugin_dir_path( __FILE__ ) );
 define( 'TMW_CR_SLOT_BANNER_URL', plugin_dir_url( __FILE__ ) );
 
 require_once TMW_CR_SLOT_BANNER_PATH . 'includes/geo-helper.php';
 require_once TMW_CR_SLOT_BANNER_PATH . 'includes/class-offer-repository.php';
 require_once TMW_CR_SLOT_BANNER_PATH . 'includes/class-cr-api-client.php';
+require_once TMW_CR_SLOT_BANNER_PATH . 'includes/class-cr-api-inspector.php';
 require_once TMW_CR_SLOT_BANNER_PATH . 'includes/class-offer-sync-service.php';
 require_once TMW_CR_SLOT_BANNER_PATH . 'includes/class-stats-sync-service.php';
 require_once TMW_CR_SLOT_BANNER_PATH . 'admin/admin-page.php';
@@ -33,7 +34,7 @@ class TMW_CR_Slot_Sidebar_Banner {
     const DEFAULT_HEADLINE = 'Discover Adult Offers';
     const DEFAULT_SUBHEADLINE = 'Cam, Dating, AI & More';
     const DEFAULT_SPIN_BUTTON_TEXT = 'SPIN NOW';
-    const DEFAULT_CTA_TEXT = 'View Offer';
+    const DEFAULT_CTA_TEXT = 'VISIT OFFER';
     /**
      * Option key used to persist settings.
      *
@@ -212,11 +213,8 @@ class TMW_CR_Slot_Sidebar_Banner {
         $settings = is_array( $settings ) ? $settings : array();
 
         $settings = wp_parse_args( $settings, $defaults );
-        if ( isset( $settings['spin_button_text'] ) ) {
-            $legacy_spin_text = trim( (string) $settings['spin_button_text'] );
-            if ( in_array( $legacy_spin_text, array( 'Show Best Offer', 'Reveal My Offer' ), true ) ) {
-                $settings['spin_button_text'] = self::DEFAULT_SPIN_BUTTON_TEXT;
-            }
+        if ( isset( $settings['spin_button_text'] ) && 'Show Best Offer' === trim( (string) $settings['spin_button_text'] ) ) {
+            $settings['spin_button_text'] = self::DEFAULT_SPIN_BUTTON_TEXT;
         }
         $settings['slot_offer_ids']        = is_array( $settings['slot_offer_ids'] ) ? array_values( $settings['slot_offer_ids'] ) : array();
         $settings['slot_offer_priority']   = is_array( $settings['slot_offer_priority'] ) ? $settings['slot_offer_priority'] : array();
@@ -363,8 +361,8 @@ class TMW_CR_Slot_Sidebar_Banner {
             data-debug-enabled="<?php echo esc_attr( ( defined( 'WP_DEBUG' ) && WP_DEBUG ) ? '1' : '0' ); ?>"
         >
             <header class="tmw-cr-slot-banner__header">
-                <h3 class="tmw-cr-slot-banner__headline"><?php echo esc_html( $banner_data['headline'] ); ?></h3>
-                <p class="tmw-cr-slot-banner__subheadline"><?php echo esc_html( $banner_data['subheadline'] ); ?></p>
+                <h3 class="tmw-cr-slot-banner__headline notranslate" translate="no" data-no-translate="1"><?php echo esc_html( $banner_data['headline'] ); ?></h3>
+                <p class="tmw-cr-slot-banner__subheadline notranslate" translate="no" data-no-translate="1"><?php echo esc_html( $banner_data['subheadline'] ); ?></p>
             </header>
 
             <div class="tmw-cr-slot-banner__machine" role="group" aria-label="<?php esc_attr_e( 'CrackRevenue offer banner', 'tmw-cr-slot-sidebar-banner' ); ?>">
@@ -380,14 +378,15 @@ class TMW_CR_Slot_Sidebar_Banner {
                 </button>
             </div>
 
-            <div class="tmw-cr-slot-banner__footer">
+            <div class="tmw-cr-slot-banner__footer tmw-cr-slot-banner__footer--hidden" aria-hidden="true">
                 <p class="tmw-cr-slot-banner__result">
-                    <span class="tmw-cr-slot-banner__result-label"><?php esc_html_e( 'Top pick:', 'tmw-cr-slot-sidebar-banner' ); ?></span>
-                    <span class="tmw-cr-slot-banner__offer-name"><?php echo esc_html( $slot_data['initial_offer_name'] ); ?></span>
+                    <span class="tmw-cr-slot-banner__result-label"></span>
+                    <span class="tmw-cr-slot-banner__offer-name notranslate" translate="no" data-no-translate="1"></span>
+                    <span class="tmw-cr-slot-banner__result-suffix"></span>
                 </p>
-                <p class="tmw-cr-slot-banner__offer-slogan"><?php echo esc_html( $slot_data['initial_offer_slogan'] ); ?></p>
-                <a class="tmw-cr-slot-banner__cta" href="<?php echo esc_url( $slot_data['initial_cta_url'] ); ?>"<?php echo $cta_target; ?>>
-                    <?php echo esc_html( $slot_data['initial_cta_text'] ); ?>
+                <p class="tmw-cr-slot-banner__offer-slogan" aria-hidden="true"></p>
+                <a class="tmw-cr-slot-banner__cta" href="<?php echo esc_url( $slot_data['initial_cta_url'] ); ?>"<?php echo $cta_target; ?> hidden aria-hidden="true">
+                    <span class="tmw-cr-slot-banner__cta-label"><?php echo esc_html( self::DEFAULT_CTA_TEXT ); ?></span>
                 </a>
             </div>
 
@@ -427,10 +426,6 @@ class TMW_CR_Slot_Sidebar_Banner {
                 $data['cta_url'] = $override['cta_url'];
             }
 
-            if ( ! empty( $override['cta_text'] ) ) {
-                $data['cta_text'] = $override['cta_text'];
-            }
-
             if ( ! empty( $override['headline'] ) ) {
                 $data['headline'] = $override['headline'];
             }
@@ -439,7 +434,7 @@ class TMW_CR_Slot_Sidebar_Banner {
         $data['headline'] = self::fallback_text( $data['headline'], self::DEFAULT_HEADLINE );
         $data['subheadline'] = self::fallback_text( $data['subheadline'], self::DEFAULT_SUBHEADLINE );
         $data['spin_button_text'] = self::fallback_text( $data['spin_button_text'], self::DEFAULT_SPIN_BUTTON_TEXT );
-        $data['cta_text'] = self::fallback_text( $data['cta_text'], self::DEFAULT_CTA_TEXT );
+        $data['cta_text'] = self::DEFAULT_CTA_TEXT;
 
         return $data;
     }
@@ -464,9 +459,9 @@ class TMW_CR_Slot_Sidebar_Banner {
 
         $initial_offer     = isset( $slot_offers[0] ) ? $slot_offers[0] : null;
         $initial_cta_url   = $initial_offer && ! empty( $initial_offer['cta_url'] ) ? $initial_offer['cta_url'] : $banner_data['cta_url'];
-        $initial_cta_text  = $initial_offer && ! empty( $initial_offer['cta_text'] ) ? $initial_offer['cta_text'] : $banner_data['cta_text'];
-        $initial_offername = $initial_offer ? $initial_offer['name'] : __( 'No active offers', 'tmw-cr-slot-sidebar-banner' );
-        $initial_slogan    = $initial_offer && ! empty( $initial_offer['slogan'] ) ? $initial_offer['slogan'] : __( 'Recommended adult offer', 'tmw-cr-slot-sidebar-banner' );
+        $initial_cta_text  = $banner_data['cta_text'];
+        $initial_offername = $initial_offer ? $this->sanitize_frontend_offer_name( (string) $initial_offer['name'] ) : __( 'No active offers', 'tmw-cr-slot-sidebar-banner' );
+        $initial_slogan    = '';
 
         return array(
             'offers'             => $slot_offers,
@@ -476,6 +471,43 @@ class TMW_CR_Slot_Sidebar_Banner {
             'initial_cta_text'   => $initial_cta_text,
             'has_empty_offer_cta' => $this->slot_has_empty_offer_cta( $slot_offers ),
         );
+    }
+
+    /**
+     * Sanitizes frontend offer names by removing backend payout suffixes.
+     *
+     * @param string $offer_name Raw offer name.
+     *
+     * @return string
+     */
+    protected function sanitize_frontend_offer_name( $offer_name ) {
+        $name = trim( (string) $offer_name );
+        if ( '' === $name ) {
+            return '';
+        }
+
+        $segments = preg_split( '/\s*(?:\s-\s|–|—|\|)\s*/u', $name );
+        $segments = array_values(
+            array_filter(
+                array_map( 'trim', is_array( $segments ) ? $segments : array() ),
+                static function( $segment ) {
+                    return '' !== $segment;
+                }
+            )
+        );
+
+        if ( empty( $segments ) ) {
+            return '';
+        }
+
+        $marker_pattern = '/^(?:PPS|CPA|CPL|REVSHARE|REV SHARE|SOI|DOI|CPC|CPI|CPM|LQ|HQ|SMARTLINK|FALLBACK|FALLBACK OFFER|OFFER|CAMPAIGN|CAMPAIGN TYPE)$/i';
+        for ( $index = 1; $index < count( $segments ); $index++ ) {
+            if ( preg_match( $marker_pattern, $segments[ $index ] ) ) {
+                return (string) $segments[0];
+            }
+        }
+
+        return (string) $segments[0];
     }
 
     protected static function fallback_text( $value, $fallback ) {

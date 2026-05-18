@@ -32,10 +32,13 @@ class TMW_CR_Slot_Admin_Page {
         add_action( 'admin_post_tmw_cr_slot_banner_test_connection', array( $this, 'handle_test_connection' ) );
         add_action( 'admin_post_tmw_cr_slot_banner_sync_offers', array( $this, 'handle_sync_offers' ) );
         add_action( 'admin_post_tmw_cr_slot_banner_sync_stats', array( $this, 'handle_sync_stats' ) );
+        add_action( 'admin_post_tmw_cr_slot_banner_audit_api', array( $this, 'handle_audit_api' ) );
         add_action( 'admin_post_tmw_cr_slot_banner_import_final_url_overrides', array( $this, 'handle_import_final_url_overrides' ) );
         add_action( 'admin_post_tmw_cr_slot_banner_import_allowed_country_overrides', array( $this, 'handle_import_allowed_country_overrides' ) );
         add_action( 'admin_post_tmw_cr_slot_banner_import_both_overrides', array( $this, 'handle_import_both_overrides' ) );
         add_action( 'admin_post_tmw_cr_slot_import_skipped_offers', array( $this, 'handle_import_skipped_offers' ) );
+        add_action( 'admin_post_tmw_cr_slot_banner_save_allowed_types', array( $this, 'handle_save_allowed_types' ) );
+        add_action( 'admin_post_tmw_cr_slot_banner_select_offer', array( $this, 'handle_select_offer' ) );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_dashboard_assets' ) );
     }
 
@@ -194,6 +197,7 @@ class TMW_CR_Slot_Admin_Page {
                         'custom_cta_text'    => isset( $override['custom_cta_text'] ) ? sanitize_text_field( (string) $override['custom_cta_text'] ) : '',
                         'custom_slogan'      => isset( $override['custom_slogan'] ) ? sanitize_text_field( (string) $override['custom_slogan'] ) : '',
                         'label_override'     => isset( $override['label_override'] ) ? sanitize_text_field( (string) $override['label_override'] ) : '',
+                        'manual_offer_type'  => isset( $override['manual_offer_type'] ) ? sanitize_key( (string) $override['manual_offer_type'] ) : '',
                         'allowed_countries'  => isset( $override['allowed_countries'] ) ? sanitize_text_field( (string) $override['allowed_countries'] ) : '',
                         'blocked_countries'  => isset( $override['blocked_countries'] ) ? sanitize_text_field( (string) $override['blocked_countries'] ) : '',
                         'notes'              => isset( $override['notes'] ) ? sanitize_textarea_field( (string) $override['notes'] ) : '',
@@ -292,6 +296,29 @@ class TMW_CR_Slot_Admin_Page {
                 $response_shape
             )
         );
+    }
+
+
+    /**
+     * @return void
+     */
+    public function handle_audit_api() {
+        $this->assert_admin_action( 'tmw_cr_slot_banner_audit_api' );
+
+        if ( ! TMW_CR_Slot_CR_API_Inspector::is_enabled() ) {
+            $this->redirect_with_notice( 'error', __( '[TMW-CR-AUDIT] Audit mode is disabled. Enable WP_DEBUG or TMW_CR_API_AUDIT.', 'tmw-cr-slot-sidebar-banner' ) );
+        }
+
+        $client = $this->build_api_client();
+        if ( ! $client->has_api_key() ) {
+            $this->redirect_with_notice( 'error', __( '[TMW-CR-AUDIT] CrakRevenue API key is required.', 'tmw-cr-slot-sidebar-banner' ) );
+        }
+
+        $inspector = new TMW_CR_Slot_CR_API_Inspector( $client );
+        $report = $inspector->run_full_audit( 3 );
+        error_log( '[TMW-CR-AUDIT] Completed via admin-post summary=' . wp_json_encode( $inspector->summarize_keys( $report, 3 ) ) );
+
+        $this->redirect_with_notice( 'success', __( '[TMW-CR-AUDIT] Audit complete. Check debug.log for details.', 'tmw-cr-slot-sidebar-banner' ) );
     }
 
     /**
@@ -457,6 +484,48 @@ class TMW_CR_Slot_Admin_Page {
         );
     }
 
+    /**
+     * @return void
+     */
+    public function handle_save_allowed_types() {
+        $this->assert_admin_action( 'tmw_cr_slot_banner_save_allowed_types' );
+
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( esc_html__( 'You are not allowed to perform this action.', 'tmw-cr-slot-sidebar-banner' ) );
+        }
+
+        $settings = get_option( $this->option_key, array() );
+        if ( ! is_array( $settings ) ) {
+            $settings = array();
+        }
+
+        $allowed_types = TMW_CR_Slot_Offer_Repository::sanitize_allowed_offer_types(
+            isset( $_POST['allowed_offer_types'] ) ? wp_unslash( $_POST['allowed_offer_types'] ) : array()
+        );
+        $settings['allowed_offer_types'] = $allowed_types;
+        update_option( $this->option_key, $settings, false );
+
+        $type_counts = array();
+        foreach ( (array) $this->offer_repository->get_synced_offers() as $offer ) {
+            if ( ! is_array( $offer ) ) {
+                continue;
+            }
+            foreach ( (array) $this->offer_repository->get_offer_type_keys( $offer ) as $type_key ) {
+                if ( ! isset( $type_counts[ $type_key ] ) ) {
+                    $type_counts[ $type_key ] = 0;
+                }
+                ++$type_counts[ $type_key ];
+            }
+        }
+        ksort( $type_counts );
+
+        error_log( sprintf( '[TMW-BANNER-TYPE] allowed_types_saved allowed_types=%s', implode( ',', $allowed_types ) ) );
+        error_log( sprintf( '[TMW-BANNER-TYPE] allowed_types_diagnostics selected_types=%s synced_type_counts=%s allowed_type_filter_count=%d', implode( ',', $allowed_types ), wp_json_encode( $type_counts ), count( $allowed_types ) ) );
+        error_log( '[TMW-BANNER-TYPE] allowed_types_saved_redirect include_all_offers=1' );
+
+        $this->redirect_with_notice_to_tab( 'success', 'Allowed offer types saved.', 'slot-setup', array( 'include_all_offers' => 1 ) );
+    }
+
 
 
     /**
@@ -471,6 +540,100 @@ class TMW_CR_Slot_Admin_Page {
             'success',
             sprintf( 'Skipped offers import complete. Imported: %1$d, Skipped: %2$d.', (int) ( $result['imported'] ?? 0 ), (int) ( $result['skipped'] ?? 0 ) ),
             'slot-setup'
+        );
+    }
+
+    /**
+     * @return void
+     */
+    public function handle_select_offer() {
+        $this->assert_admin_action( 'tmw_cr_slot_banner_select_offer' );
+
+        $offer_ids = array();
+        if ( isset( $_POST['offer_ids'] ) && is_array( $_POST['offer_ids'] ) ) {
+            $offer_ids = wp_unslash( $_POST['offer_ids'] );
+        } elseif ( isset( $_POST['offer_id'] ) ) {
+            $offer_ids = array( wp_unslash( $_POST['offer_id'] ) );
+        } elseif ( isset( $_GET['offer_ids'] ) && is_array( $_GET['offer_ids'] ) ) {
+            $offer_ids = wp_unslash( $_GET['offer_ids'] );
+        } elseif ( isset( $_GET['offer_id'] ) ) {
+            $offer_ids = array( wp_unslash( $_GET['offer_id'] ) );
+        }
+
+        $offer_ids = array_values(
+            array_unique(
+                array_filter(
+                    array_map(
+                        static function ( $value ) {
+                            return sanitize_text_field( (string) $value );
+                        },
+                        (array) $offer_ids
+                    ),
+                    static function ( $value ) {
+                        return '' !== $value;
+                    }
+                )
+            )
+        );
+
+        $settings = get_option( $this->option_key, array() );
+        if ( ! is_array( $settings ) ) {
+            $settings = array();
+        }
+
+        $existing_ids = isset( $settings['slot_offer_ids'] ) && is_array( $settings['slot_offer_ids'] ) ? $settings['slot_offer_ids'] : array();
+        $existing_ids = array_values(
+            array_unique(
+                array_filter(
+                    array_map(
+                        static function ( $value ) {
+                            return sanitize_text_field( (string) $value );
+                        },
+                        $existing_ids
+                    ),
+                    static function ( $value ) {
+                        return '' !== $value;
+                    }
+                )
+            )
+        );
+
+        $added_any = false;
+        foreach ( $offer_ids as $offer_id ) {
+            if ( in_array( $offer_id, $existing_ids, true ) ) {
+                continue;
+            }
+            $existing_ids[] = $offer_id;
+            $added_any = true;
+        }
+        $settings['slot_offer_ids'] = $existing_ids;
+        update_option( $this->option_key, $settings, false );
+
+        if ( function_exists( 'error_log' ) ) {
+            $log_offer = ! empty( $offer_ids ) ? implode( ',', $offer_ids ) : '';
+            error_log( sprintf( '[TMW-BANNER-POOL] manual_ready_select_offer offer_id=%s result="%s"', $log_offer, $added_any ? 'selected' : 'already_selected_or_empty' ) );
+        }
+
+        $manual_audit_page = 1;
+        if ( isset( $_POST['manual_audit_page'] ) ) {
+            $manual_audit_page = max( 1, (int) sanitize_text_field( (string) wp_unslash( $_POST['manual_audit_page'] ) ) );
+        } elseif ( isset( $_GET['manual_audit_page'] ) ) {
+            $manual_audit_page = max( 1, (int) sanitize_text_field( (string) wp_unslash( $_GET['manual_audit_page'] ) ) );
+        }
+        $manual_not_live_page = 1;
+        if ( isset( $_POST['manual_not_live_page'] ) ) {
+            $manual_not_live_page = max( 1, (int) sanitize_text_field( (string) wp_unslash( $_POST['manual_not_live_page'] ) ) );
+        } elseif ( isset( $_GET['manual_not_live_page'] ) ) {
+            $manual_not_live_page = max( 1, (int) sanitize_text_field( (string) wp_unslash( $_GET['manual_not_live_page'] ) ) );
+        }
+        $this->redirect_with_notice_to_tab(
+            'success',
+            'Offer selected for live banner pool.',
+            'slot-setup',
+            array(
+                'manual_audit_page'    => $manual_audit_page,
+                'manual_not_live_page' => $manual_not_live_page,
+            )
         );
     }
 
@@ -831,9 +994,13 @@ class TMW_CR_Slot_Admin_Page {
                         $allowed   = $this->offer_repository->is_offer_allowed_for_country( $offer_id, $country, $override, $offer, $legacy_catalog );
                         $is_active = empty( $offer['status'] ) || 'active' === strtolower( (string) $offer['status'] );
                         $is_unavailable = $this->offer_repository->is_offer_unavailable_account_pps( $offer );
+                        $status_audit = $this->offer_repository->get_offer_status_approval_audit( $offer );
                         $eligibility_summary = $this->offer_repository->get_offer_frontend_eligibility_summary( $offer, $settings, $country, $legacy_catalog );
-                        $block_reason_labels = array( 'valid' => 'Valid', 'not_allowed_type' => 'Not allowed type', 'business_rule_blocked' => 'Business rule blocked', 'unavailable_account_offer' => 'Unavailable for account', 'missing_valid_cta' => 'Missing valid CTA', 'country_not_allowed' => 'Country not allowed', 'missing_logo' => 'Missing logo', 'skipped_offer' => 'Skipped offer' );
+                        $block_reason_labels = array( 'valid' => 'Valid', 'status_blocked' => 'Status blocked', 'approval_blocked' => 'Approval blocked', 'not_allowed_type' => 'Not allowed type', 'business_rule_blocked' => 'Business rule blocked', 'unavailable_account_offer' => 'Unavailable for account', 'missing_valid_cta' => 'Missing valid CTA', 'country_not_allowed' => 'Country not allowed', 'missing_logo' => 'Missing logo', 'skipped_offer' => 'Skipped offer' );
                         $logo_status_labels = array( 'manual_override' => 'Manual override', 'mapped_local' => 'Mapped local', 'auto_remote' => 'Remote', 'placeholder_only' => 'Placeholder only', 'missing' => 'Missing' );
+                        if ( ! empty( $status_audit['active_approved'] ) && empty( $eligibility_summary['is_eligible'] ) && function_exists( 'error_log' ) ) {
+                            error_log( sprintf( '[TMW-BANNER-STATUS] offer_id=%s raw_status="%s" raw_approval="%s" require_approval="%s" normalized_status="%s" normalized_approval="%s" blocker="%s"', sanitize_text_field( $offer_id ), sanitize_text_field( (string) ( $status_audit['raw_status'] ?? '' ) ), sanitize_text_field( (string) ( $status_audit['raw_approval'] ?? '' ) ), sanitize_text_field( (string) ( $status_audit['require_approval'] ?? '' ) ), sanitize_text_field( (string) ( $status_audit['normalized_status'] ?? '' ) ), sanitize_text_field( (string) ( $status_audit['normalized_approval'] ?? '' ) ), sanitize_text_field( (string) ( $eligibility_summary['block_reason'] ?? 'unknown' ) ) ) );
+                        }
                         ?>
                         <tr>
                             <td>
@@ -872,11 +1039,18 @@ class TMW_CR_Slot_Admin_Page {
                                 <?php endif; ?>
                             </td>
                             <td><?php $this->render_badge( ! empty( $offer['is_featured'] ) ? 'Yes' : 'No', ! empty( $offer['is_featured'] ) ? 'featured' : 'muted' ); ?></td>
-                            <td><?php $this->render_badge( '1' === (string) ( $offer['require_approval'] ?? '' ) ? 'Required' : 'No', 'approval' ); ?></td>
+                            <td>
+                                <?php $this->render_badge( '1' === (string) ( $offer['require_approval'] ?? '' ) ? 'Required' : 'No', 'approval' ); ?>
+                                <br /><small class="description"><?php echo esc_html( 'Raw=' . (string) ( $status_audit['raw_approval'] ?? '' ) . ' / Normalized=' . (string) ( $status_audit['normalized_approval'] ?? '' ) ); ?></small>
+                            </td>
                             <td><?php $this->render_image_status_badge( (string) ( $offer['image_status'] ?? '' ) ); ?></td>
                             <td><?php $this->render_badge( (string) ( $logo_status_labels[ (string) ( $offer['logo_status'] ?? '' ) ] ?? 'Unknown' ), 'status' ); ?></td>
                             <td><?php $this->render_badge( ! empty( $eligibility_summary['is_eligible'] ) ? 'Eligible' : 'Excluded', ! empty( $eligibility_summary['is_eligible'] ) ? 'selected' : 'muted' ); ?></td>
-                            <td><?php $this->render_badge( (string) ( $block_reason_labels[ (string) ( $eligibility_summary['block_reason'] ?? '' ) ] ?? 'Unknown' ), 'muted' ); ?></td>
+                            <td>
+                                <?php $this->render_badge( (string) ( $block_reason_labels[ (string) ( $eligibility_summary['block_reason'] ?? '' ) ] ?? 'Unknown' ), 'muted' ); ?>
+                                <br /><small class="description"><?php echo esc_html( 'Raw status=' . (string) ( $status_audit['raw_status'] ?? '' ) . ' / Norm=' . (string) ( $status_audit['normalized_status'] ?? '' ) . ' / Final=' . ( ! empty( $status_audit['active_approved'] ) ? 'active-approved' : 'blocked' ) ); ?></small>
+                            </td>
+                            
                             <td><?php $this->render_badge( ! empty( $offer['is_selected_for_slot'] ) ? 'Selected for offer display' : 'Not selected', ! empty( $offer['is_selected_for_slot'] ) ? 'selected' : 'muted' ); ?></td>
                             <td><?php $this->render_badge( ( $is_active && $allowed ) ? 'Eligible' : 'Excluded', ( $is_active && $allowed ) ? 'selected' : 'muted' ); ?></td>
                             <td><?php $this->render_badge( $allowed ? 'Allowed' : 'Blocked', $allowed ? 'featured' : 'muted' ); ?></td>
@@ -908,10 +1082,22 @@ class TMW_CR_Slot_Admin_Page {
         $result         = $this->offer_repository->get_filtered_synced_offers_for_admin( $args, $settings );
         $offers         = $result['items'];
         $country        = strtoupper( TMW_CR_Slot_Geo_Helper::get_country_code() );
+        $legacy_catalog = TMW_CR_Slot_Sidebar_Banner::get_offer_catalog_defaults();
         $allowed_offer_types = $this->offer_repository->get_allowed_offer_types( $settings );
         $selected_count = 0;
         $selected_disallowed_count = 0;
         $displayed_pool_count = 0;
+        $synced_type_allowed_count = 0;
+        $frontend_ready_count = 0;
+        $missing_final_url_override_count = 0;
+        $missing_allowed_country_override_count = 0;
+        $missing_logo_count = 0;
+        $manifest_rows_loaded = count( $this->offer_repository->get_offer_logo_manifest_rows() );
+        $manifest_logos_available_displayed = 0;
+        $brand_map_logos_available_displayed = 0;
+        $missing_manifest_files_count = 0;
+        $missing_logo_examples = array();
+        $blocked_by_business_rule_count = 0;
         $filtered_offers = array();
 
         foreach ( $offers as $offer ) {
@@ -926,6 +1112,9 @@ class TMW_CR_Slot_Admin_Page {
             }
 
             $is_allowed_type = $this->offer_repository->is_offer_type_allowed( $offer, $settings );
+            if ( $is_allowed_type ) {
+                ++$synced_type_allowed_count;
+            }
             if ( $include_all && ! $is_selected && ! $is_allowed_type ) {
                 continue;
             }
@@ -937,11 +1126,41 @@ class TMW_CR_Slot_Admin_Page {
             ++$displayed_pool_count;
             $offer['is_type_allowed_for_slot'] = $is_allowed_type;
             $filtered_offers[] = $offer;
+            $offer_id = sanitize_text_field( (string) ( $offer['id'] ?? '' ) );
+            $manifest_filename = '' !== $offer_id ? $this->offer_repository->get_offer_logo_filename_from_manifest( $offer_id ) : '';
+            $brand_key = $this->offer_repository->get_offer_brand_key( (string) ( $offer['name'] ?? '' ) );
+            $expected_brand_filename = $this->offer_repository->get_offer_brand_logo_filename( $brand_key );
+            if ( '' !== $manifest_filename && file_exists( dirname( __DIR__ ) . '/assets/logos/80x80/' . $manifest_filename ) ) {
+                ++$manifest_logos_available_displayed;
+            } elseif ( '' !== $manifest_filename ) {
+                ++$missing_manifest_files_count;
+            } elseif ( '' !== $expected_brand_filename && file_exists( dirname( __DIR__ ) . '/assets/logos/80x80/' . $expected_brand_filename ) ) {
+                ++$brand_map_logos_available_displayed;
+            }
+
+            $eligibility_summary = $this->offer_repository->get_offer_frontend_eligibility_summary( $offer, $settings, $country, $legacy_catalog );
+            if ( ! empty( $eligibility_summary['is_eligible'] ) ) {
+                ++$frontend_ready_count;
+            }
+            $block_reason = (string) ( $eligibility_summary['block_reason'] ?? '' );
+            if ( 'missing_valid_cta' === $block_reason ) {
+                ++$missing_final_url_override_count;
+            }
+            if ( 'country_not_allowed' === $block_reason ) {
+                ++$missing_allowed_country_override_count;
+            }
+            if ( 'missing_logo' === $block_reason ) {
+                ++$missing_logo_count;
+                $missing_logo_examples[] = sprintf( 'id=%1$s name=%2$s manifest=%3$s brand_key=%4$s brand_file=%5$s', $offer_id, (string) ( $offer['name'] ?? '' ), $manifest_filename, $brand_key, $expected_brand_filename );
+            }
+            if ( 'business_rule_blocked' === $block_reason || 'skipped_offer' === $block_reason || 'unavailable_account_offer' === $block_reason || 'not_allowed_type' === $block_reason ) {
+                ++$blocked_by_business_rule_count;
+            }
         }
 
         $offers = isset( $filtered_offers ) ? $filtered_offers : array();
         error_log( sprintf( '[TMW-BANNER-TYPE] slot_setup_pool allowed_types=%s total_synced_pool=%d displayed_pool_count=%d selected_count=%d selected_disallowed_count=%d', implode( ',', $allowed_offer_types ), count( $this->offer_repository->get_synced_offers() ), $displayed_pool_count, $selected_count, $selected_disallowed_count ) );
-        $legacy_catalog = TMW_CR_Slot_Sidebar_Banner::get_offer_catalog_defaults();
+        error_log( sprintf( '[TMW-BANNER-TYPE] slot_setup_visibility allowed_types=%s synced_type_allowed_count=%d displayed_setup_count=%d selected_count=%d frontend_ready_count=%d include_all=%s', implode( ',', $allowed_offer_types ), $synced_type_allowed_count, $displayed_pool_count, $selected_count, $frontend_ready_count, $include_all ? '1' : '0' ) );
 
         usort(
             $offers,
@@ -970,8 +1189,29 @@ class TMW_CR_Slot_Admin_Page {
             <?php submit_button( __( 'Refresh View', 'tmw-cr-slot-sidebar-banner' ), 'secondary', '', false ); ?>
         </form>
 
-        <form method="post" action="options.php">
-            <?php settings_fields( 'tmw_cr_slot_banner' ); ?>
+        <?php
+        $type_labels = array(
+            'pps' => 'PPS',
+            'revshare' => 'Revshare',
+            'revshare_lifetime' => 'Revshare Lifetime',
+            'soi' => 'SOI',
+            'doi' => 'DOI',
+            'cpa' => 'CPA / Multi-CPA',
+            'cpl' => 'CPL / PPL',
+            'cpc' => 'CPC / PPC',
+            'cpi' => 'CPI',
+            'cpm' => 'CPM',
+            'smartlink' => 'Smartlink',
+            'fallback' => 'Fallback offers',
+        );
+        $selected_type_labels = array();
+        foreach ( $allowed_offer_types as $allowed_type_key ) {
+            $selected_type_labels[] = isset( $type_labels[ $allowed_type_key ] ) ? $type_labels[ $allowed_type_key ] : strtoupper( str_replace( '_', ' ', (string) $allowed_type_key ) );
+        }
+        ?>
+        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+            <?php wp_nonce_field( 'tmw_cr_slot_banner_save_allowed_types' ); ?>
+            <input type="hidden" name="action" value="tmw_cr_slot_banner_save_allowed_types" />
             <h3><?php esc_html_e( 'Allowed offer types for live banner', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
             <p class="description"><?php esc_html_e( 'Choose which offer types may appear in the frontend offer/sidebar banner. Logo display in admin is brand-level and remains unaffected.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
             <?php
@@ -982,39 +1222,31 @@ class TMW_CR_Slot_Admin_Page {
                     ++$type_allowed_count;
                 }
             }
-            $type_labels = array(
-                'pps' => 'PPS',
-                'revshare' => 'Revshare',
-                'soi' => 'SOI',
-                'doi' => 'DOI',
-                'cpa' => 'CPA / Multi-CPA',
-                'cpl' => 'CPL / PPL',
-                'cpc' => 'CPC / PPC',
-                'cpi' => 'CPI',
-                'cpm' => 'CPM',
-                'smartlink' => 'Smartlink',
-                'fallback' => 'Fallback offers',
-            );
             ?>
             <p>
                 <?php foreach ( $type_labels as $type_key => $type_label ) : ?>
                     <label style="display:inline-block;min-width:180px;margin:0 12px 8px 0;">
-                        <input type="checkbox" name="<?php echo esc_attr( $this->option_key ); ?>[allowed_offer_types][]" value="<?php echo esc_attr( $type_key ); ?>" <?php checked( in_array( $type_key, $allowed_offer_types, true ) ); ?> />
+                        <input type="checkbox" name="allowed_offer_types[]" value="<?php echo esc_attr( $type_key ); ?>" <?php checked( in_array( $type_key, $allowed_offer_types, true ) ); ?> />
                         <?php echo esc_html( $type_label ); ?>
                     </label>
                 <?php endforeach; ?>
             </p>
+            <?php submit_button( __( 'Save Allowed Offer Types', 'tmw-cr-slot-sidebar-banner' ), 'primary', 'submit', false ); ?>
             <p class="description">
                 <?php
                 echo esc_html(
                     sprintf(
-                        'Allowed type filter: %1$s — %2$d offers available.',
-                        implode( ' + ', array_map( 'ucfirst', $allowed_offer_types ) ),
+                        'Allowed type filter: %1$s — %2$d setup rows currently displayed.',
+                        implode( ', ', $selected_type_labels ),
                         (int) $displayed_pool_count
                     )
                 );
                 ?>
             </p>
+        </form>
+
+        <form method="post" action="options.php">
+            <?php settings_fields( 'tmw_cr_slot_banner' ); ?>
             <p class="description">
                 <?php
                 echo esc_html(
@@ -1026,6 +1258,25 @@ class TMW_CR_Slot_Admin_Page {
                 );
                 ?>
             </p>
+
+            <p class="description"><?php echo esc_html( sprintf( 'Synced offers matching allowed types: %d', (int) $synced_type_allowed_count ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Setup rows currently displayed: %d', (int) $displayed_pool_count ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Manifest logo rows loaded: %d', (int) $manifest_rows_loaded ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Manifest logos available for displayed rows: %d', (int) $manifest_logos_available_displayed ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Brand-map logos available for displayed rows: %d', (int) $brand_map_logos_available_displayed ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Missing manifest files: %d', (int) $missing_manifest_files_count ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Selected display offers: %d', (int) $selected_count ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Frontend-ready offers: %d', (int) $frontend_ready_count ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Missing final URL override: %d', (int) $missing_final_url_override_count ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Missing allowed country override: %d', (int) $missing_allowed_country_override_count ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Missing logo: %d', (int) $missing_logo_count ) ); ?></p>
+            <?php if ( ! empty( $missing_logo_examples ) ) : ?>
+                <p class="description"><?php echo esc_html( 'Missing logo examples: ' . implode( ' | ', array_slice( $missing_logo_examples, 0, 5 ) ) ); ?></p>
+            <?php endif; ?>
+            <p class="description"><?php echo esc_html( sprintf( 'Blocked by business rule: %d', (int) $blocked_by_business_rule_count ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Include-all diagnostics: include_all=%1$s total_matching_allowed_types=%2$d displayed_rows=%3$d page=%4$d per_page=%5$d active_filters=payout_type:%6$s', $include_all ? '1' : '0', (int) $synced_type_allowed_count, (int) $displayed_pool_count, (int) ( $result['page'] ?? 1 ), (int) ( $result['per_page'] ?? 400 ), sanitize_text_field( (string) ( $_GET['payout_type'] ?? '' ) ) ) ); ?></p>
+            <p class="description"><a href="<?php echo esc_url( add_query_arg( array( 'page' => 'tmw-cr-slot-sidebar-banner', 'tab' => 'slot-setup', 'include_all_offers' => 1, 'payout_type' => 'revshare' ), admin_url( 'options-general.php' ) ) ); ?>">Show Revshare matching offers</a></p>
+            <p class="description"><a href="<?php echo esc_url( add_query_arg( array( 'page' => 'tmw-cr-slot-sidebar-banner', 'tab' => 'slot-setup', 'include_all_offers' => 1, 'payout_type' => 'revshare_lifetime' ), admin_url( 'options-general.php' ) ) ); ?>">Show Revshare Lifetime matching offers</a></p>
             <p>
                 <label>
                     <input type="checkbox" name="<?php echo esc_attr( $this->option_key ); ?>[enforce_skipped_offers_exclusion]" value="1" <?php checked( ! empty( $settings['enforce_skipped_offers_exclusion'] ) ); ?> />
@@ -1156,6 +1407,7 @@ class TMW_CR_Slot_Admin_Page {
             <?php $manual_audit_page = $this->get_positive_query_int( 'manual_audit_page', 1 ); ?>
             <?php $manual_audit_pagination = $this->paginate_rows( $eligibility_rows, $manual_audit_page, 25 ); ?>
             <h3><?php esc_html_e( 'Manual offer display audit', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
+            <p class="description" style="color:#b32d2e;"><strong><?php esc_html_e( 'This table only checks manual final URL and country override readiness. It does not mean the offer is selected into the live frontend pool. See Live frontend pool audit below.', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
             <?php $this->render_audit_pagination( (int) $manual_audit_pagination['current_page'], (int) $manual_audit_pagination['total_pages'], 'manual_audit_page', array( 'pps_audit_page', 'pps_audit_filter', 'pps_audit_search' ) ); ?>
             <table class="widefat striped">
                 <thead><tr><th>Offer ID</th><th>Offer name</th><th>Has final URL override</th><th>Final URL host</th><th>Has allowed country override</th><th>Allowed countries count</th><th>Frontend slogan</th><th>CTA button text</th><th>Offer label</th><th>Final URL status</th></tr></thead>
@@ -1177,6 +1429,106 @@ class TMW_CR_Slot_Admin_Page {
                 </tbody>
             </table>
             <?php $this->render_audit_pagination( (int) $manual_audit_pagination['current_page'], (int) $manual_audit_pagination['total_pages'], 'manual_audit_page', array( 'pps_audit_page', 'pps_audit_filter', 'pps_audit_search' ) ); ?>
+            <?php
+            $live_pool_audit = $this->offer_repository->get_live_frontend_pool_audit( $this->slot_key, $settings, array( 'cta_url' => (string) ( $settings['cta_url'] ?? '' ), 'cta_text' => (string) ( $settings['cta_text'] ?? '' ) ), $country, $legacy_catalog );
+            $live_pool_rows = (array) ( $live_pool_audit['pool_rows'] ?? array() );
+            $live_pool_ids = (array) ( $live_pool_audit['pool_ids'] ?? array() );
+            $selected_ids = (array) ( $live_pool_audit['selected_ids'] ?? array() );
+            ?>
+            <h3><?php esc_html_e( 'Live frontend pool audit', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
+            <p class="description"><?php echo esc_html( 'Selected current final display pool IDs: ' . implode( ', ', array_map( 'strval', $selected_ids ) ) ); ?></p>
+            <table class="widefat striped">
+                <thead><tr><th>final pool index</th><th>offer ID</th><th>offer name</th><th>offer type keys</th><th>selected for slot</th><th>priority</th><th>CTA host</th><th>image/logo URL host or local filename</th><th>visitor country result</th><th>source</th><th>frontend-ready</th><th>first blocker</th></tr></thead>
+                <tbody><?php foreach ( $live_pool_rows as $row ) : ?><tr>
+                    <td><?php echo esc_html( (string) $row['final_pool_index'] ); ?></td><td><?php echo esc_html( (string) $row['offer_id'] ); ?></td><td><?php echo esc_html( (string) $row['offer_name'] ); ?></td><td><?php echo esc_html( (string) $row['offer_type_keys'] ); ?></td>
+                    <td><?php echo esc_html( (string) $row['selected_for_slot'] ); ?><?php if ( in_array( (string) $row['offer_id'], $selected_ids, true ) ) { echo esc_html( ' (winning)' ); } ?></td><td><?php echo esc_html( (string) $row['priority'] ); ?></td>
+                    <td><?php echo esc_html( (string) $row['cta_host'] ); ?></td><td><?php echo esc_html( (string) $row['image_source'] ); ?></td><td><?php echo esc_html( (string) $row['visitor_country_result'] ); ?></td><td><?php echo esc_html( (string) $row['source'] ); ?></td><td><?php echo esc_html( (string) $row['frontend_ready'] ); ?></td><td><?php echo esc_html( (string) $row['first_blocker'] ); ?></td>
+                </tr><?php endforeach; ?></tbody>
+            </table>
+            <?php
+            $manual_not_live = array();
+            foreach ( (array) $eligibility_rows as $row ) {
+                if ( 'eligible' !== (string) ( $row['eligibility_result'] ?? '' ) ) { continue; }
+                $offer_id = (string) ( $row['offer_id'] ?? '' );
+                if ( in_array( $offer_id, $live_pool_ids, true ) ) { continue; }
+                $selected_for_slot = in_array( $offer_id, $selected_ids, true );
+                $reason = 'not_selected';
+                if ( $selected_for_slot ) {
+                    $reason = (string) $this->offer_repository->get_selected_offer_frontend_drop_reason( $offer_id, $settings, array( 'cta_url' => (string) ( $settings['cta_url'] ?? '' ), 'cta_text' => (string) ( $settings['cta_text'] ?? '' ) ), $country, $legacy_catalog );
+                    if ( '' === $reason ) {
+                        $reason = 'unknown_frontend_drop';
+                    }
+                }
+                $reason_action_map = array(
+                    'not_allowed_type' => 'Enable the matching offer type in allowed offer types',
+                    'invalid_cta' => 'add/fix valid final_url_override',
+                    'country_blocked' => 'add/fix allowed country override',
+                    'missing_logo' => 'add/fix logo manifest/file',
+                    'inactive_or_unapproved' => 'check synced status/approval',
+                    'unknown_frontend_drop' => 'inspect [TMW-BANNER-POOL] logs',
+                    'not_selected' => 'select_offer',
+                );
+                $manual_not_live[] = array(
+                    'offer_id' => $offer_id, 'offer_name' => (string) ( $row['offer_name'] ?? '' ), 'detected_type_keys' => (string) ( $row['offer_type_keys'] ?? '' ),
+                    'allowed_types' => implode( ',', (array) ( $settings['allowed_offer_types'] ?? array() ) ),
+                    'selected_pool_index' => $selected_for_slot ? (string) array_search( $offer_id, $selected_ids, true ) : '',
+                    'live_pool_size' => (string) count( $live_pool_ids ),
+                    'selected_for_slot' => $selected_for_slot ? 'yes' : 'no', 'reason_not_in_live_pool' => $reason,
+                    'suggested_admin_action' => (string) ( $reason_action_map[ $reason ] ?? 'inspect [TMW-BANNER-POOL] logs' ),
+                );
+                if ( function_exists( 'error_log' ) ) { error_log( sprintf( '[TMW-BANNER-POOL] manual_ready_not_live offer_id=%s reason="%s" selected="%s" priority="%s"', $offer_id, $reason, in_array( $offer_id, $selected_ids, true ) ? 'yes' : 'no', (string) ( $settings['slot_offer_priority'][ $offer_id ] ?? '' ) ) ); }
+            }
+            ?>
+            <?php if ( ! empty( $manual_not_live ) ) : ?><p class="description" style="color:#b32d2e;"><strong><?php esc_html_e( 'Manual-ready offers exist but are not in the live banner pool. Use measured drop reasons to fix eligibility blockers.', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p><?php endif; ?>
+            <h3><?php esc_html_e( 'Manual-ready but not in live pool', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
+            <?php $manual_not_live_page = $this->get_positive_query_int( 'manual_not_live_page', (int) $manual_audit_pagination['current_page'] ); ?>
+            <?php $manual_not_live_pagination = $this->paginate_rows( $manual_not_live, $manual_not_live_page, 25 ); ?>
+            <?php $this->render_audit_pagination( (int) $manual_not_live_pagination['current_page'], (int) $manual_not_live_pagination['total_pages'], 'manual_not_live_page', array( 'manual_audit_page', 'pps_audit_page', 'pps_audit_filter', 'pps_audit_search' ) ); ?>
+            <?php
+            $page_offer_ids = array();
+            $fanvue_offer_ids = array();
+            foreach ( (array) $manual_not_live_pagination['rows'] as $row ) {
+                $row_offer_id = (string) ( $row['offer_id'] ?? '' );
+                $row_offer_name = (string) ( $row['offer_name'] ?? '' );
+                if ( 'not_selected' !== (string) ( $row['reason_not_in_live_pool'] ?? '' ) || '' === $row_offer_id ) {
+                    continue;
+                }
+                $page_offer_ids[] = $row_offer_id;
+                if ( false !== stripos( $row_offer_name, 'Fanvue -' ) ) {
+                    $fanvue_offer_ids[] = $row_offer_id;
+                }
+            }
+            ?>
+            <?php if ( current_user_can( 'manage_options' ) && ! empty( $page_offer_ids ) ) : ?>
+                <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="margin:0 0 10px;">
+                    <input type="hidden" name="action" value="tmw_cr_slot_banner_select_offer" />
+                    <input type="hidden" name="tab" value="slot-setup" />
+                    <input type="hidden" name="manual_audit_page" value="<?php echo esc_attr( (string) $manual_audit_pagination['current_page'] ); ?>" />
+                    <input type="hidden" name="manual_not_live_page" value="<?php echo esc_attr( (string) $manual_not_live_pagination['current_page'] ); ?>" />
+                    <?php wp_nonce_field( 'tmw_cr_slot_banner_select_offer' ); ?>
+                    <?php foreach ( array_values( array_unique( $page_offer_ids ) ) as $bulk_offer_id ) : ?>
+                        <input type="hidden" name="offer_ids[]" value="<?php echo esc_attr( (string) $bulk_offer_id ); ?>" />
+                    <?php endforeach; ?>
+                    <button type="submit" class="button button-secondary">Select all manual-ready offers on this page</button>
+                </form>
+            <?php endif; ?>
+            <?php if ( current_user_can( 'manage_options' ) && ! empty( $fanvue_offer_ids ) ) : ?>
+                <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="margin:0 0 10px;">
+                    <input type="hidden" name="action" value="tmw_cr_slot_banner_select_offer" />
+                    <input type="hidden" name="tab" value="slot-setup" />
+                    <input type="hidden" name="manual_audit_page" value="<?php echo esc_attr( (string) $manual_audit_pagination['current_page'] ); ?>" />
+                    <input type="hidden" name="manual_not_live_page" value="<?php echo esc_attr( (string) $manual_not_live_pagination['current_page'] ); ?>" />
+                    <?php wp_nonce_field( 'tmw_cr_slot_banner_select_offer' ); ?>
+                    <?php foreach ( array_values( array_unique( $fanvue_offer_ids ) ) as $fanvue_offer_id ) : ?>
+                        <input type="hidden" name="offer_ids[]" value="<?php echo esc_attr( (string) $fanvue_offer_id ); ?>" />
+                    <?php endforeach; ?>
+                    <button type="submit" class="button button-secondary">Select all Fanvue manual-ready offers</button>
+                </form>
+            <?php endif; ?>
+            <table class="widefat striped"><thead><tr><th>offer ID</th><th>offer name</th><th>Detected frontend types</th><th>Allowed types</th><th>Selected pool index</th><th>Live pool size</th><th>selected for slot</th><th>Frontend drop reason</th><th>suggested admin action</th></tr></thead><tbody>
+            <?php foreach ( (array) $manual_not_live_pagination['rows'] as $row ) : ?><tr><td><?php echo esc_html( (string) $row['offer_id'] ); ?></td><td><?php echo esc_html( (string) $row['offer_name'] ); ?></td><td><?php echo esc_html( (string) $row['detected_type_keys'] ); ?></td><td><?php echo esc_html( (string) $row['allowed_types'] ); ?></td><td><?php echo esc_html( (string) $row['selected_pool_index'] ); ?></td><td><?php echo esc_html( (string) $row['live_pool_size'] ); ?></td><td><?php echo esc_html( (string) $row['selected_for_slot'] ); ?></td><td><?php echo esc_html( (string) $row['reason_not_in_live_pool'] ); ?></td><td><?php echo esc_html( (string) $row['suggested_admin_action'] ); ?><?php if ( current_user_can( 'manage_options' ) && 'select_offer' === (string) ( $row['suggested_admin_action'] ?? '' ) && 'not_selected' === (string) ( $row['reason_not_in_live_pool'] ?? '' ) ) : ?> <a class="button button-small" href="<?php echo esc_url( wp_nonce_url( add_query_arg( array( 'action' => 'tmw_cr_slot_banner_select_offer', 'offer_id' => (string) $row['offer_id'], 'tab' => 'slot-setup', 'manual_audit_page' => (int) $manual_audit_pagination['current_page'], 'manual_not_live_page' => (int) $manual_not_live_pagination['current_page'] ), admin_url( 'admin-post.php' ) ), 'tmw_cr_slot_banner_select_offer' ) ); ?>">Select for banner</a><?php endif; ?></td></tr><?php endforeach; ?>
+            </tbody></table>
+            <?php $this->render_audit_pagination( (int) $manual_not_live_pagination['current_page'], (int) $manual_not_live_pagination['total_pages'], 'manual_not_live_page', array( 'manual_audit_page', 'pps_audit_page', 'pps_audit_filter', 'pps_audit_search' ) ); ?>
             <?php $pps_expansion_rows = $this->offer_repository->get_pps_expansion_readiness_audit_rows( $settings, array( 'cta_url' => (string) ( $settings['cta_url'] ?? '' ), 'cta_text' => (string) ( $settings['cta_text'] ?? '' ) ) ); ?>
             <?php $pps_expansion_summary = $this->offer_repository->get_pps_expansion_readiness_audit_summary( $pps_expansion_rows ); ?>
             <?php $pps_audit_filter = isset( $_GET['pps_audit_filter'] ) ? sanitize_key( wp_unslash( $_GET['pps_audit_filter'] ) ) : 'all'; ?>
@@ -1240,8 +1592,9 @@ class TMW_CR_Slot_Admin_Page {
             </table>
             <?php $this->render_audit_pagination( (int) $pps_audit_pagination['current_page'], (int) $pps_audit_pagination['total_pages'], 'pps_audit_page', array( 'manual_audit_page', 'pps_audit_filter', 'pps_audit_search' ) ); ?>
             <?php if ( 0 === count( $eligible_winner_offers ) ) : ?>
-                <p class="description" style="color:#b32d2e;"><strong><?php esc_html_e( 'No eligible display offers. Add valid final URL overrides or sync real tracking URLs.', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
+                <p class="description" style="color:#b32d2e;"><strong><?php esc_html_e( 'No eligible display offers. Add valid manual final URL overrides for selected offers.', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
             <?php endif; ?>
+            <p class="description" style="color:#b32d2e;"><strong><?php esc_html_e( 'CrackRevenue API does not provide usable final CTA URLs in the current offer response. Add the affiliate tracking URL manually as final_url_override.', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
             <p class="description"><?php esc_html_e( 'Selection mode: forced three-logo match', 'tmw-cr-slot-sidebar-banner' ); ?></p>
             <p class="description"><?php esc_html_e( 'Final display behavior: one selected offer shown across the animated selector', 'tmw-cr-slot-sidebar-banner' ); ?></p>
             <?php if ( current_user_can( 'manage_options' ) ) : ?>
@@ -1331,7 +1684,10 @@ class TMW_CR_Slot_Admin_Page {
                                     <input type="url" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][image_url_override]" value="<?php echo esc_attr( (string) ( $override['image_url_override'] ?? '' ) ); ?>" placeholder="<?php esc_attr_e( 'Per-offer image override', 'tmw-cr-slot-sidebar-banner' ); ?>" />
                                     <p class="description"><?php esc_html_e( 'Optional. Leave blank to use automatic resolver chain (local/remote/placeholder).', 'tmw-cr-slot-sidebar-banner' ); ?></p>
                                 </td>
-                                <td><input type="url" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][final_url_override]" value="<?php echo esc_attr( (string) ( $override['final_url_override'] ?? '' ) ); ?>" placeholder="https://..." /></td>
+                                <td>
+                                    <input type="url" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][final_url_override]" value="<?php echo esc_attr( (string) ( $override['final_url_override'] ?? '' ) ); ?>" placeholder="https://..." />
+                                    <p class="description"><?php esc_html_e( 'Manual final_url_override is required for frontend CTA eligibility.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+                                </td>
                                 <td>
                                     <?php $generated_slogan = $this->offer_repository->generate_offer_slogan( is_array( $offer ) ? $offer : array() ); ?>
                                     <?php $generated_cta = $this->offer_repository->generate_offer_cta_text( is_array( $offer ) ? $offer : array() ); ?>
@@ -1340,6 +1696,50 @@ class TMW_CR_Slot_Admin_Page {
                                     <input type="text" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][custom_cta_text]" value="<?php echo esc_attr( (string) ( $override['custom_cta_text'] ?? '' ) ); ?>" placeholder="<?php esc_attr_e( 'Custom CTA text', 'tmw-cr-slot-sidebar-banner' ); ?>" />
                                     <p class="description"><?php echo esc_html( 'Fallback CTA: ' . $generated_cta ); ?></p>
                                     <input type="text" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][label_override]" value="<?php echo esc_attr( (string) ( $override['label_override'] ?? '' ) ); ?>" placeholder="<?php esc_attr_e( 'Label override', 'tmw-cr-slot-sidebar-banner' ); ?>" />
+                                    <?php
+                                    $manual_type_value   = isset( $override['manual_offer_type'] ) ? sanitize_key( (string) $override['manual_offer_type'] ) : '';
+                                    $effective_type_info = $this->offer_repository->get_effective_offer_type( is_array( $offer ) ? $offer : array() );
+                                    $effective_type      = (string) ( $effective_type_info['type'] ?? '' );
+                                    $effective_source    = (string) ( $effective_type_info['source'] ?? '' );
+                                    $manual_type_choices = array(
+                                        ''                  => __( 'Auto (use API / name)', 'tmw-cr-slot-sidebar-banner' ),
+                                        'pps'               => 'PPS',
+                                        'revshare'          => 'Revshare',
+                                        'revshare_lifetime' => 'Revshare Lifetime',
+                                        'soi'               => 'SOI',
+                                        'doi'               => 'DOI',
+                                        'cpa'               => 'CPA',
+                                        'cpl'               => 'CPL',
+                                        'cpc'               => 'CPC',
+                                        'cpi'               => 'CPI',
+                                        'cpm'               => 'CPM',
+                                        'smartlink'         => 'Smartlink',
+                                        'fallback'          => 'Fallback',
+                                    );
+                                    $source_labels = array(
+                                        'manual' => __( 'manual override', 'tmw-cr-slot-sidebar-banner' ),
+                                        'api'    => __( 'API normalized', 'tmw-cr-slot-sidebar-banner' ),
+                                        'name'   => __( 'name fallback', 'tmw-cr-slot-sidebar-banner' ),
+                                    );
+                                    ?>
+                                    <label>
+                                        <span class="screen-reader-text"><?php esc_html_e( 'Manual offer type override', 'tmw-cr-slot-sidebar-banner' ); ?></span>
+                                        <select name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][manual_offer_type]">
+                                            <?php foreach ( $manual_type_choices as $manual_choice_key => $manual_choice_label ) : ?>
+                                                <option value="<?php echo esc_attr( (string) $manual_choice_key ); ?>" <?php selected( $manual_type_value, (string) $manual_choice_key ); ?>><?php echo esc_html( (string) $manual_choice_label ); ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </label>
+                                    <p class="description">
+                                        <?php esc_html_e( 'Manual offer type override. Choose Auto to use the API-normalized payout_type. Highest precedence.', 'tmw-cr-slot-sidebar-banner' ); ?>
+                                        <?php if ( '' !== $effective_type ) : ?>
+                                            <br /><strong><?php esc_html_e( 'Effective type:', 'tmw-cr-slot-sidebar-banner' ); ?></strong>
+                                            <code><?php echo esc_html( $effective_type ); ?></code>
+                                            <?php if ( isset( $source_labels[ $effective_source ] ) ) : ?>
+                                                (<?php echo esc_html( (string) $source_labels[ $effective_source ] ); ?>)
+                                            <?php endif; ?>
+                                        <?php endif; ?>
+                                    </p>
                                     <textarea class="large-text" rows="2" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][notes]" placeholder="<?php esc_attr_e( 'Internal notes', 'tmw-cr-slot-sidebar-banner' ); ?>"><?php echo esc_textarea( (string) ( $override['notes'] ?? '' ) ); ?></textarea>
                                 </td>
                                 <td><input type="text" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][allowed_countries]" value="<?php echo esc_attr( $allowed_raw ); ?>" placeholder="US,CA,GB" /></td>
@@ -1654,14 +2054,14 @@ class TMW_CR_Slot_Admin_Page {
                         <th scope="row"><label for="tmw-cr-cta-text"><?php esc_html_e( 'CTA Text', 'tmw-cr-slot-sidebar-banner' ); ?></label></th>
                         <td>
                             <input type="text" class="regular-text" id="tmw-cr-cta-text" name="<?php echo esc_attr( $this->option_key ); ?>[cta_text]" value="<?php echo esc_attr( $settings['cta_text'] ); ?>" />
-                            <p class="description"><?php esc_html_e( 'Default used when empty: View Offer', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+                            <p class="description"><?php esc_html_e( 'Default used when empty: VISIT OFFER', 'tmw-cr-slot-sidebar-banner' ); ?></p>
                         </td>
                     </tr>
                     <tr>
                         <th scope="row"><label for="tmw-cr-spin-button-text"><?php esc_html_e( 'Selector Button Text', 'tmw-cr-slot-sidebar-banner' ); ?></label></th>
                         <td>
                             <input type="text" class="regular-text" id="tmw-cr-spin-button-text" name="<?php echo esc_attr( $this->option_key ); ?>[spin_button_text]" value="<?php echo esc_attr( $settings['spin_button_text'] ?? '' ); ?>" />
-                            <p class="description"><?php esc_html_e( 'Default used when empty: SPIN NOW', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+                            <p class="description"><?php esc_html_e( 'Default used when empty: Reveal My Offer', 'tmw-cr-slot-sidebar-banner' ); ?></p>
                         </td>
                     </tr>
                     <tr>
@@ -1768,6 +2168,28 @@ class TMW_CR_Slot_Admin_Page {
                 <?php echo ! empty( $sync_meta['last_synced_at'] ) ? esc_html( (string) $sync_meta['last_synced_at'] ) : esc_html__( 'Never', 'tmw-cr-slot-sidebar-banner' ); ?>
             </p>
         </div>
+
+        <?php if ( current_user_can( 'manage_options' ) ) : ?>
+            <?php $audit_enabled = TMW_CR_Slot_CR_API_Inspector::is_enabled(); ?>
+            <div class="tmw-cr-card" style="margin-top:16px;">
+                <h3><?php esc_html_e( 'CrakRevenue API Audit', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
+                <p class="description"><?php esc_html_e( 'Run a debug-only audit to inspect CrakRevenue targeting fields, ISO country-code response shapes, and tracking URL method availability. Requires WP_DEBUG or TMW_CR_API_AUDIT and writes details to debug.log.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+                <?php if ( ! $audit_enabled ) : ?>
+                    <p><em><?php esc_html_e( 'Audit mode is disabled. Enable WP_DEBUG or define TMW_CR_API_AUDIT as true, then run the audit.', 'tmw-cr-slot-sidebar-banner' ); ?></em></p>
+                <?php endif; ?>
+                <?php
+                $button_attrs = array();
+                if ( ! $audit_enabled ) {
+                    $button_attrs['disabled'] = 'disabled';
+                }
+                ?>
+                <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+                    <input type="hidden" name="action" value="tmw_cr_slot_banner_audit_api" />
+                    <?php wp_nonce_field( 'tmw_cr_slot_banner_audit_api' ); ?>
+                    <?php submit_button( __( 'Run API Audit', 'tmw-cr-slot-sidebar-banner' ), 'secondary', 'submit', false, $button_attrs ); ?>
+                </form>
+            </div>
+        <?php endif; ?>
         <?php
     }
 
@@ -2421,14 +2843,17 @@ class TMW_CR_Slot_Admin_Page {
         $this->redirect_with_notice_to_tab( $notice_type, $message, $tab );
     }
 
-    protected function redirect_with_notice_to_tab( $notice_type, $message, $tab_slug = 'overview' ) {
+    protected function redirect_with_notice_to_tab( $notice_type, $message, $tab_slug = 'overview', $args = array() ) {
         wp_safe_redirect(
             add_query_arg(
-                array(
+                array_merge(
+                    array(
                     'page'                => 'tmw-cr-slot-sidebar-banner',
                     'tab'                 => sanitize_key( $tab_slug ),
                     'tmw_cr_slot_notice'  => sanitize_key( $notice_type ),
                     'tmw_cr_slot_message' => $message,
+                    ),
+                    (array) $args
                 ),
                 admin_url( 'options-general.php' )
             )

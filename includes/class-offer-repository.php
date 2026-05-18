@@ -8,7 +8,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 class TMW_CR_Slot_Offer_Repository {
-    const ALLOWED_OFFER_TYPES = array( 'pps', 'revshare', 'soi', 'doi', 'cpa', 'cpl', 'cpc', 'cpi', 'cpm', 'smartlink', 'fallback' );
+    const ALLOWED_OFFER_TYPES = array( 'pps', 'revshare_lifetime', 'revshare', 'soi', 'doi', 'cpa', 'cpl', 'cpc', 'cpi', 'cpm', 'smartlink', 'fallback' );
+    // Values accepted for the per-offer manual type override. Blank / 'auto' = no override (falls back to normalized payout_type).
+    const ALLOWED_MANUAL_OFFER_TYPES = array( 'pps', 'revshare_lifetime', 'revshare', 'soi', 'doi', 'cpa', 'cpl', 'cpc', 'cpi', 'cpm', 'smartlink', 'fallback' );
     const UNAVAILABLE_ACCOUNT_PPS_OFFER_IDS = array( '9647', '9781' );
     const ELIGIBILITY_REASON_MISSING_FINAL_URL = 'missing_final_url';
     const ELIGIBILITY_REASON_INVALID_FINAL_URL = 'invalid_final_url';
@@ -38,6 +40,8 @@ class TMW_CR_Slot_Offer_Repository {
 
     /** @var string */
     protected $skipped_offers_option_key;
+    /** @var array<string,array<string,string>>|null */
+    protected $offer_logo_manifest_rows = null;
 
     /**
      * @param string $offers_option_key     Option key for synced offers.
@@ -438,39 +442,119 @@ class TMW_CR_Slot_Offer_Repository {
     }
 
     /**
+     * Returns the per-offer manual offer-type override, or '' when not set / not valid.
+     *
+     * Source precedence:
+     *   1. inline $offer['manual_offer_type'] (e.g. in tests or pre-merged payloads)
+     *   2. saved offer override (manual_offer_type stored in offer_overrides option)
+     *
      * @param array<string,mixed> $offer Offer payload.
+     *
+     * @return string One of self::ALLOWED_MANUAL_OFFER_TYPES, or '' for auto / blank.
+     */
+    public function get_manual_offer_type( $offer ) {
+        $inline = isset( $offer['manual_offer_type'] ) ? sanitize_key( (string) $offer['manual_offer_type'] ) : '';
+        if ( '' !== $inline && in_array( $inline, self::ALLOWED_MANUAL_OFFER_TYPES, true ) ) {
+            return $inline;
+        }
+
+        $offer_id = sanitize_text_field( (string) ( $offer['id'] ?? '' ) );
+        if ( '' === $offer_id ) {
+            return '';
+        }
+
+        $override = $this->get_offer_override( $offer_id );
+        $stored   = isset( $override['manual_offer_type'] ) ? sanitize_key( (string) $override['manual_offer_type'] ) : '';
+        if ( '' !== $stored && in_array( $stored, self::ALLOWED_MANUAL_OFFER_TYPES, true ) ) {
+            return $stored;
+        }
+
+        return '';
+    }
+
+    /**
+     * Returns the effective offer type and the source of that decision.
+     *
+     * Source precedence:
+     *   1. 'manual'  - per-offer manual_offer_type override
+     *   2. 'api'     - normalized raw payout_type from CR API
+     *   3. 'name'    - legacy name-based regex fallback
+     *
+     * @param array<string,mixed> $offer Offer payload.
+     *
+     * @return array{type:string,source:string}
+     */
+    public function get_effective_offer_type( $offer ) {
+        $manual = $this->get_manual_offer_type( $offer );
+        if ( '' !== $manual ) {
+            return array( 'type' => $manual, 'source' => 'manual' );
+        }
+
+        $raw_payout_type = (string) ( $offer['payout_type'] ?? '' );
+        if ( '' !== trim( $raw_payout_type ) ) {
+            $normalized = $this->normalize_filter_family_value( 'payout_type', $raw_payout_type );
+            if ( '' !== $normalized && in_array( $normalized, self::ALLOWED_OFFER_TYPES, true ) ) {
+                return array( 'type' => $normalized, 'source' => 'api' );
+            }
+        }
+
+        $name_keys = $this->detect_offer_type_keys_from_name( (string) ( $offer['name'] ?? '' ), $raw_payout_type );
+        if ( ! empty( $name_keys ) ) {
+            return array( 'type' => $name_keys[0], 'source' => 'name' );
+        }
+
+        return array( 'type' => '', 'source' => '' );
+    }
+
+    /**
+     * Legacy name + raw-payout regex detection, used as a fallback ONLY when there's no
+     * manual override and no usable normalized payout_type. Kept intentionally simple.
+     *
+     * @param string $name Offer display name.
+     * @param string $raw_payout_type Raw payout_type from CR API.
      *
      * @return array<int,string>
      */
-    public function get_offer_type_keys( $offer ) {
-        $name_haystack = strtolower( (string) ( $offer['name'] ?? '' ) );
-        $payout_haystack = strtolower( (string) ( $offer['payout_type'] ?? '' ) );
+    protected function detect_offer_type_keys_from_name( $name, $raw_payout_type ) {
+        $name_haystack   = strtolower( (string) $name );
+        $payout_haystack = strtolower( (string) $raw_payout_type );
+
+        $revshare_lifetime_pattern = '/\brevshare\s+lifetime\b/i';
         $patterns = array(
-            'fallback'  => '/\b(group\s+fallback|custom\s+fallback)\b/i',
-            'smartlink' => '/\bsmartlink\b/i',
-            'revshare'  => '/\brevshare(\s+lifetime)?\b/i',
-            'soi'       => '/\bsoi\b/i',
-            'doi'       => '/\bdoi\b/i',
-            'cpa'       => '/\b(multi[\s-]*cpa|cpa)\b/i',
-            'cpl'       => '/\b(ppl|cpl)\b/i',
-            'cpc'       => '/\b(ppc|cpc)\b/i',
-            'cpi'       => '/\bcpi\b/i',
-            'cpm'       => '/\bcpm\b/i',
-            'pps'       => '/\bpps\b/i',
+            'fallback'          => '/\b(group\s+fallback|custom\s+fallback)\b/i',
+            'smartlink'         => '/\bsmartlink\b/i',
+            'revshare_lifetime' => $revshare_lifetime_pattern,
+            'revshare'          => '/\brevshare\b/i',
+            'soi'               => '/\bsoi\b/i',
+            'doi'               => '/\bdoi\b/i',
+            'cpa'               => '/\b(multi[\s-]*cpa|cpa)\b/i',
+            'cpl'               => '/\b(ppl|cpl)\b/i',
+            'cpc'               => '/\b(ppc|cpc)\b/i',
+            'cpi'               => '/\bcpi\b/i',
+            'cpm'               => '/\bcpm\b/i',
+            'pps'               => '/\bpps\b/i',
         );
 
-        $types = array();
+        $types     = array();
         $positions = array();
         foreach ( $patterns as $key => $pattern ) {
             if ( preg_match( $pattern, $name_haystack, $matches, PREG_OFFSET_CAPTURE ) ) {
-                $types[] = $key;
+                $types[]           = $key;
                 $positions[ $key ] = (int) $matches[0][1];
+                if ( 'revshare_lifetime' === $key ) {
+                    $name_haystack   = (string) preg_replace( $revshare_lifetime_pattern, ' ', $name_haystack );
+                    $payout_haystack = (string) preg_replace( $revshare_lifetime_pattern, ' ', $payout_haystack );
+                }
                 continue;
             }
 
             if ( preg_match( $pattern, $payout_haystack, $matches, PREG_OFFSET_CAPTURE ) ) {
-                $types[] = $key;
+                $types[]           = $key;
                 $positions[ $key ] = 10000 + (int) $matches[0][1];
+                if ( 'revshare_lifetime' === $key ) {
+                    $name_haystack   = (string) preg_replace( $revshare_lifetime_pattern, ' ', $name_haystack );
+                    $payout_haystack = (string) preg_replace( $revshare_lifetime_pattern, ' ', $payout_haystack );
+                }
             }
         }
 
@@ -483,6 +567,51 @@ class TMW_CR_Slot_Offer_Repository {
         );
 
         return $types;
+    }
+
+    /**
+     * Effective offer-type families for an offer.
+     *
+     * Precedence:
+     *   1. manual_offer_type override (short-circuits to a single family)
+     *   2. normalized raw payout_type from CR API + name-based detection union
+     *      (name-based detection retained for legacy data / multi-family offers)
+     *
+     * Callers that gate frontend pool / allowlists rely on this method, so the manual
+     * override is automatically respected by:
+     *   - is_offer_type_allowed()
+     *   - frontend slot pool eligibility
+     *   - admin diagnostics that display "Detected types" / "Offer Type Keys"
+     *
+     * @param array<string,mixed> $offer Offer payload.
+     *
+     * @return array<int,string>
+     */
+    public function get_offer_type_keys( $offer ) {
+        // Manual override has absolute priority.
+        $manual = $this->get_manual_offer_type( $offer );
+        if ( '' !== $manual ) {
+            return array( $manual );
+        }
+
+        $raw_payout_type        = (string) ( $offer['payout_type'] ?? '' );
+        $normalized_payout_type = $this->normalize_filter_family_value( 'payout_type', $raw_payout_type );
+
+        // Name + raw regex detection (legacy fallback path, still useful for multi-family
+        // offers like "Live Jasmin Revshare Lifetime PPS").
+        $types = $this->detect_offer_type_keys_from_name( (string) ( $offer['name'] ?? '' ), $raw_payout_type );
+
+        // Append the normalized payout_type from CR API if not already detected. We keep
+        // any name-derived match at the head of the list so callers that pick the first
+        // element preserve their existing semantics for established offers (e.g. PPS-named
+        // offers that have a raw cpa_flat payout_type still surface as PPS first).
+        if ( '' !== $normalized_payout_type
+            && in_array( $normalized_payout_type, self::ALLOWED_OFFER_TYPES, true )
+            && ! in_array( $normalized_payout_type, $types, true ) ) {
+            $types[] = $normalized_payout_type;
+        }
+
+        return array_values( array_unique( $types ) );
     }
 
     public function is_offer_type_allowed( $offer, $settings ) {
@@ -571,6 +700,23 @@ class TMW_CR_Slot_Offer_Repository {
      * @return string
      */
     public function get_offer_logo_filename( $offer ) {
+        $offer_id = sanitize_text_field( (string) ( $offer['id'] ?? '' ) );
+        if ( '' !== $offer_id ) {
+            $manifest_filename = $this->get_offer_logo_filename_from_manifest( $offer_id );
+            if ( '' !== $manifest_filename ) {
+                $manifest_path = dirname( __DIR__ ) . '/assets/logos/80x80/' . $manifest_filename;
+                if ( file_exists( $manifest_path ) ) {
+                    if ( function_exists( 'error_log' ) ) {
+                        error_log( sprintf( '[TMW-BANNER-LOGO] logo_source offer_id=%s source="manifest" filename="%s"', $offer_id, $manifest_filename ) );
+                    }
+                    return $manifest_filename;
+                }
+                if ( function_exists( 'error_log' ) ) {
+                    error_log( sprintf( '[TMW-BANNER-LOGO] missing_manifest_logo offer_id=%s expected="%s"', $offer_id, $manifest_filename ) );
+                }
+            }
+        }
+
         $offer_name = isset( $offer['name'] ) ? (string) $offer['name'] : '';
         $brand_key  = $this->get_offer_brand_key( $offer_name );
         if ( '' === $brand_key ) {
@@ -586,13 +732,86 @@ class TMW_CR_Slot_Offer_Repository {
         $path = dirname( __DIR__ ) . '/assets/logos/80x80/' . $expected;
         if ( ! file_exists( $path ) ) {
             if ( function_exists( 'error_log' ) ) {
-                $offer_id = sanitize_text_field( (string) ( $offer['id'] ?? '' ) );
                 error_log( sprintf( '[TMW-BANNER-LOGO] missing_logo offer_id=%s brand_key=%s expected=%s', $offer_id, $brand_key, $expected ) );
             }
             return '';
         }
+        if ( function_exists( 'error_log' ) ) {
+            error_log( sprintf( '[TMW-BANNER-LOGO] logo_source offer_id=%s source="brand_map" brand_key="%s" filename="%s"', $offer_id, $brand_key, $expected ) );
+        }
 
         return $expected;
+    }
+
+    public function get_offer_logo_manifest_path() {
+        return dirname( __DIR__ ) . '/assets/logos/80x80/manifest.csv';
+    }
+
+    public function get_offer_logo_manifest_rows() {
+        if ( null !== $this->offer_logo_manifest_rows ) {
+            return $this->offer_logo_manifest_rows;
+        }
+        $rows = array();
+        $path = $this->get_offer_logo_manifest_path();
+        if ( ! file_exists( $path ) || ! is_readable( $path ) ) {
+            $this->offer_logo_manifest_rows = $rows;
+            return $rows;
+        }
+        $handle = fopen( $path, 'r' );
+        if ( false === $handle ) {
+            $this->offer_logo_manifest_rows = $rows;
+            return $rows;
+        }
+        $headers = fgetcsv( $handle );
+        if ( false === $headers || ! is_array( $headers ) ) {
+            fclose( $handle );
+            $this->offer_logo_manifest_rows = $rows;
+            return $rows;
+        }
+        $header_map = array();
+        foreach ( $headers as $idx => $header ) {
+            $header_map[ sanitize_key( (string) $header ) ] = (int) $idx;
+        }
+        while ( false !== ( $line = fgetcsv( $handle ) ) ) {
+            if ( ! is_array( $line ) ) {
+                continue;
+            }
+            $offer_id = isset( $header_map['offer_id'] ) ? sanitize_text_field( (string) ( $line[ $header_map['offer_id'] ] ?? '' ) ) : '';
+            if ( '' === $offer_id ) {
+                continue;
+            }
+            $rows[ $offer_id ] = array(
+                'offer_id' => $offer_id,
+                'logo_file' => isset( $header_map['logo_file'] ) ? ( function_exists( 'sanitize_file_name' ) ? sanitize_file_name( (string) ( $line[ $header_map['logo_file'] ] ?? '' ) ) : trim( (string) ( $line[ $header_map['logo_file'] ] ?? '' ) ) ) : '',
+                'offer_name' => isset( $header_map['offer_name'] ) ? sanitize_text_field( (string) ( $line[ $header_map['offer_name'] ] ?? '' ) ) : '',
+            );
+        }
+        fclose( $handle );
+        $this->offer_logo_manifest_rows = $rows;
+        return $rows;
+    }
+
+    public function get_offer_logo_filename_from_manifest( $offer_id ) {
+        $offer_id = sanitize_text_field( (string) $offer_id );
+        if ( '' === $offer_id ) {
+            return '';
+        }
+        $rows = $this->get_offer_logo_manifest_rows();
+        return isset( $rows[ $offer_id ]['logo_file'] ) ? (string) $rows[ $offer_id ]['logo_file'] : '';
+    }
+
+    /**
+     * @param string $brand_key Brand key.
+     *
+     * @return string
+     */
+    public function get_offer_brand_logo_filename( $brand_key ) {
+        $brand_key = sanitize_key( (string) $brand_key );
+        if ( '' === $brand_key ) {
+            return '';
+        }
+        $map = $this->get_offer_logo_filename_map();
+        return isset( $map[ $brand_key ] ) ? (string) $map[ $brand_key ] : '';
     }
 
     /**
@@ -1643,18 +1862,104 @@ class TMW_CR_Slot_Offer_Repository {
         if ( ! empty( $overrides[ $offer_id ] ) ) {
             return 'manual_override';
         }
-        $brand_key = $this->get_offer_brand_key( (string) ( $offer['name'] ?? '' ) );
-        $filename_map = $this->get_offer_logo_filename_map();
-        if ( '' !== $brand_key && isset( $filename_map[ $brand_key ] ) ) {
-            $expected_filename = (string) $filename_map[ $brand_key ];
-            $local_path        = rtrim( (string) TMW_CR_SLOT_BANNER_PATH, '/\\' ) . '/assets/logos/' . $expected_filename;
+        $offer_for_resolver = is_array( $offer ) ? $offer : array();
+        $offer_for_resolver['id'] = $offer_id;
+        $expected_filename = $this->get_offer_logo_filename( $offer_for_resolver );
+        if ( '' !== $expected_filename ) {
+            $local_path = rtrim( (string) TMW_CR_SLOT_BANNER_PATH, '/\\' ) . '/assets/logos/80x80/' . $expected_filename;
             return file_exists( $local_path ) ? 'mapped_local' : 'missing';
         }
-        $offer_name = (string) ( $offer['name'] ?? '' );
-        if ( '' !== $this->resolve_remote_thumbnail_image( $offer_name ) || '' !== $this->resolve_local_catalog_image( $offer_name, $legacy_catalog ) ) {
-            return 'auto_remote';
+        $brand_key = $this->get_offer_brand_key( (string) ( $offer_for_resolver['name'] ?? '' ) );
+        if ( '' !== $brand_key && isset( $this->get_offer_logo_filename_map()[ $brand_key ] ) ) {
+            return 'missing';
+        }
+        $logo_url = $this->get_offer_logo_url( $offer_for_resolver );
+        if ( '' !== $logo_url ) {
+            return ( 0 === strpos( $logo_url, 'http://' ) || 0 === strpos( $logo_url, 'https://' ) ) ? 'auto_remote' : 'mapped_local';
         }
         return 'placeholder_only';
+    }
+
+
+    /**
+     * @param string $offer_id Selected offer id.
+     * @param array<string,mixed> $settings Settings payload.
+     * @param array<string,string> $banner_data Banner data.
+     * @param string $country Country.
+     * @param array<string,array<string,mixed>> $legacy_catalog Legacy catalog.
+     *
+     * @return string
+     */
+    public function get_selected_offer_frontend_drop_reason( $offer_id, $settings, $banner_data, $country, $legacy_catalog ) {
+        $offer_id = (string) $offer_id;
+        $synced_offers = $this->get_synced_offers();
+        if ( '' === $offer_id || ! isset( $synced_offers[ $offer_id ] ) ) {
+            return 'unknown_frontend_drop';
+        }
+
+        $offer = $synced_offers[ $offer_id ];
+        $detected_types = $this->get_offer_type_keys( $offer );
+        if ( empty( $detected_types ) || empty( array_intersect( $detected_types, $this->get_allowed_offer_types( $settings ) ) ) ) {
+            return 'not_allowed_type';
+        }
+        if ( $this->is_offer_blocked_for_banner( $offer, $settings ) || $this->is_unavailable_account_pps_offer( $offer ) ) {
+            return 'inactive_or_unapproved';
+        }
+
+        $evaluation = $this->evaluate_offer_eligibility( $offer_id, $settings, $banner_data, $country, $legacy_catalog );
+        $effective = $evaluation['effective_offer'];
+        if ( ! empty( $effective ) && ! $this->is_valid_frontend_winner_cta_url( (string) ( $effective['cta_url'] ?? '' ) ) ) {
+            return 'invalid_cta';
+        }
+        if ( empty( $effective ) ) {
+            $eval_reason = (string) ( $evaluation['reason'] ?? '' );
+            if ( in_array( $eval_reason, array( 'missing_logo', 'logo_not_found' ), true ) ) { return 'missing_logo'; }
+            if ( false !== strpos( $eval_reason, 'country' ) ) { return 'country_blocked'; }
+            if ( false !== strpos( $eval_reason, 'status' ) || false !== strpos( $eval_reason, 'approval' ) ) { return 'inactive_or_unapproved'; }
+            if ( false !== strpos( $eval_reason, 'cta' ) || false !== strpos( $eval_reason, 'url' ) ) { return 'invalid_cta'; }
+            return 'unknown_frontend_drop';
+        }
+
+        return '';
+    }
+
+    public function get_live_frontend_pool_audit( $slot_key, $settings, $banner_data, $country, $legacy_catalog ) {
+        $pool        = $this->get_frontend_slot_offers( $slot_key, $settings, $banner_data, $country, $legacy_catalog );
+        $selected_ids = $this->get_selected_offer_ids( $settings );
+        $allowed_types = $this->get_allowed_offer_types( $settings );
+        $priorities = isset( $settings['slot_offer_priority'] ) && is_array( $settings['slot_offer_priority'] ) ? $settings['slot_offer_priority'] : array();
+        $synced = $this->get_synced_offers();
+        $pool_ids = array();
+        foreach ( $pool as $pool_offer ) {
+            $pool_ids[] = (string) ( $pool_offer['id'] ?? '' );
+        }
+        $rows = array();
+        foreach ( $pool as $index => $pool_offer ) {
+            $offer_id = (string) ( $pool_offer['id'] ?? '' );
+            $offer = isset( $synced[ $offer_id ] ) ? $synced[ $offer_id ] : $pool_offer;
+            $types = $this->get_offer_type_keys( $offer );
+            $cta_host = (string) parse_url( (string) ( $pool_offer['cta_url'] ?? '' ), PHP_URL_HOST );
+            $image = (string) ( $pool_offer['image'] ?? '' );
+            $image_host = (string) parse_url( $image, PHP_URL_HOST );
+            $rows[] = array(
+                'final_pool_index' => (int) $index,
+                'offer_id' => $offer_id,
+                'offer_name' => (string) ( $offer['name'] ?? '' ),
+                'offer_type_keys' => implode( ',', $types ),
+                'selected_for_slot' => in_array( $offer_id, $selected_ids, true ) ? 'yes' : 'no',
+                'priority' => (string) ( $priorities[ $offer_id ] ?? 100 ),
+                'cta_host' => $cta_host,
+                'image_source' => '' !== $image_host ? $image_host : basename( $image ),
+                'visitor_country_result' => 'allowed',
+                'source' => ( in_array( $offer_id, $selected_ids, true ) ? 'selected_pool' : 'synced_fallback' ),
+                'frontend_ready' => 'yes',
+                'first_blocker' => '',
+            );
+        }
+        if ( function_exists( 'error_log' ) ) {
+            error_log( sprintf( '[TMW-BANNER-POOL] live_pool offer_ids=%s count=%d country=%s allowed_types=%s selected_ids=%s', implode( ',', $pool_ids ), count( $pool_ids ), (string) $country, implode( ',', $allowed_types ), implode( ',', $selected_ids ) ) );
+        }
+        return array( 'pool_rows' => $rows, 'pool_ids' => $pool_ids, 'selected_ids' => $selected_ids );
     }
 
     /**
@@ -1669,6 +1974,10 @@ class TMW_CR_Slot_Offer_Repository {
      */
     public function get_offer_frontend_eligibility_summary( $offer, $settings, $country, $legacy_catalog = array() ) {
         $offer_id = (string) ( $offer['id'] ?? '' );
+        $status_audit = $this->get_offer_status_approval_audit( $offer );
+        if ( ! empty( $status_audit['status_blocked'] ) || ! empty( $status_audit['approval_blocked'] ) ) {
+            return array( 'is_eligible' => false, 'block_reason' => ! empty( $status_audit['status_blocked'] ) ? 'status_blocked' : 'approval_blocked' );
+        }
         if ( ! $this->is_offer_type_allowed( $offer, $settings ) ) {
             return array( 'is_eligible' => false, 'block_reason' => 'not_allowed_type' );
         }
@@ -1694,6 +2003,44 @@ class TMW_CR_Slot_Offer_Repository {
             return array( 'is_eligible' => false, 'block_reason' => 'missing_logo' );
         }
         return array( 'is_eligible' => true, 'block_reason' => 'valid' );
+    }
+
+    public function get_offer_status_approval_audit( $offer ) {
+        $raw_status          = strtolower( trim( (string) ( $offer['status'] ?? '' ) ) );
+        $raw_approval_status = strtolower( trim( (string) ( $offer['approval_status'] ?? '' ) ) );
+        $require_approval    = strtolower( trim( (string) ( $offer['require_approval'] ?? '' ) ) );
+        $approved            = strtolower( trim( (string) ( $offer['approved'] ?? $offer['is_approved'] ?? '' ) ) );
+        $normalized_status   = '' === $raw_status ? 'unknown' : $raw_status;
+        $active_values       = array( 'active', 'approved', 'enabled' );
+        $blocked_values      = array( 'inactive', 'paused', 'disabled', 'rejected', 'deleted', 'stopped', 'blocked', 'suspended' );
+        $status_blocked      = true;
+        if ( in_array( $normalized_status, $active_values, true ) ) {
+            $status_blocked = false;
+        } elseif ( in_array( $normalized_status, $blocked_values, true ) ) {
+            $status_blocked = true;
+        }
+        $approval_required   = in_array( $require_approval, array( '1', 'true', 'yes' ), true );
+        $normalized_approval = 'not_required';
+        $approval_blocked    = false;
+        if ( $approval_required ) {
+            $approved_values = array( '1', 'true', 'yes', 'approved', 'active' );
+            $approved_now = in_array( $approved, $approved_values, true ) || in_array( $raw_approval_status, $approved_values, true );
+            $normalized_approval = $approved_now ? 'approved' : 'unapproved';
+            $approval_blocked = ! $approved_now;
+            if ( 'unknown' === $normalized_status && $approved_now ) {
+                $status_blocked = false;
+            }
+        }
+        return array(
+            'raw_status' => $raw_status,
+            'raw_approval' => $raw_approval_status,
+            'require_approval' => $require_approval,
+            'normalized_status' => $normalized_status,
+            'normalized_approval' => $normalized_approval,
+            'status_blocked' => $status_blocked,
+            'approval_blocked' => $approval_blocked,
+            'active_approved' => ! $status_blocked && ! $approval_blocked,
+        );
     }
 
     /**
@@ -1729,6 +2076,22 @@ class TMW_CR_Slot_Offer_Repository {
      *
      * @return array<int,array<string,string>>
      */
+
+    protected function log_frontend_pool_drop( $offer, $reason, $settings, $detected_types = array() ) {
+        $offer_id = sanitize_text_field( (string) ( $offer['id'] ?? '' ) );
+        $allowed_types = $this->get_allowed_offer_types( $settings );
+        error_log(
+            sprintf(
+                '[TMW-BANNER-POOL] selected_dropped offer_id=%s reason=%s types=%s allowed_types=%s payout_type="%s"',
+                '' !== $offer_id ? $offer_id : 'unknown',
+                sanitize_key( (string) $reason ),
+                wp_json_encode( array_values( array_unique( array_map( 'sanitize_key', (array) $detected_types ) ) ) ),
+                wp_json_encode( $allowed_types ),
+                sanitize_text_field( (string) ( $offer['payout_type'] ?? '' ) )
+            )
+        );
+    }
+
     public function get_frontend_slot_offers( $slot_key, $settings, $banner_data, $country, $legacy_catalog ) {
         unset( $slot_key );
 
@@ -1749,18 +2112,23 @@ class TMW_CR_Slot_Offer_Repository {
             $selected_id = (string) $selected_id;
 
             if ( isset( $synced_offers[ $selected_id ] ) ) {
-                if ( ! $this->is_offer_type_allowed( $synced_offers[ $selected_id ], $settings ) ) {
+                $selected_offer = $synced_offers[ $selected_id ];
+                $detected_types = $this->get_offer_type_keys( $selected_offer );
+                if ( empty( $detected_types ) || empty( array_intersect( $detected_types, $this->get_allowed_offer_types( $settings ) ) ) ) {
                     ++$skipped_type_disallowed_count;
+                    $this->log_frontend_pool_drop( $selected_offer, 'not_allowed_type', $settings, $detected_types );
                     continue;
                 }
                 if ( $this->should_exclude_skipped_frontend_offer( $selected_id, $skipped_offer_ids, $excluded_during_pool_build ) ) {
                     continue;
                 }
-                if ( $this->is_offer_blocked_for_banner( $synced_offers[ $selected_id ], $settings ) ) {
+                if ( $this->is_offer_blocked_for_banner( $selected_offer, $settings ) ) {
+                    $this->log_frontend_pool_drop( $selected_offer, 'inactive_or_unapproved', $settings, $detected_types );
                     continue;
                 }
-                if ( $this->is_unavailable_account_pps_offer( $synced_offers[ $selected_id ] ) ) {
-                    $this->log_unavailable_account_offer_excluded( $synced_offers[ $selected_id ] );
+                if ( $this->is_unavailable_account_pps_offer( $selected_offer ) ) {
+                    $this->log_unavailable_account_offer_excluded( $selected_offer );
+                    $this->log_frontend_pool_drop( $selected_offer, 'inactive_or_unapproved', $settings, $detected_types );
                     continue;
                 }
                 ++$type_allowed_count;
@@ -1770,9 +2138,17 @@ class TMW_CR_Slot_Offer_Repository {
 
                 if ( ! empty( $effective ) ) {
                     if ( ! $this->is_valid_frontend_winner_cta_url( (string) ( $effective['cta_url'] ?? '' ) ) ) {
+                        $this->log_frontend_pool_drop( $selected_offer, 'invalid_cta', $settings, $detected_types );
                         continue;
                     }
                     $offers[] = $effective;
+                } else {
+                    $reason = 'unknown_frontend_drop';
+                    if ( in_array( (string) $evaluation['reason'], array( 'missing_logo', 'logo_not_found' ), true ) ) { $reason = 'missing_logo'; }
+                    elseif ( false !== strpos( (string) $evaluation['reason'], 'country' ) ) { $reason = 'country_blocked'; }
+                    elseif ( false !== strpos( (string) $evaluation['reason'], 'status' ) || false !== strpos( (string) $evaluation['reason'], 'approval' ) ) { $reason = 'inactive_or_unapproved'; }
+                    elseif ( false !== strpos( (string) $evaluation['reason'], 'cta' ) || false !== strpos( (string) $evaluation['reason'], 'url' ) ) { $reason = 'invalid_cta'; }
+                    $this->log_frontend_pool_drop( $selected_offer, $reason, $settings, $detected_types );
                 }
             }
         }
@@ -1805,7 +2181,8 @@ class TMW_CR_Slot_Offer_Repository {
                 if ( ! $this->is_offer_allowed_for_country( $offer_id, $country, $override, $synced_offer, $legacy_catalog ) ) {
                     continue;
                 }
-                if ( ! $this->is_offer_type_allowed( $synced_offer, $settings ) ) {
+                $fallback_detected_types = $this->get_offer_type_keys( $synced_offer );
+                if ( empty( $fallback_detected_types ) || empty( array_intersect( $fallback_detected_types, $this->get_allowed_offer_types( $settings ) ) ) ) {
                     ++$skipped_type_disallowed_count;
                     continue;
                 }
@@ -1823,9 +2200,17 @@ class TMW_CR_Slot_Offer_Repository {
 
                 if ( ! empty( $effective ) ) {
                     if ( ! $this->is_valid_frontend_winner_cta_url( (string) ( $effective['cta_url'] ?? '' ) ) ) {
+                        $this->log_frontend_pool_drop( $synced_offer, 'invalid_cta', $settings, $fallback_detected_types );
                         continue;
                     }
                     $offers[] = $effective;
+                } else {
+                    $reason = 'unknown_frontend_drop';
+                    if ( in_array( (string) $evaluation['reason'], array( 'missing_logo', 'logo_not_found' ), true ) ) { $reason = 'missing_logo'; }
+                    elseif ( false !== strpos( (string) $evaluation['reason'], 'country' ) ) { $reason = 'country_blocked'; }
+                    elseif ( false !== strpos( (string) $evaluation['reason'], 'status' ) || false !== strpos( (string) $evaluation['reason'], 'approval' ) ) { $reason = 'inactive_or_unapproved'; }
+                    elseif ( false !== strpos( (string) $evaluation['reason'], 'cta' ) || false !== strpos( (string) $evaluation['reason'], 'url' ) ) { $reason = 'invalid_cta'; }
+                    $this->log_frontend_pool_drop( $synced_offer, $reason, $settings, $fallback_detected_types );
                 }
             }
         }
@@ -2276,7 +2661,39 @@ class TMW_CR_Slot_Offer_Repository {
      * @return bool
      */
     public function is_valid_manual_final_url_override( $cta_url ) {
-        return $this->is_valid_frontend_winner_cta_url( $cta_url );
+        $cta_url = trim( (string) $cta_url );
+        if ( '' === $cta_url ) {
+            return false;
+        }
+
+        $sanitized = function_exists( 'esc_url_raw' ) ? (string) esc_url_raw( $cta_url ) : $cta_url;
+        if ( '' === $sanitized || ! filter_var( $sanitized, FILTER_VALIDATE_URL ) ) {
+            return false;
+        }
+        $parts = parse_url( $sanitized );
+        $scheme = isset( $parts['scheme'] ) ? strtolower( (string) $parts['scheme'] ) : '';
+        if ( ! in_array( $scheme, array( 'http', 'https' ), true ) ) {
+            return false;
+        }
+
+        $lower = strtolower( rawurldecode( $sanitized ) );
+        if ( false !== strpos( $lower, 'preview_url' ) || false !== strpos( $lower, '/preview' ) || false !== strpos( $lower, 'advertisingpolicies.com' ) ) {
+            return false;
+        }
+        if ( false !== strpos( $lower, 'transaction_id=preview' ) || false !== strpos( $lower, 'affiliate_id=affiliate_id' ) || false !== strpos( $lower, 'aid=affiliate_id' ) || false !== strpos( $lower, 'src=source' ) ) {
+            return false;
+        }
+        if ( false !== strpos( $lower, '{affiliate_id}' ) || false !== strpos( $lower, '[affiliate_id]' ) || false !== strpos( $lower, '%%affiliate_id%%' ) ) {
+            return false;
+        }
+        if ( false !== strpos( $lower, 'your_affiliate_id' ) || false !== strpos( $lower, 'insert_affiliate_id' ) || false !== strpos( $lower, 'affiliate_id=your_' ) ) {
+            return false;
+        }
+        if ( false !== strpos( $lower, 'help' ) || false !== strpos( $lower, 'docs' ) || false !== strpos( $lower, 'documentation' ) ) {
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -2310,9 +2727,6 @@ class TMW_CR_Slot_Offer_Repository {
         if ( ! empty( $override['label_override'] ) ) {
             $name = (string) $override['label_override'];
         }
-        $public_offer = $synced_offer;
-        $public_offer['name'] = $name;
-        $name = $this->get_public_offer_name( $public_offer );
 
         return array(
             'id'       => $offer_id,
@@ -2464,25 +2878,12 @@ class TMW_CR_Slot_Offer_Repository {
      */
     public function get_effective_cta_url( $offer_id, $settings, $banner_data, $synced_offer, $override ) {
         unset( $settings );
+        unset( $banner_data );
+        unset( $synced_offer );
 
         if ( ! empty( $override['final_url_override'] ) ) {
             $this->log_frontend_cta_source( $offer_id, 'final_url_override' );
             return esc_url_raw( (string) $override['final_url_override'] );
-        }
-
-        $tracking_url = isset( $synced_offer['tracking_url'] ) ? esc_url_raw( (string) $synced_offer['tracking_url'] ) : '';
-        if ( '' !== $tracking_url && 'tracking_url' === $this->classify_url_audit_reason( $tracking_url ) ) {
-            $this->log_tracking_url_synced( $offer_id, $tracking_url );
-            $this->log_frontend_cta_source( $offer_id, 'tracking_url' );
-            return $tracking_url;
-        }
-
-        $this->log_tracking_url_missing( $offer_id, '' === $tracking_url ? 'api_field_missing' : 'invalid_tracking_url' );
-
-        $fallback = $this->build_cta_url( $banner_data, $synced_offer );
-        if ( '' !== $fallback && $this->is_valid_frontend_winner_cta_url( $fallback ) ) {
-            $this->log_frontend_cta_source( $offer_id, 'global_cta_url' );
-            return $fallback;
         }
 
         $this->log_frontend_cta_source( $offer_id, 'none' );
@@ -2760,10 +3161,6 @@ class TMW_CR_Slot_Offer_Repository {
             if ( ! empty( $override['final_url_override'] ) ) {
                 $cta_source = $this->is_valid_manual_final_url_override( (string) $override['final_url_override'] ) ? 'final_url_override' : 'invalid';
                 $cta_url    = (string) $override['final_url_override'];
-            } elseif ( ! empty( $offer['tracking_url'] ) ) {
-                $tracking_reason = $this->classify_url_audit_reason( (string) $offer['tracking_url'] );
-                $cta_source      = 'tracking_url' === $tracking_reason ? 'tracking_url' : 'invalid';
-                $cta_url         = (string) $offer['tracking_url'];
             }
 
             $allowed_countries   = $this->sanitize_country_names( isset( $override['allowed_countries'] ) ? $override['allowed_countries'] : array() );
@@ -2775,7 +3172,7 @@ class TMW_CR_Slot_Offer_Repository {
             $country_ready       = $be_valid || $us_valid;
             $logo_filename       = $this->get_offer_logo_filename( $offer );
             $logo_resolved       = '' !== $logo_filename;
-            $has_valid_cta       = in_array( $cta_source, array( 'final_url_override', 'tracking_url' ), true );
+            $has_valid_cta       = 'final_url_override' === $cta_source;
             $frontend_ready      = $pps_detected && ! $blocked && $has_allowed && $logo_resolved && $has_valid_cta && $country_ready && $has_identity;
             $block_reason        = 'valid';
             if ( ! $has_identity && 'manual_override_only' === $source ) {
@@ -3146,33 +3543,6 @@ class TMW_CR_Slot_Offer_Repository {
         return $this->generate_offer_cta_text( $synced_offer );
     }
 
-
-
-    public function get_public_offer_name( array $offer ): string {
-        $raw_name = trim( (string) ( $offer['name'] ?? '' ) );
-        if ( '' === $raw_name ) {
-            return '';
-        }
-
-        if ( preg_match( '/^\s*alt\s*-\s*pps\b/i', $raw_name ) ) {
-            $brand_key = $this->get_offer_brand_key( $raw_name );
-            if ( 'alt-com' === $brand_key ) {
-                return 'ALT.com';
-            }
-            return 'ALT';
-        }
-
-        $clean_name = preg_replace( '/\s*-\s*(pps|tier\s*[0-9]+|us|lq|soi|doi|cpa|cpl|revshare|smartlink)\b[^-]*/i', '', $raw_name );
-        $clean_name = preg_replace( '/\s{2,}/', ' ', (string) $clean_name );
-        $clean_name = trim( (string) $clean_name, " \t\n\r\0\x0B-" );
-
-        if ( preg_match( '/^joi\b/i', $clean_name ) ) {
-            return 'JOI';
-        }
-
-        return '' !== $clean_name ? $clean_name : $raw_name;
-    }
-
     public function get_effective_slogan_text( $offer_id, $synced_offer, $override ) {
         unset( $offer_id );
         if ( ! empty( $override['custom_slogan'] ) ) {
@@ -3184,7 +3554,7 @@ class TMW_CR_Slot_Offer_Repository {
     public function classify_offer_vertical( array $offer ): string {
         $haystack = strtolower( trim( (string) ( ( $offer['name'] ?? '' ) . ' ' . ( $offer['description'] ?? '' ) ) ) );
         if ( preg_match( '/jerkmate|oranum|livejasmin|stripchat|streamate|chaturbate|bonga|myfreecams|\bcam\b|webcam|live performer|chat performer/', $haystack ) ) { return 'cam'; }
-        if ( preg_match( '/vixen|blacked|tushy|deeper|raw|plus|studio|premium video|scenes|\bjoi\b|joi gaming|milfy|faphouse/', $haystack ) ) { return 'video'; }
+        if ( preg_match( '/vixen|blacked|tushy|deeper|raw|plus|studio|premium video|scenes/', $haystack ) ) { return 'video'; }
         if ( preg_match( '/dating|hookup|match|friendfinder|singles|casual dating/', $haystack ) ) { return 'dating'; }
         if ( preg_match( '/\bai\b|gpt|chatbot|virtual girlfriend|companion|fantasy ai/', $haystack ) ) { return 'ai'; }
         if ( preg_match( '/\blive\b|\bcam\b|webcam|performer/', $haystack ) ) { return 'cam'; }
@@ -3193,11 +3563,11 @@ class TMW_CR_Slot_Offer_Repository {
 
     public function generate_offer_slogan( array $offer ): string {
         switch ( $this->classify_offer_vertical( $offer ) ) {
-            case 'ai': return 'AI fantasy chat';
+            case 'ai': return 'Adult AI chat';
             case 'cam': return 'Live cam shows';
-            case 'video': return 'Premium videos';
-            case 'dating': return 'Dating matches';
-            default: return 'Recommended offer';
+            case 'video': return 'Premium adult videos';
+            case 'dating': return 'Adult dating matches';
+            default: return 'Recommended adult offer';
         }
     }
 
@@ -3207,7 +3577,7 @@ class TMW_CR_Slot_Offer_Repository {
             case 'cam': return 'Start Live Chat';
             case 'video': return 'Watch Now';
             case 'dating': return 'Find Matches';
-            default: return 'View Offer';
+            default: return 'VISIT OFFER';
         }
     }
 
@@ -3577,6 +3947,12 @@ class TMW_CR_Slot_Offer_Repository {
      * @return array<string,mixed>
      */
     protected function sanitize_offer_override( $override ) {
+        $manual_offer_type = isset( $override['manual_offer_type'] ) ? sanitize_key( (string) $override['manual_offer_type'] ) : '';
+        if ( '' !== $manual_offer_type && ! in_array( $manual_offer_type, self::ALLOWED_MANUAL_OFFER_TYPES, true ) ) {
+            // Treat 'auto' or any unknown value as no override.
+            $manual_offer_type = '';
+        }
+
         return array(
             'enabled'           => ! isset( $override['enabled'] ) || ! empty( $override['enabled'] ) ? 1 : 0,
             'final_url_override' => ! empty( $override['final_url_override'] ) ? esc_url_raw( (string) $override['final_url_override'] ) : '',
@@ -3586,6 +3962,7 @@ class TMW_CR_Slot_Offer_Repository {
             'custom_cta_text'   => ! empty( $override['custom_cta_text'] ) ? sanitize_text_field( (string) $override['custom_cta_text'] ) : '',
             'custom_slogan'     => ! empty( $override['custom_slogan'] ) ? sanitize_text_field( (string) $override['custom_slogan'] ) : '',
             'label_override'    => ! empty( $override['label_override'] ) ? sanitize_text_field( (string) $override['label_override'] ) : '',
+            'manual_offer_type' => $manual_offer_type,
             'notes'             => ! empty( $override['notes'] ) ? sanitize_textarea_field( (string) $override['notes'] ) : '',
             'dashboard_tags'    => $this->sanitize_list_values( isset( $override['dashboard_tags'] ) ? $override['dashboard_tags'] : array() ),
             'dashboard_vertical' => ! empty( $override['dashboard_vertical'] ) ? sanitize_text_field( (string) $override['dashboard_vertical'] ) : '',
@@ -3833,6 +4210,8 @@ class TMW_CR_Slot_Offer_Repository {
                 'cpa_percentage' => 'revshare',
                 'revshare' => 'revshare',
                 'revenue_share' => 'revshare',
+                'revenueshare' => 'revshare',
+                'revsharelifetime' => 'revshare_lifetime',
                 'cpa' => 'multi_cpa',
                 'cpa_flat' => 'revshare_lifetime',
                 'revshare_lifetime' => 'revshare_lifetime',

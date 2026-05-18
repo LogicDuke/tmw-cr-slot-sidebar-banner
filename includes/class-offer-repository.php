@@ -8,7 +8,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 class TMW_CR_Slot_Offer_Repository {
-    const ALLOWED_OFFER_TYPES = array( 'pps', 'revshare', 'soi', 'doi', 'cpa', 'cpl', 'cpc', 'cpi', 'cpm', 'smartlink', 'fallback' );
+    const ALLOWED_OFFER_TYPES = array( 'pps', 'revshare_lifetime', 'revshare', 'soi', 'doi', 'cpa', 'cpl', 'cpc', 'cpi', 'cpm', 'smartlink', 'fallback' );
     const UNAVAILABLE_ACCOUNT_PPS_OFFER_IDS = array( '9647', '9781' );
     const ELIGIBILITY_REASON_MISSING_FINAL_URL = 'missing_final_url';
     const ELIGIBILITY_REASON_INVALID_FINAL_URL = 'invalid_final_url';
@@ -448,7 +448,8 @@ class TMW_CR_Slot_Offer_Repository {
         $patterns = array(
             'fallback'  => '/\b(group\s+fallback|custom\s+fallback)\b/i',
             'smartlink' => '/\bsmartlink\b/i',
-            'revshare'  => '/\brevshare(\s+lifetime)?\b/i',
+            'revshare_lifetime' => '/\brevshare\s+lifetime\b/i',
+            'revshare'  => '/\brevshare\b/i',
             'soi'       => '/\bsoi\b/i',
             'doi'       => '/\bdoi\b/i',
             'cpa'       => '/\b(multi[\s-]*cpa|cpa)\b/i',

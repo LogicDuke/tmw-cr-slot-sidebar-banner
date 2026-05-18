@@ -407,14 +407,46 @@ $tests['offer_type_detection_cases'] = function() {
     $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
     tmw_assert_same( array( 'pps' ), $repository->get_offer_type_keys( array( 'name' => 'Jerkmate - PPS' ) ), 'PPS should be detected from name.' );
     tmw_assert_same( array( 'pps' ), $repository->get_offer_type_keys( array( 'name' => 'Instabang - PPS - Premium' ) ), 'PPS should be detected when surrounded by other words.' );
-    tmw_assert_same( array( 'revshare' ), $repository->get_offer_type_keys( array( 'name' => 'Jerkmate - Revshare Lifetime' ) ), 'Revshare should be detected from name.' );
+    tmw_assert_same( array( 'revshare_lifetime', 'revshare' ), $repository->get_offer_type_keys( array( 'name' => 'Jerkmate - Revshare Lifetime' ) ), 'Revshare Lifetime + Revshare should be detected from name.' );
     tmw_assert_same( array( 'soi' ), $repository->get_offer_type_keys( array( 'name' => 'Bongacams - SOI' ) ), 'SOI should be detected from name.' );
     tmw_assert_same( array( 'doi' ), $repository->get_offer_type_keys( array( 'name' => 'Stripchat - DOI' ) ), 'DOI should be detected from name.' );
     tmw_assert_same( array( 'smartlink', 'cpa' ), $repository->get_offer_type_keys( array( 'name' => 'CR Smartlink - Multi-CPA - Global Adult Traffic' ) ), 'Smartlink + CPA should both be detected.' );
     tmw_assert_same( array( 'cpl' ), $repository->get_offer_type_keys( array( 'name' => 'Jerkmate - TX - PPL' ) ), 'PPL should normalize to CPL key.' );
     tmw_assert_same( array( 'cpc' ), $repository->get_offer_type_keys( array( 'name' => 'Conexo Madura - CPC - BR' ) ), 'CPC should normalize to CPC key.' );
     tmw_assert_same( array( 'fallback', 'pps' ), $repository->get_offer_type_keys( array( 'name' => 'Group Fallback - Jerkmate - PPS - DE-AT-CH' ) ), 'Fallback and PPS should both be detected.' );
-    tmw_assert_same( array( 'pps', 'revshare' ), $repository->get_offer_type_keys( array( 'name' => 'Bongacams - PPS + Revshare lifetime' ) ), 'Mixed offers should return all detected type keys.' );
+    tmw_assert_same( array( 'pps', 'revshare_lifetime', 'revshare' ), $repository->get_offer_type_keys( array( 'name' => 'Bongacams - PPS + Revshare lifetime' ) ), 'Mixed offers should return all detected type keys.' );
+};
+
+$tests['offer_type_keys_detect_revshare_lifetime_separately'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $types = $repository->get_offer_type_keys( array( 'name' => 'Brand - Revshare Lifetime' ) );
+    tmw_assert_same( 'revshare_lifetime', (string) $types[0], 'Revshare Lifetime should be matched before plain revshare.' );
+    tmw_assert_true( in_array( 'revshare', $types, true ), 'Revshare token should still be present for compatibility.' );
+};
+
+$tests['offer_type_keys_detect_plain_revshare_separately'] = function() {
+    tmw_reset_test_state();
+    $repository = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    tmw_assert_same( array( 'revshare' ), $repository->get_offer_type_keys( array( 'name' => 'Brand - Revshare' ) ), 'Plain revshare should map to revshare only.' );
+};
+
+$tests['allowed_offer_types_accept_revshare_lifetime'] = function() {
+    tmw_reset_test_state();
+    $types = TMW_CR_Slot_Offer_Repository::sanitize_allowed_offer_types( array( 'pps', 'revshare_lifetime', 'bad' ) );
+    tmw_assert_same( array( 'pps', 'revshare_lifetime' ), $types, 'sanitize_allowed_offer_types should accept revshare_lifetime.' );
+};
+
+$tests['allowed_offer_types_save_revshare_and_revshare_lifetime'] = function() {
+    tmw_reset_test_state();
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    $_POST = array(
+        'allowed_offer_types' => array( 'revshare', 'revshare_lifetime' ),
+        '_wpnonce' => '1',
+    );
+    $page->handle_save_allowed_types();
+    $saved = get_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array() );
+    tmw_assert_same( array( 'revshare', 'revshare_lifetime' ), (array) $saved['allowed_offer_types'], 'Small form save should persist both revshare types.' );
 };
 
 $tests['offer_type_allowlist_behavior_cases'] = function() {
@@ -4443,6 +4475,51 @@ $tests['offers_tab_does_not_readd_removed_standalone_import_sections'] = functio
     tmw_assert_true( false === strpos( $html, '<h3>Import Final URL Overrides</h3>' ), 'Standalone final-url heading must stay hidden.' );
     tmw_assert_contains( '<h3>Import Both Override CSVs</h3>', $html, 'Combined import section must remain visible.' );
 };
+$tests['allowed_offer_types_small_form_does_not_include_offer_row_inputs'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'action="https://example.test/wp-admin/admin-post.php"', $html, 'Small allowed types form should post to admin-post.php.' );
+    preg_match( '#<form method="post" action="https://example\.test/wp-admin/admin-post\.php">(.*?)</form>#s', $html, $matches );
+    $small_form_html = isset( $matches[1] ) ? (string) $matches[1] : '';
+    tmw_assert_true( '' !== $small_form_html, 'Small allowed types form markup should be present.' );
+    tmw_assert_true( false === strpos( $small_form_html, 'slot_offer_ids' ), 'Small form must not include offer row inputs.' );
+};
+$tests['allowed_offer_types_small_form_has_dedicated_save_button'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Save Allowed Offer Types', $html, 'Small form should expose dedicated save button.' );
+};
+$tests['allowed_offer_types_save_handler_preserves_existing_settings'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'headline' => 'Keep Me', 'allowed_offer_types' => array( 'pps' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    $_POST = array( 'allowed_offer_types' => array( 'revshare_lifetime' ), '_wpnonce' => '1' );
+    $page->handle_save_allowed_types();
+    $saved = get_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array() );
+    tmw_assert_same( 'Keep Me', (string) $saved['headline'], 'Small save handler must preserve unrelated settings.' );
+    tmw_assert_same( array( 'revshare_lifetime' ), (array) $saved['allowed_offer_types'], 'Small save handler should only update allowed types.' );
+};
+$tests['allowed_offer_types_save_handler_logs_saved_types'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $_POST = array( 'allowed_offer_types' => array( 'revshare', 'revshare_lifetime' ), '_wpnonce' => '1' );
+    $logs = tmw_capture_error_log( static function () use ( $page ) { $page->handle_save_allowed_types(); } );
+    tmw_assert_contains( '[TMW-BANNER-TYPE] allowed_types_saved allowed_types=revshare,revshare_lifetime', $logs, 'Save handler should log saved allowed types.' );
+};
+$tests['slot_setup_labels_include_revshare_lifetime'] = function() {
+    tmw_reset_test_state();
+    $_GET = array( 'tab' => 'slot-setup' );
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'pps', 'revshare', 'revshare_lifetime' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Revshare Lifetime', $html, 'Slot setup labels should include Revshare Lifetime.' );
+    tmw_assert_contains( 'Allowed type filter: PPS, Revshare, Revshare Lifetime', $html, 'Summary text should use human-readable type labels.' );
+};
 $tests['offers_dashboard_changes_do_not_change_frontend_pool'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
@@ -5755,4 +5832,3 @@ echo "\nTotal: {$passes} passed, " . count( $failures ) . " failed\n";
 if ( ! empty( $failures ) ) {
     exit( 1 );
 }
-

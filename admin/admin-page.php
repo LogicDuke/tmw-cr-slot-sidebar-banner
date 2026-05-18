@@ -893,7 +893,7 @@ class TMW_CR_Slot_Admin_Page {
             'sort_by'           => isset( $_GET['sort_by'] ) ? sanitize_key( wp_unslash( $_GET['sort_by'] ) ) : 'name',
             'sort_order'        => isset( $_GET['sort_order'] ) ? sanitize_key( wp_unslash( $_GET['sort_order'] ) ) : 'asc',
             'page'              => isset( $_GET['paged'] ) ? max( 1, (int) $_GET['paged'] ) : 1,
-            'per_page'          => 25,
+            'per_page'          => $this->get_admin_per_page(),
             )
         );
 
@@ -998,7 +998,7 @@ class TMW_CR_Slot_Admin_Page {
                         $eligibility_summary = $this->offer_repository->get_offer_frontend_eligibility_summary( $offer, $settings, $country, $legacy_catalog );
                         $block_reason_labels = array( 'valid' => 'Valid', 'status_blocked' => 'Status blocked', 'approval_blocked' => 'Approval blocked', 'not_allowed_type' => 'Not allowed type', 'business_rule_blocked' => 'Business rule blocked', 'unavailable_account_offer' => 'Unavailable for account', 'missing_valid_cta' => 'Missing valid CTA', 'country_not_allowed' => 'Country not allowed', 'missing_logo' => 'Missing logo', 'skipped_offer' => 'Skipped offer' );
                         $logo_status_labels = array( 'manual_override' => 'Manual override', 'mapped_local' => 'Mapped local', 'auto_remote' => 'Remote', 'placeholder_only' => 'Placeholder only', 'missing' => 'Missing' );
-                        if ( ! empty( $status_audit['active_approved'] ) && empty( $eligibility_summary['is_eligible'] ) && function_exists( 'error_log' ) ) {
+                        if ( $this->is_audit_requested( 'tmw_run_status_audit' ) && ! empty( $status_audit['active_approved'] ) && empty( $eligibility_summary['is_eligible'] ) && function_exists( 'error_log' ) ) {
                             error_log( sprintf( '[TMW-BANNER-STATUS] offer_id=%s raw_status="%s" raw_approval="%s" require_approval="%s" normalized_status="%s" normalized_approval="%s" blocker="%s"', sanitize_text_field( $offer_id ), sanitize_text_field( (string) ( $status_audit['raw_status'] ?? '' ) ), sanitize_text_field( (string) ( $status_audit['raw_approval'] ?? '' ) ), sanitize_text_field( (string) ( $status_audit['require_approval'] ?? '' ) ), sanitize_text_field( (string) ( $status_audit['normalized_status'] ?? '' ) ), sanitize_text_field( (string) ( $status_audit['normalized_approval'] ?? '' ) ), sanitize_text_field( (string) ( $eligibility_summary['block_reason'] ?? 'unknown' ) ) ) );
                         }
                         ?>
@@ -1071,13 +1071,18 @@ class TMW_CR_Slot_Admin_Page {
      */
     protected function render_slot_setup_tab( $settings ) {
         $include_all = ! empty( $_GET['include_all_offers'] );
+        $light_admin = $this->is_light_admin_request();
+        $has_audit_paging = isset( $_GET['manual_audit_page'] ) || isset( $_GET['manual_not_live_page'] ) || isset( $_GET['pps_audit_page'] ) || isset( $_GET['pps_audit_filter'] ) || isset( $_GET['pps_audit_search'] );
+        $run_full_audit = ! $light_admin && ( $this->is_audit_requested( 'tmw_run_full_audit' ) || $has_audit_paging );
+        $run_live_pool_audit = ! $light_admin && ( $run_full_audit || $this->is_audit_requested( 'tmw_run_live_pool_audit' ) );
+        $run_logo_audit = ! $light_admin && ( $run_full_audit || $this->is_audit_requested( 'tmw_run_logo_audit' ) );
         $args        = array(
             'selected_only' => ! $include_all,
             'include_all'   => $include_all,
             'sort_by'       => 'name',
             'sort_order'    => 'asc',
-            'page'          => 1,
-            'per_page'      => 400,
+            'page'          => isset( $_GET['paged'] ) ? max( 1, (int) $_GET['paged'] ) : 1,
+            'per_page'      => $this->get_admin_per_page(),
         );
         $result         = $this->offer_repository->get_filtered_synced_offers_for_admin( $args, $settings );
         $offers         = $result['items'];
@@ -1092,7 +1097,7 @@ class TMW_CR_Slot_Admin_Page {
         $missing_final_url_override_count = 0;
         $missing_allowed_country_override_count = 0;
         $missing_logo_count = 0;
-        $manifest_rows_loaded = count( $this->offer_repository->get_offer_logo_manifest_rows() );
+        $manifest_rows_loaded = $run_logo_audit ? count( $this->offer_repository->get_offer_logo_manifest_rows() ) : 0;
         $manifest_logos_available_displayed = 0;
         $brand_map_logos_available_displayed = 0;
         $missing_manifest_files_count = 0;
@@ -1130,15 +1135,17 @@ class TMW_CR_Slot_Admin_Page {
             $manifest_filename = '' !== $offer_id ? $this->offer_repository->get_offer_logo_filename_from_manifest( $offer_id ) : '';
             $brand_key = $this->offer_repository->get_offer_brand_key( (string) ( $offer['name'] ?? '' ) );
             $expected_brand_filename = $this->offer_repository->get_offer_brand_logo_filename( $brand_key );
-            if ( '' !== $manifest_filename && file_exists( dirname( __DIR__ ) . '/assets/logos/80x80/' . $manifest_filename ) ) {
-                ++$manifest_logos_available_displayed;
-            } elseif ( '' !== $manifest_filename ) {
-                ++$missing_manifest_files_count;
-            } elseif ( '' !== $expected_brand_filename && file_exists( dirname( __DIR__ ) . '/assets/logos/80x80/' . $expected_brand_filename ) ) {
-                ++$brand_map_logos_available_displayed;
+            if ( $run_logo_audit ) {
+                if ( '' !== $manifest_filename && file_exists( dirname( __DIR__ ) . '/assets/logos/80x80/' . $manifest_filename ) ) {
+                    ++$manifest_logos_available_displayed;
+                } elseif ( '' !== $manifest_filename ) {
+                    ++$missing_manifest_files_count;
+                } elseif ( '' !== $expected_brand_filename && file_exists( dirname( __DIR__ ) . '/assets/logos/80x80/' . $expected_brand_filename ) ) {
+                    ++$brand_map_logos_available_displayed;
+                }
             }
 
-            $eligibility_summary = $this->offer_repository->get_offer_frontend_eligibility_summary( $offer, $settings, $country, $legacy_catalog );
+            $eligibility_summary = $run_full_audit ? $this->offer_repository->get_offer_frontend_eligibility_summary( $offer, $settings, $country, $legacy_catalog ) : array( 'is_eligible' => false, 'block_reason' => 'audit_deferred' );
             if ( ! empty( $eligibility_summary['is_eligible'] ) ) {
                 ++$frontend_ready_count;
             }
@@ -1159,8 +1166,10 @@ class TMW_CR_Slot_Admin_Page {
         }
 
         $offers = isset( $filtered_offers ) ? $filtered_offers : array();
-        error_log( sprintf( '[TMW-BANNER-TYPE] slot_setup_pool allowed_types=%s total_synced_pool=%d displayed_pool_count=%d selected_count=%d selected_disallowed_count=%d', implode( ',', $allowed_offer_types ), count( $this->offer_repository->get_synced_offers() ), $displayed_pool_count, $selected_count, $selected_disallowed_count ) );
-        error_log( sprintf( '[TMW-BANNER-TYPE] slot_setup_visibility allowed_types=%s synced_type_allowed_count=%d displayed_setup_count=%d selected_count=%d frontend_ready_count=%d include_all=%s', implode( ',', $allowed_offer_types ), $synced_type_allowed_count, $displayed_pool_count, $selected_count, $frontend_ready_count, $include_all ? '1' : '0' ) );
+        if ( $run_full_audit && function_exists( 'error_log' ) ) {
+            error_log( sprintf( '[TMW-BANNER-TYPE] slot_setup_pool allowed_types=%s total_synced_pool=%d displayed_pool_count=%d selected_count=%d selected_disallowed_count=%d', implode( ',', $allowed_offer_types ), count( $this->offer_repository->get_synced_offers() ), $displayed_pool_count, $selected_count, $selected_disallowed_count ) );
+            error_log( sprintf( '[TMW-BANNER-TYPE] slot_setup_visibility allowed_types=%s synced_type_allowed_count=%d displayed_setup_count=%d selected_count=%d frontend_ready_count=%d include_all=%s', implode( ',', $allowed_offer_types ), $synced_type_allowed_count, $displayed_pool_count, $selected_count, $frontend_ready_count, $include_all ? '1' : '0' ) );
+        }
 
         usort(
             $offers,
@@ -1215,13 +1224,8 @@ class TMW_CR_Slot_Admin_Page {
             <h3><?php esc_html_e( 'Allowed offer types for live banner', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
             <p class="description"><?php esc_html_e( 'Choose which offer types may appear in the frontend offer/sidebar banner. Logo display in admin is brand-level and remains unaffected.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
             <?php
-            $synced_offers = $this->offer_repository->get_synced_offers();
-            $type_allowed_count = 0;
-            foreach ( $synced_offers as $synced_offer ) {
-                if ( is_array( $synced_offer ) && $this->offer_repository->is_offer_type_allowed( $synced_offer, $settings ) ) {
-                    ++$type_allowed_count;
-                }
-            }
+            $synced_offers_total = (int) ( $result['source_total'] ?? 0 );
+            $type_allowed_count = (int) ( $result['total'] ?? 0 );
             ?>
             <p>
                 <?php foreach ( $type_labels as $type_key => $type_label ) : ?>
@@ -1236,7 +1240,7 @@ class TMW_CR_Slot_Admin_Page {
                 <?php
                 echo esc_html(
                     sprintf(
-                        'Allowed type filter: %1$s — %2$d setup rows currently displayed.',
+                        'Allowed type filter: %1$s — %2$d setup rows currently displayed (page capped at 50).',
                         implode( ', ', $selected_type_labels ),
                         (int) $displayed_pool_count
                     )
@@ -1253,7 +1257,7 @@ class TMW_CR_Slot_Admin_Page {
                     sprintf(
                         'Type-allowed synced offers: %1$d of %2$d.',
                         (int) $type_allowed_count,
-                        count( $synced_offers )
+                        $synced_offers_total
                     )
                 );
                 ?>
@@ -1266,7 +1270,7 @@ class TMW_CR_Slot_Admin_Page {
             <p class="description"><?php echo esc_html( sprintf( 'Brand-map logos available for displayed rows: %d', (int) $brand_map_logos_available_displayed ) ); ?></p>
             <p class="description"><?php echo esc_html( sprintf( 'Missing manifest files: %d', (int) $missing_manifest_files_count ) ); ?></p>
             <p class="description"><?php echo esc_html( sprintf( 'Selected display offers: %d', (int) $selected_count ) ); ?></p>
-            <p class="description"><?php echo esc_html( sprintf( 'Frontend-ready offers: %d', (int) $frontend_ready_count ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( $run_full_audit ? 'Frontend-ready offers: %d' : 'Frontend-ready offers: deferred until Run Full Audit', (int) $frontend_ready_count ) ); ?></p>
             <p class="description"><?php echo esc_html( sprintf( 'Missing final URL override: %d', (int) $missing_final_url_override_count ) ); ?></p>
             <p class="description"><?php echo esc_html( sprintf( 'Missing allowed country override: %d', (int) $missing_allowed_country_override_count ) ); ?></p>
             <p class="description"><?php echo esc_html( sprintf( 'Missing logo: %d', (int) $missing_logo_count ) ); ?></p>
@@ -1284,6 +1288,14 @@ class TMW_CR_Slot_Admin_Page {
                 </label>
             </p>
             <p class="description"><?php esc_html_e( 'When enabled, any offer in the Skipped / Rejected list with decision=skip is excluded from the live banner. When disabled, the skipped list remains audit-only.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+            <p class="description"><?php esc_html_e( 'Emergency performance mode: full diagnostics are deferred. Use the buttons below only when you need the heavier audit tables.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+            <p>
+                <a class="button button-secondary" href="<?php echo esc_url( add_query_arg( array( 'page' => 'tmw-cr-slot-sidebar-banner', 'tab' => 'slot-setup', 'tmw_run_full_audit' => 1 ), admin_url( 'options-general.php' ) ) ); ?>"><?php esc_html_e( 'Run Full Audit', 'tmw-cr-slot-sidebar-banner' ); ?></a>
+                <a class="button button-secondary" href="<?php echo esc_url( add_query_arg( array( 'page' => 'tmw-cr-slot-sidebar-banner', 'tab' => 'slot-setup', 'tmw_run_live_pool_audit' => 1 ), admin_url( 'options-general.php' ) ) ); ?>"><?php esc_html_e( 'Run Live Pool Audit', 'tmw-cr-slot-sidebar-banner' ); ?></a>
+                <a class="button button-secondary" href="<?php echo esc_url( add_query_arg( array( 'page' => 'tmw-cr-slot-sidebar-banner', 'tab' => 'slot-setup', 'tmw_run_logo_audit' => 1 ), admin_url( 'options-general.php' ) ) ); ?>"><?php esc_html_e( 'Run Logo Audit', 'tmw-cr-slot-sidebar-banner' ); ?></a>
+                <a class="button" href="<?php echo esc_url( add_query_arg( array( 'page' => 'tmw-cr-slot-sidebar-banner', 'tab' => 'slot-setup', 'tmw_light_admin' => 1 ), admin_url( 'options-general.php' ) ) ); ?>"><?php esc_html_e( 'Light Admin Mode', 'tmw-cr-slot-sidebar-banner' ); ?></a>
+            </p>
+            <?php if ( $run_full_audit || $run_logo_audit ) : ?>
             <?php $pps_coverage = $this->offer_repository->get_pps_logo_coverage_report( $settings ); ?>
             <p class="description">
                 <?php
@@ -1339,6 +1351,9 @@ class TMW_CR_Slot_Admin_Page {
                 </p>
             <?php endif; ?>
 
+            <?php endif; ?>
+
+            <?php if ( $run_full_audit ) : ?>
             <?php
             $eligible_winner_offers = $this->offer_repository->get_frontend_slot_offers(
                 $this->slot_key,
@@ -1631,6 +1646,7 @@ class TMW_CR_Slot_Admin_Page {
                 <?php if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) : ?>
                     <p class="description"><?php esc_html_e( 'WP_DEBUG is enabled; detailed URL values can be inspected in the stored synced offer option for deeper troubleshooting.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
                 <?php endif; ?>
+            <?php endif; ?>
             <?php endif; ?>
 
             <table class="widefat striped">
@@ -2368,6 +2384,44 @@ class TMW_CR_Slot_Admin_Page {
             echo '<a class="' . esc_attr( $class ) . '" href="' . esc_url( $url ) . '">' . esc_html( (string) $page ) . '</a> ';
         }
         echo '</div></div>';
+    }
+
+
+    /**
+     * Whether the emergency lightweight admin fallback is active.
+     *
+     * @return bool
+     */
+    protected function is_light_admin_request() {
+        return isset( $_GET['tmw_light_admin'] ) && '1' === (string) sanitize_text_field( wp_unslash( $_GET['tmw_light_admin'] ) );
+    }
+
+    /**
+     * Whether an explicit heavyweight audit flag was requested.
+     *
+     * @param string $key Query key.
+     * @return bool
+     */
+    protected function is_audit_requested( $key ) {
+        return isset( $_GET[ $key ] ) && '1' === (string) sanitize_text_field( wp_unslash( $_GET[ $key ] ) );
+    }
+
+    /**
+     * Read and cap admin rows per page to keep offer screens responsive.
+     *
+     * @return int
+     */
+    protected function get_admin_per_page() {
+        if ( ! isset( $_GET['per_page'] ) ) {
+            return 25;
+        }
+
+        $raw_value = sanitize_text_field( wp_unslash( $_GET['per_page'] ) );
+        if ( '' === $raw_value || ! ctype_digit( $raw_value ) ) {
+            return 25;
+        }
+
+        return min( 50, max( 1, (int) $raw_value ) );
     }
 
     /**

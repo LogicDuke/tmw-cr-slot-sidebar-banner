@@ -1665,6 +1665,13 @@ class TMW_CR_Slot_Admin_Page {
                             $blocked_raw = ! empty( $override['blocked_countries'] ) ? implode( ',', (array) $override['blocked_countries'] ) : '';
                             $eligible    = $this->offer_repository->is_offer_allowed_for_country( $offer_id, $country, $override, $offer, array() );
                             $effective_type = $this->offer_repository->get_effective_offer_type( array_merge( $offer, array( 'manual_offer_type' => (string) ( $override['manual_offer_type'] ?? '' ) ) ) );
+                            $effective_type_source_labels = array(
+                                'manual' => 'manual override',
+                                'api'    => 'API normalized',
+                                'name'   => 'name fallback',
+                            );
+                            $effective_type_source = (string) ( $effective_type['source'] ?? '' );
+                            $effective_type_source_label = (string) ( $effective_type_source_labels[ $effective_type_source ] ?? $effective_type_source );
                             $effective_image = $this->offer_repository->get_effective_image( $offer_id, $settings, array(), $offer, $override, $legacy_catalog );
                             $effective_url   = $this->offer_repository->get_effective_cta_url( $offer_id, $settings, array( 'cta_url' => (string) $settings['cta_url'] ), $offer, $override );
                             $image_status    = $this->offer_repository->get_image_status_for_offer( $offer_id, $settings, $legacy_catalog );
@@ -1712,7 +1719,7 @@ class TMW_CR_Slot_Admin_Page {
                                         <option value="smartlink" <?php selected( (string) ( $override['manual_offer_type'] ?? '' ), 'smartlink' ); ?>>Smartlink</option>
                                         <option value="fallback" <?php selected( (string) ( $override['manual_offer_type'] ?? '' ), 'fallback' ); ?>>Fallback</option>
                                     </select>
-                                    <p class="description"><?php echo esc_html( sprintf( 'Effective type: %s (%s)', (string) ( $effective_type['type'] ?? '' ), (string) ( $effective_type['source'] ?? '' ) ) ); ?></p>
+                                    <p class="description"><?php echo esc_html( sprintf( 'Effective type: %s (%s)', (string) ( $effective_type['type'] ?? '' ), $effective_type_source_label ) ); ?></p>
                                     <textarea class="large-text" rows="2" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][notes]" placeholder="<?php esc_attr_e( 'Internal notes', 'tmw-cr-slot-sidebar-banner' ); ?>"><?php echo esc_textarea( (string) ( $override['notes'] ?? '' ) ); ?></textarea>
                                 </td>
                                 <td><input type="text" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][allowed_countries]" value="<?php echo esc_attr( $allowed_raw ); ?>" placeholder="US,CA,GB" /></td>

@@ -5982,11 +5982,21 @@ $tests['manual_offer_type_override_priority_and_effective_source'] = function() 
     tmw_assert_same( 'revshare', (string) ( $types[0] ?? '' ), 'Manual revshare override must be highest priority.' );
     $effective = $repo->get_effective_offer_type( array( 'id' => '10393', 'name' => 'Fanvue - Mai PPS', 'payout_type' => 'cpa_percentage' ) );
     tmw_assert_same( 'revshare', (string) ( $effective['type'] ?? '' ), 'Effective type should be manual revshare.' );
-    tmw_assert_same( 'manual override', (string) ( $effective['source'] ?? '' ), 'Effective type source should be manual override.' );
+    tmw_assert_same( 'manual', (string) ( $effective['source'] ?? '' ), 'Effective type source should be stable manual key.' );
 
     $repo->save_offer_overrides( array( '10393' => array( 'enabled' => 1, 'manual_offer_type' => 'revshare_lifetime' ) ) );
     $types = $repo->get_offer_type_keys( array( 'id' => '10393', 'name' => 'Fanvue - Mai PPS', 'payout_type' => 'cpa_percentage' ) );
     tmw_assert_same( 'revshare_lifetime', (string) ( $types[0] ?? '' ), 'Manual revshare_lifetime override must win over raw/name.' );
+
+    $repo->save_offer_overrides( array() );
+
+    $effective = $repo->get_effective_offer_type( array( 'id' => '10393', 'name' => 'Fanvue - Mai PPS', 'payout_type' => 'cpa_percentage' ) );
+    tmw_assert_same( 'revshare', (string) ( $effective['type'] ?? '' ), 'Effective type should normalize cpa_percentage to revshare.' );
+    tmw_assert_same( 'api', (string) ( $effective['source'] ?? '' ), 'Effective type source should be stable api key.' );
+
+    $effective = $repo->get_effective_offer_type( array( 'id' => '10393', 'name' => 'Fanvue - Mai PPS', 'payout_type' => '' ) );
+    tmw_assert_same( 'pps', (string) ( $effective['type'] ?? '' ), 'Effective type should fall back to offer name.' );
+    tmw_assert_same( 'name', (string) ( $effective['source'] ?? '' ), 'Effective type source should be stable name key.' );
 };
 
 $tests['frontend_pool_respects_manual_offer_type_override'] = function() {

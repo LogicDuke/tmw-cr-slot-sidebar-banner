@@ -558,7 +558,7 @@ class TMW_CR_Slot_Offer_Repository {
         if ( '' !== $manual_offer_type ) {
             return array(
                 'type'   => $manual_offer_type,
-                'source' => 'manual override',
+                'source' => 'manual',
             );
         }
 
@@ -566,7 +566,7 @@ class TMW_CR_Slot_Offer_Repository {
         if ( '' !== $normalized_payout_type && in_array( $normalized_payout_type, self::ALLOWED_OFFER_TYPES, true ) ) {
             return array(
                 'type'   => $normalized_payout_type,
-                'source' => 'API normalized',
+                'source' => 'api',
             );
         }
 
@@ -574,7 +574,7 @@ class TMW_CR_Slot_Offer_Repository {
 
         return array(
             'type'   => (string) ( $fallback_types[0] ?? '' ),
-            'source' => 'name fallback',
+            'source' => 'name',
         );
     }
 

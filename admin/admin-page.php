@@ -1311,6 +1311,7 @@ class TMW_CR_Slot_Admin_Page {
             <?php $manual_audit_page = $this->get_positive_query_int( 'manual_audit_page', 1 ); ?>
             <?php $manual_audit_pagination = $this->paginate_rows( $eligibility_rows, $manual_audit_page, 25 ); ?>
             <h3><?php esc_html_e( 'Manual offer display audit', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
+            <p class="description" style="color:#b32d2e;"><strong><?php esc_html_e( 'This table only checks manual final URL and country override readiness. It does not mean the offer is selected into the live frontend pool. See Live frontend pool audit below.', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p>
             <?php $this->render_audit_pagination( (int) $manual_audit_pagination['current_page'], (int) $manual_audit_pagination['total_pages'], 'manual_audit_page', array( 'pps_audit_page', 'pps_audit_filter', 'pps_audit_search' ) ); ?>
             <table class="widefat striped">
                 <thead><tr><th>Offer ID</th><th>Offer name</th><th>Has final URL override</th><th>Final URL host</th><th>Has allowed country override</th><th>Allowed countries count</th><th>Frontend slogan</th><th>CTA button text</th><th>Offer label</th><th>Final URL status</th></tr></thead>
@@ -1332,6 +1333,46 @@ class TMW_CR_Slot_Admin_Page {
                 </tbody>
             </table>
             <?php $this->render_audit_pagination( (int) $manual_audit_pagination['current_page'], (int) $manual_audit_pagination['total_pages'], 'manual_audit_page', array( 'pps_audit_page', 'pps_audit_filter', 'pps_audit_search' ) ); ?>
+            <?php
+            $live_pool_audit = $this->offer_repository->get_live_frontend_pool_audit( $this->slot_key, $settings, array( 'cta_url' => (string) ( $settings['cta_url'] ?? '' ), 'cta_text' => (string) ( $settings['cta_text'] ?? '' ) ), $country, $legacy_catalog );
+            $live_pool_rows = (array) ( $live_pool_audit['pool_rows'] ?? array() );
+            $live_pool_ids = (array) ( $live_pool_audit['pool_ids'] ?? array() );
+            $selected_ids = (array) ( $live_pool_audit['selected_ids'] ?? array() );
+            ?>
+            <h3><?php esc_html_e( 'Live frontend pool audit', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
+            <p class="description"><?php echo esc_html( 'Selected current final display pool IDs: ' . implode( ', ', array_map( 'strval', $selected_ids ) ) ); ?></p>
+            <table class="widefat striped">
+                <thead><tr><th>final pool index</th><th>offer ID</th><th>offer name</th><th>offer type keys</th><th>selected for slot</th><th>priority</th><th>CTA host</th><th>image/logo URL host or local filename</th><th>visitor country result</th><th>source</th><th>frontend-ready</th><th>first blocker</th></tr></thead>
+                <tbody><?php foreach ( $live_pool_rows as $row ) : ?><tr>
+                    <td><?php echo esc_html( (string) $row['final_pool_index'] ); ?></td><td><?php echo esc_html( (string) $row['offer_id'] ); ?></td><td><?php echo esc_html( (string) $row['offer_name'] ); ?></td><td><?php echo esc_html( (string) $row['offer_type_keys'] ); ?></td>
+                    <td><?php echo esc_html( (string) $row['selected_for_slot'] ); ?><?php if ( in_array( (string) $row['offer_id'], $selected_ids, true ) ) { echo esc_html( ' (winning)' ); } ?></td><td><?php echo esc_html( (string) $row['priority'] ); ?></td>
+                    <td><?php echo esc_html( (string) $row['cta_host'] ); ?></td><td><?php echo esc_html( (string) $row['image_source'] ); ?></td><td><?php echo esc_html( (string) $row['visitor_country_result'] ); ?></td><td><?php echo esc_html( (string) $row['source'] ); ?></td><td><?php echo esc_html( (string) $row['frontend_ready'] ); ?></td><td><?php echo esc_html( (string) $row['first_blocker'] ); ?></td>
+                </tr><?php endforeach; ?></tbody>
+            </table>
+            <?php
+            $manual_not_live = array();
+            foreach ( (array) $eligibility_rows as $row ) {
+                if ( 'eligible' !== (string) ( $row['eligibility_result'] ?? '' ) ) { continue; }
+                $offer_id = (string) ( $row['offer_id'] ?? '' );
+                if ( in_array( $offer_id, $live_pool_ids, true ) ) { continue; }
+                $reason = in_array( $offer_id, $selected_ids, true ) ? 'selected_pool_already_has_enough_offers' : 'not_selected';
+                $manual_not_live[] = array(
+                    'offer_id' => $offer_id, 'offer_name' => (string) ( $row['offer_name'] ?? '' ), 'detected_type_keys' => (string) ( $row['offer_type_keys'] ?? '' ),
+                    'selected_for_slot' => in_array( $offer_id, $selected_ids, true ) ? 'yes' : 'no', 'reason_not_in_live_pool' => $reason,
+                    'suggested_admin_action' => ( 'not_selected' === $reason ? 'select_offer' : 'lower_priority_number' ),
+                );
+                if ( function_exists( 'error_log' ) ) { error_log( sprintf( '[TMW-BANNER-POOL] manual_ready_not_live offer_id=%s reason="%s" selected="%s" priority="%s"', $offer_id, $reason, in_array( $offer_id, $selected_ids, true ) ? 'yes' : 'no', (string) ( $settings['slot_offer_priority'][ $offer_id ] ?? '' ) ) ); }
+            }
+            ?>
+            <?php if ( ! empty( $manual_not_live ) ) : ?><p class="description" style="color:#b32d2e;"><strong><?php esc_html_e( 'Manual-ready offers exist but are not in the live banner pool. Select them in Offer Setup or adjust priorities.', 'tmw-cr-slot-sidebar-banner' ); ?></strong></p><?php endif; ?>
+            <h3><?php esc_html_e( 'Manual-ready but not in live pool', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
+            <?php $manual_not_live_page = $this->get_positive_query_int( 'manual_not_live_page', (int) $manual_audit_pagination['current_page'] ); ?>
+            <?php $manual_not_live_pagination = $this->paginate_rows( $manual_not_live, $manual_not_live_page, 25 ); ?>
+            <?php $this->render_audit_pagination( (int) $manual_not_live_pagination['current_page'], (int) $manual_not_live_pagination['total_pages'], 'manual_not_live_page', array( 'manual_audit_page', 'pps_audit_page', 'pps_audit_filter', 'pps_audit_search' ) ); ?>
+            <table class="widefat striped"><thead><tr><th>offer ID</th><th>offer name</th><th>detected type keys</th><th>selected for slot</th><th>reason not in live pool</th><th>suggested admin action</th></tr></thead><tbody>
+            <?php foreach ( (array) $manual_not_live_pagination['rows'] as $row ) : ?><tr><td><?php echo esc_html( (string) $row['offer_id'] ); ?></td><td><?php echo esc_html( (string) $row['offer_name'] ); ?></td><td><?php echo esc_html( (string) $row['detected_type_keys'] ); ?></td><td><?php echo esc_html( (string) $row['selected_for_slot'] ); ?></td><td><?php echo esc_html( (string) $row['reason_not_in_live_pool'] ); ?></td><td><?php echo esc_html( (string) $row['suggested_admin_action'] ); ?></td></tr><?php endforeach; ?>
+            </tbody></table>
+            <?php $this->render_audit_pagination( (int) $manual_not_live_pagination['current_page'], (int) $manual_not_live_pagination['total_pages'], 'manual_not_live_page', array( 'manual_audit_page', 'pps_audit_page', 'pps_audit_filter', 'pps_audit_search' ) ); ?>
             <?php $pps_expansion_rows = $this->offer_repository->get_pps_expansion_readiness_audit_rows( $settings, array( 'cta_url' => (string) ( $settings['cta_url'] ?? '' ), 'cta_text' => (string) ( $settings['cta_text'] ?? '' ) ) ); ?>
             <?php $pps_expansion_summary = $this->offer_repository->get_pps_expansion_readiness_audit_summary( $pps_expansion_rows ); ?>
             <?php $pps_audit_filter = isset( $_GET['pps_audit_filter'] ) ? sanitize_key( wp_unslash( $_GET['pps_audit_filter'] ) ) : 'all'; ?>

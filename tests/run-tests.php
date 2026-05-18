@@ -3790,12 +3790,27 @@ $tests['logo_status_missing_when_brand_match_but_no_file_on_disk'] = function() 
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
     tmw_without_logo_file(
-        'jerkmate-80x80-transparent.png',
+        '80x80/jerkmate-80x80-transparent.png',
         static function () use ( $repo ) {
             $status = $repo->get_logo_status_for_offer_any( 'x4', array( 'id' => 'x4', 'name' => 'Jerkmate' ) );
             tmw_assert_same( 'missing', $status, 'Known mapped brand without disk file should return missing.' );
         }
     );
+};
+$tests['get_logo_status_for_offer_any_uses_manifest_logo_resolution'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $status = $repo->get_logo_status_for_offer_any( '8835', array( 'id' => '8835', 'name' => 'OnlyFans - Renae Erica' ) );
+    tmw_assert_same( 'mapped_local', $status, 'Manifest-backed local logo in assets/logos/80x80 should resolve as mapped_local.' );
+};
+$tests['manifest_logo_admin_diagnostics_match_frontend_resolution'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $offer = array( 'id' => '8835', 'name' => 'OnlyFans - Renae Erica' );
+    $status = $repo->get_logo_status_for_offer_any( '8835', $offer );
+    $logo_url = (string) $repo->get_offer_logo_url( $offer );
+    tmw_assert_same( 'mapped_local', $status, 'Admin logo status should match frontend manifest-first resolver outcome.' );
+    tmw_assert_contains( '/assets/logos/80x80/', $logo_url, 'Frontend resolver should return logo URL from /assets/logos/80x80/.' );
 };
 
 $tests['logo_filename_missing_file_does_not_reference_report_alias_state'] = function() {
@@ -5932,6 +5947,26 @@ $tests['status_debug_log_exists'] = function() {
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ); $repo->save_synced_offers( array( 'x2' => array( 'id' => 'x2', 'name' => 'X2', 'status' => 'active', 'require_approval' => '0', 'payout_type' => 'PPS' ) ) );
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); $_GET = array( 'tab' => 'offers' );
     $logs = tmw_capture_error_log( static function () use ( $page ) { ob_start(); $page->render_page(); ob_end_clean(); } ); tmw_assert_contains( '[TMW-BANNER-STATUS]', $logs, 'Status debug log should exist.' );
+};
+$tests['live_frontend_pool_audit_uses_get_frontend_slot_offers'] = function() {
+    tmw_reset_test_state(); update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( 'x1' ) ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' ); $repo->save_synced_offers( array( 'x1' => array( 'id' => 'x1', 'name' => 'X1', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    update_option( 'overrides', array( 'x1' => array( 'final_url_override' => 'https://trk.example.test/x1', 'allowed_countries' => array( 'US' ) ) ) );
+    $audit = $repo->get_live_frontend_pool_audit( 'sidebar', get_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    $frontend_ids = array();
+    foreach ( $repo->get_frontend_slot_offers( 'sidebar', get_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() ) as $frontend_offer ) {
+        $frontend_ids[] = (string) ( $frontend_offer['id'] ?? '' );
+    }
+    tmw_assert_same( wp_json_encode( $frontend_ids ), wp_json_encode( $audit['pool_ids'] ), 'Audit must use exact frontend pool method result.' );
+};
+$tests['manual_offer_display_audit_warning_exists'] = function() {
+    tmw_reset_test_state(); $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' ); $_GET = array( 'tab' => 'slot-setup' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean(); tmw_assert_contains( 'This table only checks manual final URL and country override readiness.', $html, 'Manual audit warning should exist.' );
+};
+$tests['live_pool_debug_log_exists'] = function() {
+    tmw_reset_test_state(); $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $logs = tmw_capture_error_log( static function() use ( $repo ) { $repo->get_live_frontend_pool_audit( 'sidebar', array(), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() ); } );
+    tmw_assert_contains( '[TMW-BANNER-POOL] live_pool', $logs, 'Live pool debug log should exist.' );
 };
 
 foreach ( $tests as $name => $test ) {

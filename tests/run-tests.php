@@ -5933,6 +5933,26 @@ $tests['status_debug_log_exists'] = function() {
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); $_GET = array( 'tab' => 'offers' );
     $logs = tmw_capture_error_log( static function () use ( $page ) { ob_start(); $page->render_page(); ob_end_clean(); } ); tmw_assert_contains( '[TMW-BANNER-STATUS]', $logs, 'Status debug log should exist.' );
 };
+$tests['live_frontend_pool_audit_uses_get_frontend_slot_offers'] = function() {
+    tmw_reset_test_state(); update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( 'x1' ) ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' ); $repo->save_synced_offers( array( 'x1' => array( 'id' => 'x1', 'name' => 'X1', 'status' => 'active', 'payout_type' => 'PPS' ) ) );
+    update_option( 'overrides', array( 'x1' => array( 'final_url_override' => 'https://trk.example.test/x1', 'allowed_countries' => array( 'US' ) ) ) );
+    $audit = $repo->get_live_frontend_pool_audit( 'sidebar', get_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    $frontend_ids = array();
+    foreach ( $repo->get_frontend_slot_offers( 'sidebar', get_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() ) as $frontend_offer ) {
+        $frontend_ids[] = (string) ( $frontend_offer['id'] ?? '' );
+    }
+    tmw_assert_same( wp_json_encode( $frontend_ids ), wp_json_encode( $audit['pool_ids'] ), 'Audit must use exact frontend pool method result.' );
+};
+$tests['manual_offer_display_audit_warning_exists'] = function() {
+    tmw_reset_test_state(); $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' ); $_GET = array( 'tab' => 'slot-setup' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean(); tmw_assert_contains( 'This table only checks manual final URL and country override readiness.', $html, 'Manual audit warning should exist.' );
+};
+$tests['live_pool_debug_log_exists'] = function() {
+    tmw_reset_test_state(); $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
+    $logs = tmw_capture_error_log( static function() use ( $repo ) { $repo->get_live_frontend_pool_audit( 'sidebar', array(), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() ); } );
+    tmw_assert_contains( '[TMW-BANNER-POOL] live_pool', $logs, 'Live pool debug log should exist.' );
+};
 
 foreach ( $tests as $name => $test ) {
     try {

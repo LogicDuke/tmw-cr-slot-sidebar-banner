@@ -1745,18 +1745,57 @@ class TMW_CR_Slot_Offer_Repository {
         if ( ! empty( $overrides[ $offer_id ] ) ) {
             return 'manual_override';
         }
-        $brand_key = $this->get_offer_brand_key( (string) ( $offer['name'] ?? '' ) );
-        $filename_map = $this->get_offer_logo_filename_map();
-        if ( '' !== $brand_key && isset( $filename_map[ $brand_key ] ) ) {
-            $expected_filename = (string) $filename_map[ $brand_key ];
-            $local_path        = rtrim( (string) TMW_CR_SLOT_BANNER_PATH, '/\\' ) . '/assets/logos/' . $expected_filename;
+        $offer_for_resolver = is_array( $offer ) ? $offer : array();
+        $offer_for_resolver['id'] = $offer_id;
+        $expected_filename = $this->get_offer_logo_filename( $offer_for_resolver );
+        if ( '' !== $expected_filename ) {
+            $local_path = rtrim( (string) TMW_CR_SLOT_BANNER_PATH, '/\\' ) . '/assets/logos/' . $expected_filename;
             return file_exists( $local_path ) ? 'mapped_local' : 'missing';
         }
-        $offer_name = (string) ( $offer['name'] ?? '' );
-        if ( '' !== $this->resolve_remote_thumbnail_image( $offer_name ) || '' !== $this->resolve_local_catalog_image( $offer_name, $legacy_catalog ) ) {
-            return 'auto_remote';
+        $logo_url = $this->get_offer_logo_url( $offer_for_resolver, true );
+        if ( '' !== $logo_url ) {
+            return ( 0 === strpos( $logo_url, 'http://' ) || 0 === strpos( $logo_url, 'https://' ) ) ? 'auto_remote' : 'mapped_local';
         }
         return 'placeholder_only';
+    }
+
+    public function get_live_frontend_pool_audit( $slot_key, $settings, $banner_data, $country, $legacy_catalog ) {
+        $pool        = $this->get_frontend_slot_offers( $slot_key, $settings, $banner_data, $country, $legacy_catalog );
+        $selected_ids = $this->get_selected_offer_ids( $settings );
+        $allowed_types = $this->get_allowed_offer_types( $settings );
+        $priorities = isset( $settings['slot_offer_priority'] ) && is_array( $settings['slot_offer_priority'] ) ? $settings['slot_offer_priority'] : array();
+        $synced = $this->get_synced_offers();
+        $pool_ids = array();
+        foreach ( $pool as $pool_offer ) {
+            $pool_ids[] = (string) ( $pool_offer['id'] ?? '' );
+        }
+        $rows = array();
+        foreach ( $pool as $index => $pool_offer ) {
+            $offer_id = (string) ( $pool_offer['id'] ?? '' );
+            $offer = isset( $synced[ $offer_id ] ) ? $synced[ $offer_id ] : $pool_offer;
+            $types = $this->get_offer_type_keys( $offer );
+            $cta_host = (string) parse_url( (string) ( $pool_offer['cta_url'] ?? '' ), PHP_URL_HOST );
+            $image = (string) ( $pool_offer['image'] ?? '' );
+            $image_host = (string) parse_url( $image, PHP_URL_HOST );
+            $rows[] = array(
+                'final_pool_index' => (int) $index,
+                'offer_id' => $offer_id,
+                'offer_name' => (string) ( $offer['name'] ?? '' ),
+                'offer_type_keys' => implode( ',', $types ),
+                'selected_for_slot' => in_array( $offer_id, $selected_ids, true ) ? 'yes' : 'no',
+                'priority' => (string) ( $priorities[ $offer_id ] ?? 100 ),
+                'cta_host' => $cta_host,
+                'image_source' => '' !== $image_host ? $image_host : basename( $image ),
+                'visitor_country_result' => 'allowed',
+                'source' => ( in_array( $offer_id, $selected_ids, true ) ? 'selected_pool' : 'synced_fallback' ),
+                'frontend_ready' => 'yes',
+                'first_blocker' => '',
+            );
+        }
+        if ( function_exists( 'error_log' ) ) {
+            error_log( sprintf( '[TMW-BANNER-POOL] live_pool offer_ids=%s count=%d country=%s allowed_types=%s selected_ids=%s', implode( ',', $pool_ids ), count( $pool_ids ), (string) $country, implode( ',', $allowed_types ), implode( ',', $selected_ids ) ) );
+        }
+        return array( 'pool_rows' => $rows, 'pool_ids' => $pool_ids, 'selected_ids' => $selected_ids );
     }
 
     /**

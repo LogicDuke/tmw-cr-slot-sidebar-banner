@@ -6031,6 +6031,20 @@ $tests['live_pool_audit_reflects_selected_offer_after_action'] = function() {
     $audit = $repo->get_live_frontend_pool_audit( 'sidebar', get_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
     tmw_assert_contains( 'm3', implode( ',', (array) ( $audit['selected_ids'] ?? array() ) ), 'Live pool audit should include selected id.' );
 };
+$tests['select_offer_action_preserves_manual_audit_page_from_post'] = function() {
+    tmw_reset_test_state();
+    $_POST = array( '_wpnonce' => '1', 'offer_id' => '2', 'manual_audit_page' => '7' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    $page->handle_select_offer();
+    tmw_assert_same( 7, (int) ( $page->notice['args']['manual_audit_page'] ?? 0 ), 'Select action should preserve manual_audit_page from POST.' );
+};
+$tests['select_offer_action_preserves_manual_not_live_page'] = function() {
+    tmw_reset_test_state();
+    $_POST = array( '_wpnonce' => '1', 'offer_id' => '2', 'manual_not_live_page' => '4' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    $page->handle_select_offer();
+    tmw_assert_same( 4, (int) ( $page->notice['args']['manual_not_live_page'] ?? 0 ), 'Select action should preserve manual_not_live_page.' );
+};
 
 foreach ( $tests as $name => $test ) {
     try {

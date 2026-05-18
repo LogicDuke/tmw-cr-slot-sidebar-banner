@@ -613,12 +613,26 @@ class TMW_CR_Slot_Admin_Page {
             error_log( sprintf( '[TMW-BANNER-POOL] manual_ready_select_offer offer_id=%s result="%s"', $log_offer, $added_any ? 'selected' : 'already_selected_or_empty' ) );
         }
 
-        $manual_audit_page = $this->get_positive_query_int( 'manual_audit_page', 1 );
+        $manual_audit_page = 1;
+        if ( isset( $_POST['manual_audit_page'] ) ) {
+            $manual_audit_page = max( 1, (int) sanitize_text_field( (string) wp_unslash( $_POST['manual_audit_page'] ) ) );
+        } elseif ( isset( $_GET['manual_audit_page'] ) ) {
+            $manual_audit_page = max( 1, (int) sanitize_text_field( (string) wp_unslash( $_GET['manual_audit_page'] ) ) );
+        }
+        $manual_not_live_page = 1;
+        if ( isset( $_POST['manual_not_live_page'] ) ) {
+            $manual_not_live_page = max( 1, (int) sanitize_text_field( (string) wp_unslash( $_POST['manual_not_live_page'] ) ) );
+        } elseif ( isset( $_GET['manual_not_live_page'] ) ) {
+            $manual_not_live_page = max( 1, (int) sanitize_text_field( (string) wp_unslash( $_GET['manual_not_live_page'] ) ) );
+        }
         $this->redirect_with_notice_to_tab(
             'success',
             'Offer selected for live banner pool.',
             'slot-setup',
-            array( 'manual_audit_page' => $manual_audit_page )
+            array(
+                'manual_audit_page'    => $manual_audit_page,
+                'manual_not_live_page' => $manual_not_live_page,
+            )
         );
     }
 
@@ -1470,6 +1484,7 @@ class TMW_CR_Slot_Admin_Page {
                     <input type="hidden" name="action" value="tmw_cr_slot_banner_select_offer" />
                     <input type="hidden" name="tab" value="slot-setup" />
                     <input type="hidden" name="manual_audit_page" value="<?php echo esc_attr( (string) $manual_audit_pagination['current_page'] ); ?>" />
+                    <input type="hidden" name="manual_not_live_page" value="<?php echo esc_attr( (string) $manual_not_live_pagination['current_page'] ); ?>" />
                     <?php wp_nonce_field( 'tmw_cr_slot_banner_select_offer' ); ?>
                     <?php foreach ( array_values( array_unique( $page_offer_ids ) ) as $bulk_offer_id ) : ?>
                         <input type="hidden" name="offer_ids[]" value="<?php echo esc_attr( (string) $bulk_offer_id ); ?>" />
@@ -1482,6 +1497,7 @@ class TMW_CR_Slot_Admin_Page {
                     <input type="hidden" name="action" value="tmw_cr_slot_banner_select_offer" />
                     <input type="hidden" name="tab" value="slot-setup" />
                     <input type="hidden" name="manual_audit_page" value="<?php echo esc_attr( (string) $manual_audit_pagination['current_page'] ); ?>" />
+                    <input type="hidden" name="manual_not_live_page" value="<?php echo esc_attr( (string) $manual_not_live_pagination['current_page'] ); ?>" />
                     <?php wp_nonce_field( 'tmw_cr_slot_banner_select_offer' ); ?>
                     <?php foreach ( array_values( array_unique( $fanvue_offer_ids ) ) as $fanvue_offer_id ) : ?>
                         <input type="hidden" name="offer_ids[]" value="<?php echo esc_attr( (string) $fanvue_offer_id ); ?>" />
@@ -1490,7 +1506,7 @@ class TMW_CR_Slot_Admin_Page {
                 </form>
             <?php endif; ?>
             <table class="widefat striped"><thead><tr><th>offer ID</th><th>offer name</th><th>detected type keys</th><th>selected for slot</th><th>reason not in live pool</th><th>suggested admin action</th></tr></thead><tbody>
-            <?php foreach ( (array) $manual_not_live_pagination['rows'] as $row ) : ?><tr><td><?php echo esc_html( (string) $row['offer_id'] ); ?></td><td><?php echo esc_html( (string) $row['offer_name'] ); ?></td><td><?php echo esc_html( (string) $row['detected_type_keys'] ); ?></td><td><?php echo esc_html( (string) $row['selected_for_slot'] ); ?></td><td><?php echo esc_html( (string) $row['reason_not_in_live_pool'] ); ?></td><td><?php echo esc_html( (string) $row['suggested_admin_action'] ); ?><?php if ( current_user_can( 'manage_options' ) && 'select_offer' === (string) ( $row['suggested_admin_action'] ?? '' ) && 'not_selected' === (string) ( $row['reason_not_in_live_pool'] ?? '' ) ) : ?> <a class="button button-small" href="<?php echo esc_url( wp_nonce_url( add_query_arg( array( 'action' => 'tmw_cr_slot_banner_select_offer', 'offer_id' => (string) $row['offer_id'], 'tab' => 'slot-setup', 'manual_audit_page' => (int) $manual_audit_pagination['current_page'] ), admin_url( 'admin-post.php' ) ), 'tmw_cr_slot_banner_select_offer' ) ); ?>">Select for banner</a><?php endif; ?></td></tr><?php endforeach; ?>
+            <?php foreach ( (array) $manual_not_live_pagination['rows'] as $row ) : ?><tr><td><?php echo esc_html( (string) $row['offer_id'] ); ?></td><td><?php echo esc_html( (string) $row['offer_name'] ); ?></td><td><?php echo esc_html( (string) $row['detected_type_keys'] ); ?></td><td><?php echo esc_html( (string) $row['selected_for_slot'] ); ?></td><td><?php echo esc_html( (string) $row['reason_not_in_live_pool'] ); ?></td><td><?php echo esc_html( (string) $row['suggested_admin_action'] ); ?><?php if ( current_user_can( 'manage_options' ) && 'select_offer' === (string) ( $row['suggested_admin_action'] ?? '' ) && 'not_selected' === (string) ( $row['reason_not_in_live_pool'] ?? '' ) ) : ?> <a class="button button-small" href="<?php echo esc_url( wp_nonce_url( add_query_arg( array( 'action' => 'tmw_cr_slot_banner_select_offer', 'offer_id' => (string) $row['offer_id'], 'tab' => 'slot-setup', 'manual_audit_page' => (int) $manual_audit_pagination['current_page'], 'manual_not_live_page' => (int) $manual_not_live_pagination['current_page'] ), admin_url( 'admin-post.php' ) ), 'tmw_cr_slot_banner_select_offer' ) ); ?>">Select for banner</a><?php endif; ?></td></tr><?php endforeach; ?>
             </tbody></table>
             <?php $this->render_audit_pagination( (int) $manual_not_live_pagination['current_page'], (int) $manual_not_live_pagination['total_pages'], 'manual_not_live_page', array( 'manual_audit_page', 'pps_audit_page', 'pps_audit_filter', 'pps_audit_search' ) ); ?>
             <?php $pps_expansion_rows = $this->offer_repository->get_pps_expansion_readiness_audit_rows( $settings, array( 'cta_url' => (string) ( $settings['cta_url'] ?? '' ), 'cta_text' => (string) ( $settings['cta_text'] ?? '' ) ) ); ?>

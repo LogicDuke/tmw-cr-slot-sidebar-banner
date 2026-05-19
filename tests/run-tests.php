@@ -5923,7 +5923,7 @@ $tests['frontend_readiness_still_requires_final_url_override'] = function() {
     tmw_reset_test_state(); update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'revshare' ), 'slot_offer_ids' => array( '9' ) ) );
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' ); $repo->save_synced_offers( array( '9' => array( 'id' => '9', 'name' => 'RS Needs URL', 'status' => 'active', 'payout_type' => 'revshare' ) ) );
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' ); $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1 );
-    ob_start(); $page->render_page(); $html = (string) ob_get_clean(); tmw_assert_contains( 'Frontend-ready offers: 0', $html, 'Manual final URL override is still required.' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean(); tmw_assert_contains( 'Displayed setup rows currently frontend-eligible: 0', $html, 'Manual final URL override is still required.' );
 };
 $tests['frontend_readiness_still_requires_allowed_countries'] = function() {
     tmw_reset_test_state(); $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
@@ -6686,6 +6686,9 @@ $tests['pool_mode_admin_ui_renders_pool_mode_form_and_diagnostic'] = function() 
     tmw_assert_contains( 'Manual priority + smart synced fill', $html, 'Recommended pool-mode label must be rendered.' );
     tmw_assert_contains( 'Manual selected only', $html, 'Backward-compatible pool-mode label must be rendered.' );
     tmw_assert_contains( 'Frontend pool mode: manual_priority_smart_fill', $html, 'Diagnostic must report current pool mode.' );
+    tmw_assert_contains( 'Smart-fill live frontend candidate summary', $html, 'Smart-fill summary heading must render.' );
+    tmw_assert_contains( 'Selected/manual priority display order', $html, 'Selected/manual order heading must render.' );
+    tmw_assert_true( false === strpos( $html, 'Current final display pool order' ), 'Legacy final display pool heading should not render.' );
     tmw_assert_contains( 'tmw_cr_slot_banner_save_pool_mode', $html, 'Pool-mode form action must be wired.' );
 };
 
@@ -6743,7 +6746,7 @@ $tests['slot_setup_counts_distinguish_synced_type_allowed_from_displayed_rows'] 
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
     $_GET = array( 'tab' => 'slot-setup' );
     ob_start(); $page->render_page(); $html = (string) ob_get_clean();
-    tmw_assert_contains( 'Displayed setup rows matching allowed types: 1', $html, 'Displayed setup rows count should be shown distinctly.' );
+    tmw_assert_contains( 'Displayed admin setup rows matching allowed types: 1', $html, 'Displayed setup rows count should be shown distinctly.' );
     tmw_assert_contains( 'Setup rows currently displayed: 1', $html, 'Displayed row count should be shown distinctly.' );
 };
 $tests['slot_setup_show_all_matching_allowed_type_offers_link_exists'] = function() {
@@ -6839,5 +6842,5 @@ $tests['slot_setup_frontend_ready_count_requires_manual_final_url'] = function()
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
     $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1 );
     ob_start(); $page->render_page(); $html = (string) ob_get_clean();
-    tmw_assert_contains( 'Frontend-ready offers: 0', $html, 'Frontend-ready count should require manual final URL override.' );
+    tmw_assert_contains( 'Displayed setup rows currently frontend-eligible: 0', $html, 'Frontend-ready count should require manual final URL override.' );
 };

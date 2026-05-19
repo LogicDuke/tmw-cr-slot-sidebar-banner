@@ -1401,14 +1401,14 @@ class TMW_CR_Slot_Admin_Page {
             <p class="description"><?php echo esc_html( sprintf( 'Frontend pool mode: %s', $current_pool_mode ) ); ?></p>
             <p class="description"><?php echo esc_html( sprintf( 'Full synced type-allowed offers: %1$d of %2$d.', (int) $type_allowed_count, count( $synced_offers ) ) ); ?></p>
 
-            <p class="description"><?php echo esc_html( sprintf( 'Displayed setup rows matching allowed types: %d', (int) $synced_type_allowed_count ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Displayed admin setup rows matching allowed types: %d', (int) $synced_type_allowed_count ) ); ?></p>
             <p class="description"><?php echo esc_html( sprintf( 'Setup rows currently displayed: %d', (int) $displayed_pool_count ) ); ?></p>
             <p class="description"><?php echo esc_html( sprintf( 'Manifest logo rows loaded: %d', (int) $manifest_rows_loaded ) ); ?></p>
             <p class="description"><?php echo esc_html( sprintf( 'Manifest logos available for displayed rows: %d', (int) $manifest_logos_available_displayed ) ); ?></p>
             <p class="description"><?php echo esc_html( sprintf( 'Brand-map logos available for displayed rows: %d', (int) $brand_map_logos_available_displayed ) ); ?></p>
             <p class="description"><?php echo esc_html( sprintf( 'Missing manifest files: %d', (int) $missing_manifest_files_count ) ); ?></p>
-            <p class="description"><?php echo esc_html( sprintf( 'Selected display offers: %d', (int) $selected_count ) ); ?></p>
-            <p class="description"><?php echo esc_html( sprintf( 'Frontend-ready offers: %d', (int) $frontend_ready_count ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Selected/manual priority rows: %d', (int) $selected_count ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Displayed setup rows currently frontend-eligible: %d', (int) $frontend_ready_count ) ); ?></p>
             <p class="description"><?php echo esc_html( sprintf( 'Missing final URL override: %d', (int) $missing_final_url_override_count ) ); ?></p>
             <p class="description"><?php echo esc_html( sprintf( 'Missing allowed country override: %d', (int) $missing_allowed_country_override_count ) ); ?></p>
             <p class="description"><?php echo esc_html( sprintf( 'Missing logo: %d', (int) $missing_logo_count ) ); ?></p>
@@ -1913,7 +1913,18 @@ class TMW_CR_Slot_Admin_Page {
             <?php submit_button( __( 'Save Offer Setup', 'tmw-cr-slot-sidebar-banner' ) ); ?>
         </form>
 
-        <h3><?php esc_html_e( 'Current final display pool order', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
+        <h3><?php esc_html_e( 'Smart-fill live frontend candidate summary', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
+        <p class="description"><?php esc_html_e( 'Selected/manual rows are prioritized first. In Manual priority + smart synced fill mode, eligible synced offers can still fill the frontend banner even if they are not listed here.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+        <ul>
+            <li><?php echo esc_html( sprintf( 'Frontend pool mode: %s', $current_pool_mode ) ); ?></li>
+            <li><?php echo esc_html( sprintf( 'Full synced type-allowed offers: %1$d of %2$d', (int) $type_allowed_count, count( $synced_offers ) ) ); ?></li>
+            <li><?php echo esc_html( sprintf( 'Eligible display offers (current context): %d', (int) $frontend_ready_count ) ); ?></li>
+            <li><?php echo esc_html( sprintf( 'Selected/manual priority rows: %d', (int) $selected_count ) ); ?></li>
+            <li><?php echo esc_html( sprintf( 'Manual final URL overrides: %d', (int) ( $manual_diag['manual_final_url_overrides'] ?? 0 ) ) ); ?></li>
+            <li><?php echo esc_html( sprintf( 'Manual allowed country overrides: %d', (int) ( $manual_diag['manual_allowed_country_overrides'] ?? 0 ) ) ); ?></li>
+        </ul>
+
+        <h3><?php esc_html_e( 'Selected/manual priority display order', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
         <ol>
             <?php
             $selected_ids = isset( $settings['slot_offer_ids'] ) && is_array( $settings['slot_offer_ids'] ) ? $settings['slot_offer_ids'] : array();

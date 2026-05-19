@@ -3,7 +3,7 @@ Contributors: themilisofia
 Tags: affiliate marketing, crackrevenue, sidebar, banner, shortcode
 Requires at least: 5.8
 Tested up to: 6.4
-Stable tag: 1.9.8
+Stable tag: 1.9.13
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -40,6 +40,12 @@ Yes. Developers can hook into the `tmw_cr_slot_banner_offers` filter to provide 
 Yes. Version 1.3.0 ships with optimized PNG assets inside `assets/img/offers/` so the offer recommendation banner works out of the box. You can still override or extend the catalog with your own creatives via filters.
 
 == Changelog ==
+
+= 1.9.13 =
+* [TMW-FIX] Frontend pool architecture: default mode is now `manual_priority_smart_fill` so eligible non-selected synced offers (PPS, non-Fanvue Revshare, Revshare Lifetime) are no longer hidden when manually-selected offers exist. Selected offers still rank above non-selected.
+* [TMW-FEAT] Added a `frontend_pool_mode` setting with three modes: Manual priority + smart synced fill (default), Manual selected only (backward-compatible), and Smart auto.
+* [TMW-FIX] Unified frontend pool eligibility checks so selected and non-selected offers run through the same code path.
+* No frontend JS/CSS changes. No Fanvue Revshare recognition changes. No heavy admin loops added — diagnostics remain gated behind the existing `tmw_run_full_audit` / `tmw_light_admin` flags.
 
 = 1.9.8 =
 * Fixed the admin CrakRevenue API Audit button disabled state when audit mode is enabled.

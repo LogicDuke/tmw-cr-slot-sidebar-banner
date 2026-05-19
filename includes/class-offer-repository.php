@@ -2118,6 +2118,104 @@ class TMW_CR_Slot_Offer_Repository {
         );
     }
 
+    /**
+     * Returns the configured frontend pool mode.
+     *
+     * Modes:
+     *  - 'manual_priority_smart_fill' (default): evaluate ALL eligible synced offers; manual selected offers receive
+     *                                            a priority/ranking boost but do not block discovery of others.
+     *  - 'selected_only'                       : backward-compatible mode where only manually-selected offers can enter
+     *                                            the pool. Empty selected => empty pool (no auto-fallback).
+     *  - 'smart_auto'                          : all eligible synced offers, no manual priority boost.
+     *
+     * @param array<string,mixed> $settings Settings payload.
+     *
+     * @return string
+     */
+    public function get_frontend_pool_mode( $settings ) {
+        $allowed_modes = array( 'manual_priority_smart_fill', 'selected_only', 'smart_auto' );
+        $mode          = isset( $settings['frontend_pool_mode'] ) ? sanitize_key( (string) $settings['frontend_pool_mode'] ) : '';
+        if ( '' === $mode || ! in_array( $mode, $allowed_modes, true ) ) {
+            $mode = 'manual_priority_smart_fill';
+        }
+
+        return $mode;
+    }
+
+    /**
+     * Evaluate a single synced offer for frontend pool eligibility.
+     *
+     * Centralises the eligibility-check sequence so every pool-mode candidate path runs the SAME checks. This is
+     * the bug fix for v1.9.13: prior versions evaluated selected offers and synced-fallback offers via two slightly
+     * different code paths, and the synced-fallback path only ran when the selected pool came back empty. That
+     * meant whenever any selected offer was eligible, non-selected synced offers (including PPS, MYM, SextPanther,
+     * Camera Prive, Camsoda, Fantasy.Ai, Extenze, etc.) silently disappeared from the banner.
+     *
+     * @param array<string,mixed>      $synced_offer  Raw synced offer record (from get_synced_offers()).
+     * @param array<string,mixed>      $settings      Plugin settings payload.
+     * @param array<string,mixed>      $banner_data   Banner data payload passed to the legacy renderer.
+     * @param string                   $country       2-letter country code.
+     * @param array<int,array<mixed>>  $legacy_catalog Legacy fallback catalog.
+     * @param array<string,mixed>      $overrides_map Sanitized overrides map keyed by offer ID.
+     * @param array<int,string>        $skipped_offer_ids Skipped offer IDs to exclude (when enforcement is on).
+     * @param int                      $excluded_during_pool_build  By-ref counter.
+     * @param int                      $type_allowed_count          By-ref counter.
+     * @param int                      $skipped_type_disallowed_count By-ref counter.
+     *
+     * @return array<string,mixed>|null Effective offer ready for the pool, or null if not eligible.
+     */
+    protected function evaluate_synced_offer_for_frontend_pool( $synced_offer, $settings, $banner_data, $country, $legacy_catalog, $overrides_map, $skipped_offer_ids, &$excluded_during_pool_build, &$type_allowed_count, &$skipped_type_disallowed_count ) {
+        $offer_id = (string) ( $synced_offer['id'] ?? '' );
+        if ( '' === $offer_id ) {
+            return null;
+        }
+
+        $detected_types = $this->get_offer_type_keys( $synced_offer );
+        if ( empty( $detected_types ) || empty( array_intersect( $detected_types, $this->get_allowed_offer_types( $settings ) ) ) ) {
+            ++$skipped_type_disallowed_count;
+            $this->log_frontend_pool_drop( $synced_offer, 'not_allowed_type', $settings, $detected_types );
+            return null;
+        }
+        if ( $this->should_exclude_skipped_frontend_offer( $offer_id, $skipped_offer_ids, $excluded_during_pool_build ) ) {
+            return null;
+        }
+        $override = isset( $overrides_map[ $offer_id ] ) ? $overrides_map[ $offer_id ] : array();
+        if ( ! $this->is_offer_allowed_for_country( $offer_id, $country, $override, $synced_offer, $legacy_catalog ) ) {
+            return null;
+        }
+        if ( $this->is_offer_blocked_for_banner( $synced_offer, $settings ) ) {
+            $this->log_frontend_pool_drop( $synced_offer, 'inactive_or_unapproved', $settings, $detected_types );
+            return null;
+        }
+        if ( $this->is_unavailable_account_pps_offer( $synced_offer ) ) {
+            $this->log_unavailable_account_offer_excluded( $synced_offer );
+            $this->log_frontend_pool_drop( $synced_offer, 'inactive_or_unapproved', $settings, $detected_types );
+            return null;
+        }
+        ++$type_allowed_count;
+
+        $evaluation = $this->evaluate_offer_eligibility( $offer_id, $settings, $banner_data, $country, $legacy_catalog );
+        $effective  = $evaluation['effective_offer'];
+        $this->log_eligibility_event( $offer_id, $evaluation['reason'], $country );
+
+        if ( empty( $effective ) ) {
+            $reason = 'unknown_frontend_drop';
+            if ( in_array( (string) $evaluation['reason'], array( 'missing_logo', 'logo_not_found' ), true ) ) { $reason = 'missing_logo'; }
+            elseif ( false !== strpos( (string) $evaluation['reason'], 'country' ) ) { $reason = 'country_blocked'; }
+            elseif ( false !== strpos( (string) $evaluation['reason'], 'status' ) || false !== strpos( (string) $evaluation['reason'], 'approval' ) ) { $reason = 'inactive_or_unapproved'; }
+            elseif ( false !== strpos( (string) $evaluation['reason'], 'cta' ) || false !== strpos( (string) $evaluation['reason'], 'url' ) ) { $reason = 'invalid_cta'; }
+            $this->log_frontend_pool_drop( $synced_offer, $reason, $settings, $detected_types );
+            return null;
+        }
+
+        if ( ! $this->is_valid_frontend_winner_cta_url( (string) ( $effective['cta_url'] ?? '' ) ) ) {
+            $this->log_frontend_pool_drop( $synced_offer, 'invalid_cta', $settings, $detected_types );
+            return null;
+        }
+
+        return $effective;
+    }
+
     public function get_frontend_slot_offers( $slot_key, $settings, $banner_data, $country, $legacy_catalog ) {
         unset( $slot_key );
 
@@ -2125,6 +2223,8 @@ class TMW_CR_Slot_Offer_Repository {
         $overrides_map = $this->get_offer_overrides();
         $selected_ids  = isset( $settings['slot_offer_ids'] ) && is_array( $settings['slot_offer_ids'] ) ? array_values( $settings['slot_offer_ids'] ) : array();
         $priorities    = isset( $settings['slot_offer_priority'] ) && is_array( $settings['slot_offer_priority'] ) ? $settings['slot_offer_priority'] : array();
+        $pool_mode     = $this->get_frontend_pool_mode( $settings );
+        $selected_set  = array_flip( array_map( 'strval', $selected_ids ) );
 
         $offers = array();
 
@@ -2134,54 +2234,40 @@ class TMW_CR_Slot_Offer_Repository {
         $type_allowed_count = 0;
         $skipped_type_disallowed_count = 0;
 
-        foreach ( $selected_ids as $selected_id ) {
-            $selected_id = (string) $selected_id;
+        // Build the ordered candidate ID list.
+        //
+        // selected_only: ONLY selected offers are candidates. Empty selected => empty pool (no implicit fallback).
+        // manual_priority_smart_fill / smart_auto: ALL synced offers are candidates; selected offers ranked first
+        //                                          (in smart_fill) or treated equally (in smart_auto).
+        $selected_offers   = array();
+        $unselected_offers = array();
 
-            if ( isset( $synced_offers[ $selected_id ] ) ) {
-                $selected_offer = $synced_offers[ $selected_id ];
-                $detected_types = $this->get_offer_type_keys( $selected_offer );
-                if ( empty( $detected_types ) || empty( array_intersect( $detected_types, $this->get_allowed_offer_types( $settings ) ) ) ) {
-                    ++$skipped_type_disallowed_count;
-                    $this->log_frontend_pool_drop( $selected_offer, 'not_allowed_type', $settings, $detected_types );
+        if ( 'selected_only' === $pool_mode ) {
+            foreach ( $selected_ids as $selected_id ) {
+                $selected_id = (string) $selected_id;
+                if ( ! isset( $synced_offers[ $selected_id ] ) ) {
                     continue;
                 }
-                if ( $this->should_exclude_skipped_frontend_offer( $selected_id, $skipped_offer_ids, $excluded_during_pool_build ) ) {
-                    continue;
-                }
-                if ( $this->is_offer_blocked_for_banner( $selected_offer, $settings ) ) {
-                    $this->log_frontend_pool_drop( $selected_offer, 'inactive_or_unapproved', $settings, $detected_types );
-                    continue;
-                }
-                if ( $this->is_unavailable_account_pps_offer( $selected_offer ) ) {
-                    $this->log_unavailable_account_offer_excluded( $selected_offer );
-                    $this->log_frontend_pool_drop( $selected_offer, 'inactive_or_unapproved', $settings, $detected_types );
-                    continue;
-                }
-                ++$type_allowed_count;
-                $evaluation = $this->evaluate_offer_eligibility( $selected_id, $settings, $banner_data, $country, $legacy_catalog );
-                $effective = $evaluation['effective_offer'];
-                $this->log_eligibility_event( $selected_id, $evaluation['reason'], $country );
-
-                if ( ! empty( $effective ) ) {
-                    if ( ! $this->is_valid_frontend_winner_cta_url( (string) ( $effective['cta_url'] ?? '' ) ) ) {
-                        $this->log_frontend_pool_drop( $selected_offer, 'invalid_cta', $settings, $detected_types );
-                        continue;
-                    }
-                    $offers[] = $effective;
-                } else {
-                    $reason = 'unknown_frontend_drop';
-                    if ( in_array( (string) $evaluation['reason'], array( 'missing_logo', 'logo_not_found' ), true ) ) { $reason = 'missing_logo'; }
-                    elseif ( false !== strpos( (string) $evaluation['reason'], 'country' ) ) { $reason = 'country_blocked'; }
-                    elseif ( false !== strpos( (string) $evaluation['reason'], 'status' ) || false !== strpos( (string) $evaluation['reason'], 'approval' ) ) { $reason = 'inactive_or_unapproved'; }
-                    elseif ( false !== strpos( (string) $evaluation['reason'], 'cta' ) || false !== strpos( (string) $evaluation['reason'], 'url' ) ) { $reason = 'invalid_cta'; }
-                    $this->log_frontend_pool_drop( $selected_offer, $reason, $settings, $detected_types );
+                $effective = $this->evaluate_synced_offer_for_frontend_pool(
+                    $synced_offers[ $selected_id ],
+                    $settings,
+                    $banner_data,
+                    $country,
+                    $legacy_catalog,
+                    $overrides_map,
+                    $skipped_offer_ids,
+                    $excluded_during_pool_build,
+                    $type_allowed_count,
+                    $skipped_type_disallowed_count
+                );
+                if ( null !== $effective ) {
+                    $selected_offers[] = $effective;
                 }
             }
-        }
-
-        if ( empty( $offers ) ) {
+            $offers = $selected_offers;
+        } else {
+            // Sort the synced pool deterministically so smart-fill ordering is stable across page loads.
             $sorted_synced = array_values( $synced_offers );
-
             usort(
                 $sorted_synced,
                 static function ( $left, $right ) {
@@ -2196,51 +2282,63 @@ class TMW_CR_Slot_Offer_Repository {
                 }
             );
 
-            foreach ( $sorted_synced as $synced_offer ) {
-                $offer_id = (string) ( $synced_offer['id'] ?? '' );
-                if ( '' === $offer_id ) {
+            // Process selected offers in their saved order first, so the priority boost preserves saved ordering.
+            $processed_ids = array();
+            foreach ( $selected_ids as $selected_id ) {
+                $selected_id = (string) $selected_id;
+                if ( isset( $processed_ids[ $selected_id ] ) || ! isset( $synced_offers[ $selected_id ] ) ) {
                     continue;
                 }
-
-                if ( $this->should_exclude_skipped_frontend_offer( $offer_id, $skipped_offer_ids, $excluded_during_pool_build ) ) { continue; }
-                $override = isset( $overrides_map[ $offer_id ] ) ? $overrides_map[ $offer_id ] : array();
-                if ( ! $this->is_offer_allowed_for_country( $offer_id, $country, $override, $synced_offer, $legacy_catalog ) ) {
-                    continue;
-                }
-                $fallback_detected_types = $this->get_offer_type_keys( $synced_offer );
-                if ( empty( $fallback_detected_types ) || empty( array_intersect( $fallback_detected_types, $this->get_allowed_offer_types( $settings ) ) ) ) {
-                    ++$skipped_type_disallowed_count;
-                    continue;
-                }
-                if ( $this->is_offer_blocked_for_banner( $synced_offer, $settings ) ) {
-                    continue;
-                }
-                if ( $this->is_unavailable_account_pps_offer( $synced_offer ) ) {
-                    $this->log_unavailable_account_offer_excluded( $synced_offer );
-                    continue;
-                }
-                ++$type_allowed_count;
-                $evaluation = $this->evaluate_offer_eligibility( $offer_id, $settings, $banner_data, $country, $legacy_catalog );
-                $effective = $evaluation['effective_offer'];
-                $this->log_eligibility_event( $offer_id, $evaluation['reason'], $country );
-
-                if ( ! empty( $effective ) ) {
-                    if ( ! $this->is_valid_frontend_winner_cta_url( (string) ( $effective['cta_url'] ?? '' ) ) ) {
-                        $this->log_frontend_pool_drop( $synced_offer, 'invalid_cta', $settings, $fallback_detected_types );
-                        continue;
-                    }
-                    $offers[] = $effective;
-                } else {
-                    $reason = 'unknown_frontend_drop';
-                    if ( in_array( (string) $evaluation['reason'], array( 'missing_logo', 'logo_not_found' ), true ) ) { $reason = 'missing_logo'; }
-                    elseif ( false !== strpos( (string) $evaluation['reason'], 'country' ) ) { $reason = 'country_blocked'; }
-                    elseif ( false !== strpos( (string) $evaluation['reason'], 'status' ) || false !== strpos( (string) $evaluation['reason'], 'approval' ) ) { $reason = 'inactive_or_unapproved'; }
-                    elseif ( false !== strpos( (string) $evaluation['reason'], 'cta' ) || false !== strpos( (string) $evaluation['reason'], 'url' ) ) { $reason = 'invalid_cta'; }
-                    $this->log_frontend_pool_drop( $synced_offer, $reason, $settings, $fallback_detected_types );
+                $processed_ids[ $selected_id ] = true;
+                $effective = $this->evaluate_synced_offer_for_frontend_pool(
+                    $synced_offers[ $selected_id ],
+                    $settings,
+                    $banner_data,
+                    $country,
+                    $legacy_catalog,
+                    $overrides_map,
+                    $skipped_offer_ids,
+                    $excluded_during_pool_build,
+                    $type_allowed_count,
+                    $skipped_type_disallowed_count
+                );
+                if ( null !== $effective ) {
+                    $selected_offers[] = $effective;
                 }
             }
+
+            // Now evaluate every remaining synced offer (smart-fill discovery).
+            foreach ( $sorted_synced as $synced_offer ) {
+                $offer_id = (string) ( $synced_offer['id'] ?? '' );
+                if ( '' === $offer_id || isset( $processed_ids[ $offer_id ] ) ) {
+                    continue;
+                }
+                $processed_ids[ $offer_id ] = true;
+                $effective = $this->evaluate_synced_offer_for_frontend_pool(
+                    $synced_offer,
+                    $settings,
+                    $banner_data,
+                    $country,
+                    $legacy_catalog,
+                    $overrides_map,
+                    $skipped_offer_ids,
+                    $excluded_during_pool_build,
+                    $type_allowed_count,
+                    $skipped_type_disallowed_count
+                );
+                if ( null !== $effective ) {
+                    $unselected_offers[] = $effective;
+                }
+            }
+
+            // Pool composition is finalised below, after the override-fallback. Stored as two
+            // groups so the manual_priority_smart_fill mode can rank them separately and
+            // guarantee selected ranks above non-selected even when both default to priority 9999.
+            $offers = array_merge( $selected_offers, $unselected_offers );
         }
 
+        // Thin-pool top-up: include override-only offers (i.e. manual overrides for offers not in the synced map).
+        // These count as "unselected" (smart-fill) entries for ranking purposes.
         if ( count( $offers ) < 3 ) {
             foreach ( $overrides_map as $offer_id => $override ) {
                 $offer_id = (string) $offer_id;
@@ -2253,13 +2351,39 @@ class TMW_CR_Slot_Offer_Repository {
                 if ( empty( $effective ) ) {
                     continue;
                 }
-                $offers[] = $effective;
+                if ( 'selected_only' === $pool_mode ) {
+                    // Backward-compat: top-up still appended to the single ranked list.
+                    $offers[]            = $effective;
+                } else {
+                    $unselected_offers[] = $effective;
+                    $offers[]            = $effective;
+                }
             }
         }
 
         $offers = array_values( array_filter( $offers ) );
 
-        $offers = $this->rank_offers_for_slot( $offers, $settings, $country, $priorities );
+        // Ranking strategy depends on pool mode.
+        // selected_only / smart_auto -> single combined ranking (legacy behaviour).
+        // manual_priority_smart_fill -> rank selected and unselected separately, then concat (selected first).
+        if ( 'manual_priority_smart_fill' === $pool_mode && ! empty( $unselected_offers ) ) {
+            $ranked_selected   = $this->rank_offers_for_slot( array_values( array_filter( $selected_offers ) ), $settings, $country, $priorities );
+            $ranked_unselected = $this->rank_offers_for_slot( array_values( array_filter( $unselected_offers ) ), $settings, $country, $priorities );
+
+            // Deduplicate (an offer could in theory be in both groups if data was malformed).
+            $seen_ids = array();
+            $offers   = array();
+            foreach ( array_merge( $ranked_selected, $ranked_unselected ) as $candidate ) {
+                $cid = (string) ( $candidate['id'] ?? '' );
+                if ( '' === $cid || isset( $seen_ids[ $cid ] ) ) {
+                    continue;
+                }
+                $seen_ids[ $cid ] = true;
+                $offers[]         = $candidate;
+            }
+        } else {
+            $offers = $this->rank_offers_for_slot( $offers, $settings, $country, $priorities );
+        }
 
         if ( count( $offers ) < 3 ) {
             $used_ids = array();

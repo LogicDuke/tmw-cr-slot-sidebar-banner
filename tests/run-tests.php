@@ -5405,17 +5405,17 @@ $tests['frontend_post_spin_cta_text_decoration_none'] = function() {
     tmw_assert_contains( 'border-bottom: 0 !important;', $css_file, 'CTA pseudo elements should not render underline borders.' );
 };
 
-$tests['plugin_version_bumped_to_1912'] = function() {
+$tests['plugin_version_bumped_to_1913'] = function() {
     $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
-    tmw_assert_contains( 'Version: 1.9.12', $plugin_file, 'Plugin header version should be 1.9.12.' );
-    tmw_assert_contains( "define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.12' );", $plugin_file, 'Asset version constant should be 1.9.12.' );
+    tmw_assert_contains( 'Version: 1.9.13', $plugin_file, 'Plugin header version should be 1.9.13.' );
+    tmw_assert_contains( "define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.13' );", $plugin_file, 'Asset version constant should be 1.9.13.' );
 };
 
 
 
-$tests['readme_stable_tag_bumped_to_198'] = function() {
+$tests['readme_stable_tag_bumped_to_1913'] = function() {
     $readme_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'readme.txt' );
-    tmw_assert_contains( 'Stable tag: 1.9.8', $readme_file, 'Readme stable tag should be 1.9.8.' );
+    tmw_assert_contains( 'Stable tag: 1.9.13', $readme_file, 'Readme stable tag should be 1.9.13.' );
 };
 
 
@@ -6418,6 +6418,294 @@ $tests['tmw_light_admin_flag_skips_cr_url_field_audit_summary_even_with_full_aud
     tmw_assert_true( false === strpos( $html, 'CR URL field audit' ), 'Light admin mode must suppress CR URL field audit even when full audit flag is also set.' );
 };
 
+// ---------------------------------------------------------------------------
+// v1.9.13 frontend pool architecture — tests A–H from the master prompt.
+// Bug regression: in v1.9.12 selected offers always won the pool; when 8 Fanvue
+// Revshare offers were selected, non-Fanvue PPS/Revshare/Revshare-Lifetime
+// offers (MYM, SextPanther, Camera Prive, Camsoda, Fantasy.Ai, Extenze, …)
+// silently disappeared from the frontend banner.
+// ---------------------------------------------------------------------------
+
+/**
+ * Helper: build a representative mixed-brand synced offer set for pool-mode tests.
+ * Mirrors the live production case: 8 Fanvue Revshare, plus non-Fanvue Revshare,
+ * Revshare Lifetime and PPS offers.
+ *
+ * @return array<string,array<string,mixed>>
+ */
+function tmw_test_pool_mode_synced_fixture() {
+    return array(
+        // Selected Fanvue Revshare fleet (8 offers, all from the live observation).
+        '10393' => array( 'id' => '10393', 'name' => 'Fanvue - Sofia Storme', 'status' => 'active', 'payout_type' => 'cpa_percentage' ),
+        '10394' => array( 'id' => '10394', 'name' => 'Fanvue - Amber Santori', 'status' => 'active', 'payout_type' => 'cpa_percentage' ),
+        '10395' => array( 'id' => '10395', 'name' => 'Fanvue - Mila LeRue',    'status' => 'active', 'payout_type' => 'cpa_percentage' ),
+        '10396' => array( 'id' => '10396', 'name' => 'Fanvue - Lina Rose',     'status' => 'active', 'payout_type' => 'cpa_percentage' ),
+        '10397' => array( 'id' => '10397', 'name' => 'Fanvue - Ava Harrington','status' => 'active', 'payout_type' => 'cpa_percentage' ),
+        '10398' => array( 'id' => '10398', 'name' => 'Fanvue - Talia Rose',    'status' => 'active', 'payout_type' => 'cpa_percentage' ),
+        '10399' => array( 'id' => '10399', 'name' => 'Fanvue - Carys',         'status' => 'active', 'payout_type' => 'cpa_percentage' ),
+        '10400' => array( 'id' => '10400', 'name' => 'Fanvue - Mai',           'status' => 'active', 'payout_type' => 'cpa_percentage' ),
+        // Non-Fanvue Revshare offers from the live observation.
+        '9927'  => array( 'id' => '9927',  'name' => 'SextPanther', 'status' => 'active', 'payout_type' => 'revenue_share' ),
+        '9304'  => array( 'id' => '9304',  'name' => 'MYM.fans - All Models', 'status' => 'active', 'payout_type' => 'revenue_share' ),
+        '3611'  => array( 'id' => '3611',  'name' => 'Camera Prive', 'status' => 'active', 'payout_type' => 'revenue_share' ),
+        '10057' => array( 'id' => '10057', 'name' => 'Fantasy.Ai', 'status' => 'active', 'payout_type' => 'revenue_share' ),
+        // Non-Fanvue Revshare Lifetime.
+        '5170'  => array( 'id' => '5170',  'name' => 'Camsoda', 'status' => 'active', 'payout_type' => 'cpa_flat' ),
+        // PPS offer (must survive when Revshare offers are selected).
+        '7106'  => array( 'id' => '7106',  'name' => 'Extenze', 'status' => 'active', 'payout_type' => 'pps' ),
+    );
+}
+
+/**
+ * Helper: build overrides giving every fixture offer a valid manual final_url_override + allowed_countries
+ * (US), so they pass eligibility independently of brand-logo manifest content during tests.
+ *
+ * @return array<string,array<string,mixed>>
+ */
+function tmw_test_pool_mode_overrides_fixture() {
+    $overrides = array();
+    foreach ( tmw_test_pool_mode_synced_fixture() as $id => $offer ) {
+        $overrides[ $id ] = array(
+            'enabled'            => 1,
+            'final_url_override' => 'https://trk.example.test/?tid=offer-' . $id,
+            'allowed_countries'  => 'US',
+        );
+    }
+    return $overrides;
+}
+
+/**
+ * Helper: settings payload reproducing the live admin state from the bug report
+ * (allowed_offer_types: pps + revshare + revshare_lifetime; 8 Fanvue offers selected).
+ *
+ * @param string $pool_mode Pool mode key.
+ * @return array<string,mixed>
+ */
+function tmw_test_pool_mode_settings( $pool_mode ) {
+    return array(
+        'allowed_offer_types'  => array( 'pps', 'revshare', 'revshare_lifetime' ),
+        'slot_offer_ids'       => array( '10393', '10394', '10395', '10396', '10397', '10398', '10399', '10400' ),
+        'slot_offer_priority'  => array(),
+        'frontend_pool_mode'   => $pool_mode,
+        'rotation_mode'        => 'manual',
+    );
+}
+
+// ---- Test A: Fanvue still works (cpa_percentage → revshare, manual override wins, appears when eligible). ----
+$tests['pool_mode_a_fanvue_cpa_percentage_resolves_to_revshare_and_appears'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( tmw_test_pool_mode_synced_fixture() );
+    $repo->save_offer_overrides( tmw_test_pool_mode_overrides_fixture() );
+
+    // cpa_percentage must resolve to revshare on the raw classifier.
+    $effective = $repo->get_effective_offer_type( array( 'id' => '10393', 'name' => 'Fanvue - Sofia Storme', 'payout_type' => 'cpa_percentage' ) );
+    tmw_assert_same( 'revshare', (string) $effective['type'], 'Fanvue cpa_percentage must classify as revshare.' );
+
+    // manual_offer_type override must win over the raw payout_type — pass it inline (same one-arg API).
+    $effective_with_manual = $repo->get_effective_offer_type( array( 'id' => '10393', 'name' => 'Fanvue - Sofia Storme', 'payout_type' => 'cpa_flat', 'manual_offer_type' => 'revshare' ) );
+    tmw_assert_same( 'revshare', (string) $effective_with_manual['type'], 'manual_offer_type=revshare must win over raw payout_type.' );
+
+    // Fanvue must be in the smart-fill pool.
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', tmw_test_pool_mode_settings( 'manual_priority_smart_fill' ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    $names  = array_map( static function( $o ) { return (string) ( $o['name'] ?? '' ); }, $offers );
+    $has_fanvue = false;
+    foreach ( $names as $n ) { if ( false !== strpos( $n, 'Fanvue' ) ) { $has_fanvue = true; break; } }
+    tmw_assert_true( $has_fanvue, 'Fanvue offers must remain in the frontend pool.' );
+};
+
+// ---- Test B: PPS offers still enter the pool when PPS is allowed and Fanvue is selected. ----
+$tests['pool_mode_b_pps_offer_enters_pool_when_fanvue_selected'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( tmw_test_pool_mode_synced_fixture() );
+    $repo->save_offer_overrides( tmw_test_pool_mode_overrides_fixture() );
+
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', tmw_test_pool_mode_settings( 'manual_priority_smart_fill' ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    $ids    = array_map( static function( $o ) { return (string) ( $o['id'] ?? '' ); }, $offers );
+
+    tmw_assert_true( in_array( '7106', $ids, true ), 'PPS offer 7106 (Extenze) must enter the pool even though only Fanvue Revshare offers are selected.' );
+};
+
+// ---- Test C: Non-Fanvue Revshare / Revshare Lifetime can enter the pool. ----
+$tests['pool_mode_c_non_fanvue_revshare_offers_enter_pool'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( tmw_test_pool_mode_synced_fixture() );
+    $repo->save_offer_overrides( tmw_test_pool_mode_overrides_fixture() );
+
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', tmw_test_pool_mode_settings( 'manual_priority_smart_fill' ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    $ids    = array_map( static function( $o ) { return (string) ( $o['id'] ?? '' ); }, $offers );
+
+    tmw_assert_true( in_array( '9927',  $ids, true ), 'SextPanther Revshare (9927) must enter the pool.' );
+    tmw_assert_true( in_array( '9304',  $ids, true ), 'MYM.fans Revshare (9304) must enter the pool.' );
+    tmw_assert_true( in_array( '3611',  $ids, true ), 'Camera Prive Revshare (3611) must enter the pool.' );
+    tmw_assert_true( in_array( '5170',  $ids, true ), 'Camsoda Revshare Lifetime (5170) must enter the pool.' );
+    tmw_assert_true( in_array( '10057', $ids, true ), 'Fantasy.Ai Revshare (10057) must enter the pool.' );
+};
+
+// ---- Test D: Smart-fill default — pool must NOT be Fanvue-only. ----
+$tests['pool_mode_d_smart_fill_default_is_not_fanvue_only'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( tmw_test_pool_mode_synced_fixture() );
+    $repo->save_offer_overrides( tmw_test_pool_mode_overrides_fixture() );
+
+    // Default mode (no explicit frontend_pool_mode in settings) must behave as manual_priority_smart_fill.
+    $default_settings = tmw_test_pool_mode_settings( 'manual_priority_smart_fill' );
+    unset( $default_settings['frontend_pool_mode'] );
+    tmw_assert_same( 'manual_priority_smart_fill', $repo->get_frontend_pool_mode( $default_settings ), 'Default pool mode must be manual_priority_smart_fill.' );
+
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', $default_settings, array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+
+    $fanvue_count    = 0;
+    $non_fanvue_count = 0;
+    foreach ( $offers as $offer ) {
+        if ( false !== strpos( (string) ( $offer['name'] ?? '' ), 'Fanvue' ) ) {
+            ++$fanvue_count;
+        } else {
+            ++$non_fanvue_count;
+        }
+    }
+    tmw_assert_true( $fanvue_count > 0, 'Default smart-fill pool must include Fanvue offers when eligible.' );
+    tmw_assert_true( $non_fanvue_count > 0, 'Default smart-fill pool must NOT be Fanvue-only — non-Fanvue eligible offers must appear too.' );
+};
+
+// ---- Test E: selected_only mode is backward-compatible (Fanvue-only when only Fanvue selected). ----
+$tests['pool_mode_e_selected_only_mode_restricts_pool_to_selected_offers'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( tmw_test_pool_mode_synced_fixture() );
+    $repo->save_offer_overrides( tmw_test_pool_mode_overrides_fixture() );
+
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', tmw_test_pool_mode_settings( 'selected_only' ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    $ids    = array_map( static function( $o ) { return (string) ( $o['id'] ?? '' ); }, $offers );
+    $selected_ids = array( '10393', '10394', '10395', '10396', '10397', '10398', '10399', '10400' );
+
+    // Every returned offer must be in the selected set.
+    foreach ( $ids as $id ) {
+        tmw_assert_true( in_array( $id, $selected_ids, true ), 'selected_only mode pool must contain ONLY selected offers; unexpected id=' . $id );
+    }
+    // Non-selected offers must not appear.
+    tmw_assert_true( ! in_array( '7106',  $ids, true ), 'selected_only mode must not include non-selected PPS offer 7106.' );
+    tmw_assert_true( ! in_array( '9927',  $ids, true ), 'selected_only mode must not include non-selected Revshare offer 9927.' );
+    tmw_assert_true( ! in_array( '5170',  $ids, true ), 'selected_only mode must not include non-selected Revshare Lifetime 5170.' );
+};
+
+// ---- Test F: Manual priority + smart fill — selected ranks above non-selected. ----
+$tests['pool_mode_f_manual_priority_smart_fill_ranks_selected_above_unselected'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( tmw_test_pool_mode_synced_fixture() );
+    $repo->save_offer_overrides( tmw_test_pool_mode_overrides_fixture() );
+
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', tmw_test_pool_mode_settings( 'manual_priority_smart_fill' ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    tmw_assert_true( count( $offers ) > 0, 'Smart-fill pool must not be empty.' );
+
+    // Walk the pool: once we encounter a non-Fanvue (non-selected) offer, no Fanvue (selected) offer may appear afterwards.
+    $saw_unselected = false;
+    foreach ( $offers as $offer ) {
+        $is_selected = false !== strpos( (string) ( $offer['name'] ?? '' ), 'Fanvue' );
+        if ( ! $is_selected ) {
+            $saw_unselected = true;
+        } elseif ( $saw_unselected ) {
+            throw new Exception( 'Manual priority + smart fill: selected offer ranked AFTER an unselected offer (name=' . (string) $offer['name'] . ').' );
+        }
+    }
+    tmw_assert_true( $saw_unselected, 'Smart-fill pool must also contain non-selected eligible offers after the selected block.' );
+};
+
+// ---- Test G: include_all_offers in admin display does not affect frontend pool. ----
+$tests['pool_mode_g_include_all_offers_admin_flag_does_not_change_frontend_pool'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( tmw_test_pool_mode_synced_fixture() );
+    $repo->save_offer_overrides( tmw_test_pool_mode_overrides_fixture() );
+
+    // include_all_offers is a $_GET admin-display flag; it must not affect the frontend pool computation.
+    $before = $repo->get_frontend_slot_offers( 'sidebar', tmw_test_pool_mode_settings( 'manual_priority_smart_fill' ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    $_GET['include_all_offers'] = 1;
+    $after  = $repo->get_frontend_slot_offers( 'sidebar', tmw_test_pool_mode_settings( 'manual_priority_smart_fill' ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    unset( $_GET['include_all_offers'] );
+
+    tmw_assert_same( count( $before ), count( $after ), 'include_all_offers admin flag must not change frontend pool size.' );
+    $before_ids = array_map( static function( $o ) { return (string) ( $o['id'] ?? '' ); }, $before );
+    $after_ids  = array_map( static function( $o ) { return (string) ( $o['id'] ?? '' ); }, $after );
+    tmw_assert_same( $before_ids, $after_ids, 'include_all_offers admin flag must not change frontend pool order.' );
+};
+
+// ---- Test H: No regressions — eligibility filters still drop ineligible offers, banned strings absent. ----
+$tests['pool_mode_h_no_regressions_eligibility_filters_still_apply'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+
+    // Mix: one offer with valid final_url_override, one with no override (invalid CTA), one inactive, one country-locked elsewhere.
+    $repo->save_synced_offers( array(
+        'ok'        => array( 'id' => 'ok',        'name' => 'OK Offer - PPS',          'status' => 'active', 'payout_type' => 'pps' ),
+        'no_url'    => array( 'id' => 'no_url',    'name' => 'No URL Offer - PPS',      'status' => 'active', 'payout_type' => 'pps' ),
+        'inactive'  => array( 'id' => 'inactive',  'name' => 'Inactive Offer - PPS',    'status' => 'inactive', 'payout_type' => 'pps' ),
+        'wrong_ctr' => array( 'id' => 'wrong_ctr', 'name' => 'Wrong Country - PPS',     'status' => 'active', 'payout_type' => 'pps' ),
+    ) );
+    $repo->save_offer_overrides( array(
+        'ok'        => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/?tid=ok', 'allowed_countries' => 'US' ),
+        // 'no_url' deliberately has no override.
+        'inactive'  => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/?tid=inactive', 'allowed_countries' => 'US' ),
+        'wrong_ctr' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/?tid=wrong', 'allowed_countries' => 'CA' ),
+    ) );
+
+    $settings = array(
+        'allowed_offer_types' => array( 'pps' ),
+        'slot_offer_ids'      => array( 'ok' ),
+        'frontend_pool_mode'  => 'manual_priority_smart_fill',
+    );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    $ids    = array_map( static function( $o ) { return (string) ( $o['id'] ?? '' ); }, $offers );
+
+    tmw_assert_true( in_array( 'ok', $ids, true ), 'Eligible offer must enter the pool.' );
+    tmw_assert_true( ! in_array( 'no_url',    $ids, true ), 'Offer with no manual final_url_override must be excluded.' );
+    tmw_assert_true( ! in_array( 'inactive',  $ids, true ), 'Inactive offer must be excluded.' );
+    tmw_assert_true( ! in_array( 'wrong_ctr', $ids, true ), 'Country-mismatch offer must be excluded.' );
+
+    // Banned strings from prior emergency PRs must still be absent from the codebase.
+    foreach ( array( 'admin/admin-page.php', 'includes/class-offer-repository.php' ) as $relative ) {
+        $contents = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . $relative );
+        tmw_assert_true( false === strpos( $contents, 'selected_pool_already_has_enough_offers' ), $relative . ' must not contain selected_pool_already_has_enough_offers.' );
+        tmw_assert_true( false === strpos( $contents, 'lower_priority_number' ), $relative . ' must not contain lower_priority_number.' );
+    }
+};
+
+// ---- Bonus: admin UI exposes the new pool-mode form and frontend_pool_mode diagnostic. ----
+$tests['pool_mode_admin_ui_renders_pool_mode_form_and_diagnostic'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array(), 'frontend_pool_mode' => 'manual_priority_smart_fill' ) );
+    $_GET = array( 'tab' => 'slot-setup' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    ob_start(); $page->render_page(); $html = (string) ob_get_clean();
+    tmw_assert_contains( 'Frontend pool mode', $html, 'Pool-mode form heading must be rendered.' );
+    tmw_assert_contains( 'frontend_pool_mode', $html, 'Pool-mode form input name must be rendered.' );
+    tmw_assert_contains( 'Manual priority + smart synced fill', $html, 'Recommended pool-mode label must be rendered.' );
+    tmw_assert_contains( 'Manual selected only', $html, 'Backward-compatible pool-mode label must be rendered.' );
+    tmw_assert_contains( 'Frontend pool mode: manual_priority_smart_fill', $html, 'Diagnostic must report current pool mode.' );
+    tmw_assert_contains( 'tmw_cr_slot_banner_save_pool_mode', $html, 'Pool-mode form action must be wired.' );
+};
+
+// ---- Bonus: handle_save_pool_mode persists a valid mode and rejects invalid input. ----
+$tests['pool_mode_save_handler_persists_valid_mode_and_falls_back_on_invalid'] = function() {
+    tmw_reset_test_state();
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+
+    $_POST = array( 'frontend_pool_mode' => 'selected_only', '_wpnonce' => '1' );
+    $page->handle_save_pool_mode();
+    $settings = get_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array() );
+    tmw_assert_same( 'selected_only', (string) ( $settings['frontend_pool_mode'] ?? '' ), 'Valid mode selected_only must persist.' );
+
+    $page->notice = array();
+    $_POST = array( 'frontend_pool_mode' => 'bogus_unknown_mode', '_wpnonce' => '1' );
+    $page->handle_save_pool_mode();
+    $settings = get_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array() );
+    tmw_assert_same( 'manual_priority_smart_fill', (string) ( $settings['frontend_pool_mode'] ?? '' ), 'Invalid mode must fall back to default manual_priority_smart_fill.' );
+};
+
 foreach ( $tests as $name => $test ) {
     try {
         $test();
@@ -6455,7 +6743,7 @@ $tests['slot_setup_counts_distinguish_synced_type_allowed_from_displayed_rows'] 
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
     $_GET = array( 'tab' => 'slot-setup' );
     ob_start(); $page->render_page(); $html = (string) ob_get_clean();
-    tmw_assert_contains( 'Synced offers matching allowed types: 1', $html, 'Synced type-allowed count should be shown distinctly.' );
+    tmw_assert_contains( 'Displayed setup rows matching allowed types: 1', $html, 'Displayed setup rows count should be shown distinctly.' );
     tmw_assert_contains( 'Setup rows currently displayed: 1', $html, 'Displayed row count should be shown distinctly.' );
 };
 $tests['slot_setup_show_all_matching_allowed_type_offers_link_exists'] = function() {

@@ -38,6 +38,7 @@ class TMW_CR_Slot_Admin_Page {
         add_action( 'admin_post_tmw_cr_slot_banner_import_both_overrides', array( $this, 'handle_import_both_overrides' ) );
         add_action( 'admin_post_tmw_cr_slot_import_skipped_offers', array( $this, 'handle_import_skipped_offers' ) );
         add_action( 'admin_post_tmw_cr_slot_banner_save_allowed_types', array( $this, 'handle_save_allowed_types' ) );
+        add_action( 'admin_post_tmw_cr_slot_banner_save_pool_mode', array( $this, 'handle_save_pool_mode' ) );
         add_action( 'admin_post_tmw_cr_slot_banner_select_offer', array( $this, 'handle_select_offer' ) );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_dashboard_assets' ) );
     }
@@ -604,6 +605,36 @@ class TMW_CR_Slot_Admin_Page {
         error_log( '[TMW-BANNER-TYPE] allowed_types_saved_redirect include_all_offers=1' );
 
         $this->redirect_with_notice_to_tab( 'success', 'Allowed offer types saved.', 'slot-setup', array( 'include_all_offers' => 1 ) );
+    }
+
+    /**
+     * Saves the frontend pool mode (manual_priority_smart_fill / selected_only / smart_auto).
+     *
+     * @return void
+     */
+    public function handle_save_pool_mode() {
+        $this->assert_admin_action( 'tmw_cr_slot_banner_save_pool_mode' );
+
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( esc_html__( 'You are not allowed to perform this action.', 'tmw-cr-slot-sidebar-banner' ) );
+        }
+
+        $settings = get_option( $this->option_key, array() );
+        if ( ! is_array( $settings ) ) {
+            $settings = array();
+        }
+
+        $requested_mode = isset( $_POST['frontend_pool_mode'] ) ? sanitize_key( (string) wp_unslash( $_POST['frontend_pool_mode'] ) ) : 'manual_priority_smart_fill';
+        $allowed_modes  = array( 'manual_priority_smart_fill', 'selected_only', 'smart_auto' );
+        if ( ! in_array( $requested_mode, $allowed_modes, true ) ) {
+            $requested_mode = 'manual_priority_smart_fill';
+        }
+        $settings['frontend_pool_mode'] = $requested_mode;
+        update_option( $this->option_key, $settings, false );
+
+        error_log( sprintf( '[TMW-BANNER-POOL-MODE] frontend_pool_mode_saved mode=%s', $requested_mode ) );
+
+        $this->redirect_with_notice_to_tab( 'success', 'Frontend pool mode saved.', 'slot-setup' );
     }
 
 
@@ -1290,6 +1321,32 @@ class TMW_CR_Slot_Admin_Page {
         foreach ( $allowed_offer_types as $allowed_type_key ) {
             $selected_type_labels[] = isset( $type_labels[ $allowed_type_key ] ) ? $type_labels[ $allowed_type_key ] : strtoupper( str_replace( '_', ' ', (string) $allowed_type_key ) );
         }
+
+        // v1.9.13: surface and persist the frontend pool mode.
+        $current_pool_mode  = $this->offer_repository->get_frontend_pool_mode( $settings );
+        $pool_mode_options  = array(
+            'manual_priority_smart_fill' => __( 'Manual priority + smart synced fill (recommended)', 'tmw-cr-slot-sidebar-banner' ),
+            'selected_only'              => __( 'Manual selected only', 'tmw-cr-slot-sidebar-banner' ),
+            'smart_auto'                 => __( 'Smart auto pool (no manual priority boost)', 'tmw-cr-slot-sidebar-banner' ),
+        );
+        ?>
+        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+            <?php wp_nonce_field( 'tmw_cr_slot_banner_save_pool_mode' ); ?>
+            <input type="hidden" name="action" value="tmw_cr_slot_banner_save_pool_mode" />
+            <h3><?php esc_html_e( 'Frontend pool mode', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
+            <p class="description"><?php esc_html_e( 'Selected offers get priority, but eligible synced offers can still fill the banner. Manual selected only restricts the banner to selected offers.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+            <p>
+                <?php foreach ( $pool_mode_options as $mode_key => $mode_label ) : ?>
+                    <label style="display:block;margin:0 0 6px 0;">
+                        <input type="radio" name="frontend_pool_mode" value="<?php echo esc_attr( $mode_key ); ?>" <?php checked( $current_pool_mode, $mode_key ); ?> />
+                        <?php echo esc_html( $mode_label ); ?>
+                    </label>
+                <?php endforeach; ?>
+            </p>
+            <?php submit_button( __( 'Save pool mode', 'tmw-cr-slot-sidebar-banner' ), 'secondary', 'submit', false ); ?>
+        </form>
+
+        <?php
         ?>
         <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
             <?php wp_nonce_field( 'tmw_cr_slot_banner_save_allowed_types' ); ?>
@@ -1341,7 +1398,10 @@ class TMW_CR_Slot_Admin_Page {
                 ?>
             </p>
 
-            <p class="description"><?php echo esc_html( sprintf( 'Synced offers matching allowed types: %d', (int) $synced_type_allowed_count ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Frontend pool mode: %s', $current_pool_mode ) ); ?></p>
+            <p class="description"><?php echo esc_html( sprintf( 'Full synced type-allowed offers: %1$d of %2$d.', (int) $type_allowed_count, count( $synced_offers ) ) ); ?></p>
+
+            <p class="description"><?php echo esc_html( sprintf( 'Displayed setup rows matching allowed types: %d', (int) $synced_type_allowed_count ) ); ?></p>
             <p class="description"><?php echo esc_html( sprintf( 'Setup rows currently displayed: %d', (int) $displayed_pool_count ) ); ?></p>
             <p class="description"><?php echo esc_html( sprintf( 'Manifest logo rows loaded: %d', (int) $manifest_rows_loaded ) ); ?></p>
             <p class="description"><?php echo esc_html( sprintf( 'Manifest logos available for displayed rows: %d', (int) $manifest_logos_available_displayed ) ); ?></p>

@@ -3,7 +3,7 @@
  * Plugin Name: TMW CR Offer Sidebar Banner
  * Plugin URI: https://themilisofialtd.com/
  * Description: Displays a geo-targeted CrackRevenue offer recommendation banner with an animated offer selector in sidebar areas via shortcode or template tag.
- * Version: 1.9.12
+ * Version: 1.9.13
  * Author: The Milisofia LTD
  * Author URI: https://themilisofialtd.com/
  * License: GPL2
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.12' );
+define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.13' );
 define( 'TMW_CR_SLOT_BANNER_PATH', plugin_dir_path( __FILE__ ) );
 define( 'TMW_CR_SLOT_BANNER_URL', plugin_dir_url( __FILE__ ) );
 
@@ -207,6 +207,7 @@ class TMW_CR_Slot_Sidebar_Banner {
             'optimization_notes'    => '',
             'allowed_offer_types'   => array( 'pps' ),
             'enforce_skipped_offers_exclusion' => 0,
+            'frontend_pool_mode'    => 'manual_priority_smart_fill',
         );
 
         $settings = get_option( self::OPTION_KEY, array() );
@@ -252,6 +253,10 @@ class TMW_CR_Slot_Sidebar_Banner {
         $settings['allowed_offer_types'] = TMW_CR_Slot_Offer_Repository::sanitize_allowed_offer_types(
             isset( $settings['allowed_offer_types'] ) ? $settings['allowed_offer_types'] : array()
         );
+        $settings['frontend_pool_mode'] = isset( $settings['frontend_pool_mode'] ) ? sanitize_key( (string) $settings['frontend_pool_mode'] ) : 'manual_priority_smart_fill';
+        if ( ! in_array( $settings['frontend_pool_mode'], array( 'manual_priority_smart_fill', 'selected_only', 'smart_auto' ), true ) ) {
+            $settings['frontend_pool_mode'] = 'manual_priority_smart_fill';
+        }
 
         return $settings;
     }

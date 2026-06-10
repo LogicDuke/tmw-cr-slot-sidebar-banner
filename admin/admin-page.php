@@ -124,6 +124,16 @@ class TMW_CR_Slot_Admin_Page {
     }
 
     /**
+     * Writes to error_log only when admin debug logging is enabled.
+     * Keeps production logs free of per-config-save banner chatter.
+     */
+    protected function admin_debug_log( $message ) {
+        if ( $this->admin_debug_logging_enabled() && function_exists( 'error_log' ) ) {
+            error_log( (string) $message );
+        }
+    }
+
+    /**
      * @return void
      */
     public function register_menu() {
@@ -308,7 +318,7 @@ class TMW_CR_Slot_Admin_Page {
                 ++$type_allowed_count;
             }
         }
-        error_log(
+        $this->admin_debug_log(
             sprintf(
                 '[TMW-BANNER-TYPE] settings_saved allowed_types=%s total_offers=%d type_allowed_count=%d',
                 implode( ',', (array) $output['allowed_offer_types'] ),
@@ -397,7 +407,7 @@ class TMW_CR_Slot_Admin_Page {
 
         $inspector = new TMW_CR_Slot_CR_API_Inspector( $client );
         $report = $inspector->run_full_audit( 3 );
-        error_log( '[TMW-CR-AUDIT] Completed via admin-post summary=' . wp_json_encode( $inspector->summarize_keys( $report, 3 ) ) );
+        $this->admin_debug_log( '[TMW-CR-AUDIT] Completed via admin-post summary=' . wp_json_encode( $inspector->summarize_keys( $report, 3 ) ) );
 
         $this->redirect_with_notice( 'success', __( '[TMW-CR-AUDIT] Audit complete. Check debug.log for details.', 'tmw-cr-slot-sidebar-banner' ) );
     }
@@ -540,7 +550,7 @@ class TMW_CR_Slot_Admin_Page {
         $allowed_result = $this->import_allowed_country_override_rows( $allowed_csv );
         $final_url_result = $this->import_final_url_override_rows( $final_url_csv );
 
-        error_log(
+        $this->admin_debug_log(
             sprintf(
                 '[TMW-BANNER-OVERRIDE-IMPORT] combined_import country_imported=%1$d country_rejected=%2$d final_url_imported=%3$d final_url_rejected=%4$d',
                 $allowed_result['imported'],
@@ -600,9 +610,9 @@ class TMW_CR_Slot_Admin_Page {
         }
         ksort( $type_counts );
 
-        error_log( sprintf( '[TMW-BANNER-TYPE] allowed_types_saved allowed_types=%s', implode( ',', $allowed_types ) ) );
-        error_log( sprintf( '[TMW-BANNER-TYPE] allowed_types_diagnostics selected_types=%s synced_type_counts=%s allowed_type_filter_count=%d', implode( ',', $allowed_types ), wp_json_encode( $type_counts ), count( $allowed_types ) ) );
-        error_log( '[TMW-BANNER-TYPE] allowed_types_saved_redirect include_all_offers=1' );
+        $this->admin_debug_log( sprintf( '[TMW-BANNER-TYPE] allowed_types_saved allowed_types=%s', implode( ',', $allowed_types ) ) );
+        $this->admin_debug_log( sprintf( '[TMW-BANNER-TYPE] allowed_types_diagnostics selected_types=%s synced_type_counts=%s allowed_type_filter_count=%d', implode( ',', $allowed_types ), wp_json_encode( $type_counts ), count( $allowed_types ) ) );
+        $this->admin_debug_log( '[TMW-BANNER-TYPE] allowed_types_saved_redirect include_all_offers=1' );
 
         $this->redirect_with_notice_to_tab( 'success', 'Allowed offer types saved.', 'slot-setup', array( 'include_all_offers' => 1 ) );
     }
@@ -632,7 +642,7 @@ class TMW_CR_Slot_Admin_Page {
         $settings['frontend_pool_mode'] = $requested_mode;
         update_option( $this->option_key, $settings, false );
 
-        error_log( sprintf( '[TMW-BANNER-POOL-MODE] frontend_pool_mode_saved mode=%s', $requested_mode ) );
+        $this->admin_debug_log( sprintf( '[TMW-BANNER-POOL-MODE] frontend_pool_mode_saved mode=%s', $requested_mode ) );
 
         $this->redirect_with_notice_to_tab( 'success', 'Frontend pool mode saved.', 'slot-setup' );
     }
@@ -720,10 +730,8 @@ class TMW_CR_Slot_Admin_Page {
         $settings['slot_offer_ids'] = $existing_ids;
         update_option( $this->option_key, $settings, false );
 
-        if ( function_exists( 'error_log' ) ) {
-            $log_offer = ! empty( $offer_ids ) ? implode( ',', $offer_ids ) : '';
-            error_log( sprintf( '[TMW-BANNER-POOL] manual_ready_select_offer offer_id=%s result="%s"', $log_offer, $added_any ? 'selected' : 'already_selected_or_empty' ) );
-        }
+        $log_offer = ! empty( $offer_ids ) ? implode( ',', $offer_ids ) : '';
+        $this->admin_debug_log( sprintf( '[TMW-BANNER-POOL] manual_ready_select_offer offer_id=%s result="%s"', $log_offer, $added_any ? 'selected' : 'already_selected_or_empty' ) );
 
         $manual_audit_page = 1;
         if ( isset( $_POST['manual_audit_page'] ) ) {
@@ -768,7 +776,7 @@ class TMW_CR_Slot_Admin_Page {
 
             if ( '' === $offer_id || '' === $final_url || ! $this->offer_repository->is_valid_manual_final_url_override( $final_url ) ) {
                 ++$rejected;
-                error_log( sprintf( '[TMW-BANNER-LINK] manual_final_url_rejected offer_id=%1$s reason=%2$s', $offer_id, '' === $final_url ? 'empty_url' : 'invalid_url' ) );
+                $this->admin_debug_log( sprintf( '[TMW-BANNER-LINK] manual_final_url_rejected offer_id=%1$s reason=%2$s', $offer_id, '' === $final_url ? 'empty_url' : 'invalid_url' ) );
                 continue;
             }
 
@@ -777,12 +785,12 @@ class TMW_CR_Slot_Admin_Page {
             }
             $overrides[ $offer_id ]['final_url_override'] = $final_url;
             ++$imported;
-            error_log( sprintf( '[TMW-BANNER-LINK] manual_final_url_imported offer_id=%s', $offer_id ) );
+            $this->admin_debug_log( sprintf( '[TMW-BANNER-LINK] manual_final_url_imported offer_id=%s', $offer_id ) );
         }
 
         $this->offer_repository->save_offer_overrides( $overrides );
         $total_saved_overrides = (int) $this->offer_repository->get_manual_override_diagnostics()['manual_final_url_overrides'];
-        error_log( sprintf( '[TMW-BANNER-LINK] manual_final_url_import_summary imported=%1$d rejected=%2$d', $imported, $rejected ) );
+        $this->admin_debug_log( sprintf( '[TMW-BANNER-LINK] manual_final_url_import_summary imported=%1$d rejected=%2$d', $imported, $rejected ) );
 
         return array(
             'imported' => $imported,
@@ -820,12 +828,12 @@ class TMW_CR_Slot_Admin_Page {
             }
             $overrides[ $offer_id ]['allowed_countries'] = $countries;
             ++$imported;
-            error_log( sprintf( '[TMW-BANNER-COUNTRY] allowed_country_imported offer_id=%1$s countries=%2$d', $offer_id, count( $countries ) ) );
+            $this->admin_debug_log( sprintf( '[TMW-BANNER-COUNTRY] allowed_country_imported offer_id=%1$s countries=%2$d', $offer_id, count( $countries ) ) );
         }
 
         $this->offer_repository->save_offer_overrides( $overrides );
         $total_saved = (int) $this->offer_repository->get_manual_override_diagnostics()['manual_allowed_country_overrides'];
-        error_log( sprintf( '[TMW-BANNER-COUNTRY] country_import_summary imported=%1$d rejected=%2$d total_saved=%3$d', $imported, $rejected, $total_saved ) );
+        $this->admin_debug_log( sprintf( '[TMW-BANNER-COUNTRY] country_import_summary imported=%1$d rejected=%2$d total_saved=%3$d', $imported, $rejected, $total_saved ) );
 
         return array(
             'imported' => $imported,

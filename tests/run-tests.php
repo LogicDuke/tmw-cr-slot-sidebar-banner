@@ -4576,6 +4576,7 @@ $tests['allowed_offer_types_save_handler_logs_saved_types'] = function() {
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' );
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
     $_POST = array( 'allowed_offer_types' => array( 'revshare', 'revshare_lifetime' ), '_wpnonce' => '1' );
+    $_GET['tmw_run_full_audit'] = 1;
     $logs = tmw_capture_error_log( static function () use ( $page ) { $page->handle_save_allowed_types(); } );
     tmw_assert_contains( '[TMW-BANNER-TYPE] allowed_types_saved allowed_types=revshare,revshare_lifetime', $logs, 'Save handler should log saved allowed types.' );
 };
@@ -5977,7 +5978,7 @@ $tests['frontend_pool_includes_selected_fanvue_cpa_percentage_revshare'] = funct
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
     $repo->save_synced_offers( array( '10393' => array( 'id' => '10393', 'name' => 'Fanvue - Mai', 'status' => 'active', 'payout_type' => 'cpa_percentage' ) ) );
-    update_option( 'overrides', array( '10393' => array( 'enabled' => 1, 'final_url_override' => 'https://t.acust-9.com/383520/10393/0?aff_sub5=SF_006OG000004lmDN', 'allowed_countries' => array( 'US' ) ) ) );
+    update_option( 'overrides', array( '10393' => array( 'enabled' => 1, 'final_url_override' => 'https://t.acust-9.com/999999/10393/0?aff_sub5=SF_FIXTUREONLY0000', 'allowed_countries' => array( 'US' ) ) ) );
     $settings = array( 'slot_offer_ids' => array( '10393' ), 'allowed_offer_types' => array( 'revshare' ) );
     $offers = $repo->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => 'https://base.test', 'cta_text' => 'CTA' ), 'US', array() );
     tmw_assert_contains( '10393', wp_json_encode( $offers ), 'Fanvue cpa_percentage selected offer should be included in frontend pool.' );
@@ -6005,7 +6006,7 @@ $tests['manual_ready_not_live_selected_type_blocked_shows_not_allowed_type_reaso
     update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '10393' ), 'cta_url' => 'https://base.test', 'cta_text' => 'CTA' ) );
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
     $repo->save_synced_offers( array( '10393' => array( 'id' => '10393', 'name' => 'Fanvue - Mai', 'status' => 'active', 'payout_type' => 'cpa_percentage' ) ) );
-    update_option( 'overrides', array( '10393' => array( 'enabled' => 1, 'final_url_override' => 'https://t.acust-9.com/383520/10393/0?aff_sub5=SF_006OG000004lmDN', 'allowed_countries' => array( 'US' ) ) ) );
+    update_option( 'overrides', array( '10393' => array( 'enabled' => 1, 'final_url_override' => 'https://t.acust-9.com/999999/10393/0?aff_sub5=SF_FIXTUREONLY0000', 'allowed_countries' => array( 'US' ) ) ) );
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
     $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1 );
     ob_start(); $page->render_page(); $html = (string) ob_get_clean();
@@ -6060,6 +6061,7 @@ $tests['select_offer_action_requires_capability'] = function() {
 };
 $tests['select_offer_action_logs_result'] = function() {
     tmw_reset_test_state(); $_POST = array( '_wpnonce' => '1', 'offer_id' => '2' );
+    $_GET['tmw_run_full_audit'] = 1;
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
     $logs = tmw_capture_error_log( static function () use ( $page ) { $page->handle_select_offer(); } );
     tmw_assert_contains( '[TMW-BANNER-POOL] manual_ready_select_offer offer_id=2', $logs, 'Select action should log result.' );
@@ -6157,7 +6159,7 @@ $tests['frontend_pool_includes_selected_fanvue_offer_with_manual_revshare_overri
         '10393' => array(
             'enabled'            => 1,
             'manual_offer_type'  => 'revshare',
-            'final_url_override' => 'https://t.acust-9.com/383520/10393/0?aff_sub5=SF_006OG000004lmDN',
+            'final_url_override' => 'https://t.acust-9.com/999999/10393/0?aff_sub5=SF_FIXTUREONLY0000',
             'allowed_countries'  => array( 'US' ),
         ),
     ) );
@@ -6177,7 +6179,7 @@ $tests['frontend_pool_blocks_manual_override_when_type_not_in_allowed_offer_type
         '10393' => array(
             'enabled'            => 1,
             'manual_offer_type'  => 'revshare',
-            'final_url_override' => 'https://t.acust-9.com/383520/10393/0?aff_sub5=SF_006OG000004lmDN',
+            'final_url_override' => 'https://t.acust-9.com/999999/10393/0?aff_sub5=SF_FIXTUREONLY0000',
             'allowed_countries'  => array( 'US' ),
         ),
     ) );
@@ -6709,28 +6711,11 @@ $tests['pool_mode_save_handler_persists_valid_mode_and_falls_back_on_invalid'] =
     tmw_assert_same( 'manual_priority_smart_fill', (string) ( $settings['frontend_pool_mode'] ?? '' ), 'Invalid mode must fall back to default manual_priority_smart_fill.' );
 };
 
-foreach ( $tests as $name => $test ) {
-    try {
-        $test();
-        ++$passes;
-        echo "[PASS] {$name}\n";
-    } catch ( Throwable $throwable ) {
-        $failures[] = array( 'name' => $name, 'message' => $throwable->getMessage() );
-        echo "[FAIL] {$name}: {$throwable->getMessage()}\n";
-    }
-}
-
-echo "\nTotal: {$passes} passed, " . count( $failures ) . " failed\n";
-
-if ( ! empty( $failures ) ) {
-    exit( 1 );
-}
-
-
 $tests['allowed_types_save_redirects_to_include_all_offers'] = function() {
     tmw_reset_test_state();
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
     $_POST = array( 'allowed_offer_types' => array( 'revshare' ), '_wpnonce' => '1' );
+    $_GET['tmw_run_full_audit'] = 1;
     $logs = tmw_capture_error_log( static function () use ( $page ) { $page->handle_save_allowed_types(); } );
     tmw_assert_same( 1, (int) ( $page->notice['args']['include_all_offers'] ?? 0 ), 'Allowed types save should redirect with include_all_offers=1.' );
     tmw_assert_contains( '[TMW-BANNER-TYPE] allowed_types_saved_redirect include_all_offers=1', $logs, 'Redirect log should be emitted.' );
@@ -6759,7 +6744,7 @@ $tests['slot_setup_show_all_matching_allowed_type_offers_link_exists'] = functio
 };
 $tests['slot_setup_visibility_debug_log_exists'] = function() {
     tmw_reset_test_state();
-    $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1 );
+    $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1, 'tmw_run_full_audit' => 1 );
     $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
     $logs = tmw_capture_error_log( static function () use ( $page ) { ob_start(); $page->render_page(); ob_end_clean(); } );
     tmw_assert_contains( '[TMW-BANNER-TYPE] slot_setup_visibility', $logs, 'Slot setup visibility log should exist.' );
@@ -6844,3 +6829,20 @@ $tests['slot_setup_frontend_ready_count_requires_manual_final_url'] = function()
     ob_start(); $page->render_page(); $html = (string) ob_get_clean();
     tmw_assert_contains( 'Displayed setup rows currently frontend-eligible: 0', $html, 'Frontend-ready count should require manual final URL override.' );
 };
+
+foreach ( $tests as $name => $test ) {
+    try {
+        $test();
+        ++$passes;
+        echo "[PASS] {$name}\n";
+    } catch ( Throwable $throwable ) {
+        $failures[] = array( 'name' => $name, 'message' => $throwable->getMessage() );
+        echo "[FAIL] {$name}: {$throwable->getMessage()}\n";
+    }
+}
+
+echo "\nTotal: {$passes} passed, " . count( $failures ) . " failed\n";
+
+if ( ! empty( $failures ) ) {
+    exit( 1 );
+}

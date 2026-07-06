@@ -21,9 +21,11 @@ Use the `[tmw_cr_slot_banner]` shortcode inside any widget, sidebar, or post con
 
 == Installation ==
 1. Upload the plugin files to the `/wp-content/plugins/tmw-cr-slot-sidebar-banner` directory or install the plugin through the WordPress plugins screen directly.
-2. Activate the plugin through the 'Plugins' screen in WordPress.
-3. Navigate to **Settings → TMW Offer Banner** to configure your CrackRevenue offer URLs and creatives.
-4. Add the `[tmw_cr_slot_banner]` shortcode to any widget or template.
+2. Confirm the main plugin file is directly at `/wp-content/plugins/tmw-cr-slot-sidebar-banner/tmw-cr-slot-sidebar-banner.php`.
+3. Do not use a misspelled folder such as `tmw-cr-slotsidebar-banner`, and do not leave an extra wrapper folder such as `tmw-cr-slot-sidebar-banner-clean/tmw-cr-slot-sidebar-banner`.
+4. Activate the plugin through the 'Plugins' screen in WordPress.
+5. Navigate to **Settings → TMW Offer Banner** to configure your CrackRevenue offer URLs and creatives.
+6. Add the `[tmw_cr_slot_banner]` shortcode to any widget or template.
 
 == Frequently Asked Questions ==
 

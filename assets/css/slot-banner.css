@@ -332,12 +332,6 @@
     .tmw-cr-slot-banner {
         container-name: tmw-slot-banner;
         container-type: inline-size;
-        gap: 0.6rem;
-        padding-block: 14px;
-    }
-
-    .tmw-cr-slot-banner .tmw-cr-slot-banner__header {
-        padding-inline: 44px;
     }
 
     .tmw-cr-slot-banner .tmw-cr-slot-banner__headline {
@@ -352,18 +346,19 @@
         --item-height: 100px;
     }
 
-    .tmw-cr-slot-banner .tmw-cr-slot-banner__footer {
-        gap: 0.3rem;
-    }
-
-    .tmw-cr-slot-banner .tmw-cr-slot-banner__cta {
-        padding: 0.68rem 1.65rem;
-    }
-
     @container tmw-slot-banner (min-width: 600px) {
+        .tmw-cr-slot-banner {
+            gap: 0.6rem;
+            padding-block: 14px;
+        }
+
+        .tmw-cr-slot-banner .tmw-cr-slot-banner__header {
+            padding-inline: 44px;
+        }
+
         .tmw-cr-slot-banner .tmw-cr-slot-banner__machine {
             display: grid;
-            grid-template-columns: minmax(140px, 0.9fr) minmax(210px, 1fr) minmax(170px, 0.9fr);
+            grid-template-columns: minmax(180px, 0.9fr) minmax(250px, 1fr) minmax(210px, 0.9fr);
             gap: clamp(8px, 1.5vw, 18px);
             align-items: center;
             padding: 10px 12px;
@@ -412,11 +407,21 @@
 
         .tmw-cr-slot-banner .tmw-cr-slot-banner__spin {
             box-sizing: border-box;
-            width: max-content;
+            width: 100%;
+            min-width: 0;
             max-width: 100%;
-            padding: 0.6rem clamp(0.7rem, 1.4vw, 1.15rem);
-            font-size: clamp(0.78rem, 1.3vw, 0.9rem);
+            padding: 0.6rem clamp(0.6rem, 1vw, 0.9rem);
+            font-size: clamp(0.72rem, 1.1vw, 0.88rem);
             white-space: nowrap;
+            overflow: visible;
+        }
+
+        .tmw-cr-slot-banner .tmw-cr-slot-banner__footer {
+            gap: 0.3rem;
+        }
+
+        .tmw-cr-slot-banner .tmw-cr-slot-banner__cta {
+            padding: 0.68rem 1.65rem;
         }
 
         .tmw-cr-slot-banner.tmw-cr-slot-banner--pre-win .tmw-cr-slot-banner__footer,

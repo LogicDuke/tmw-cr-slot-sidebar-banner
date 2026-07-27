@@ -332,6 +332,12 @@
     .tmw-cr-slot-banner {
         container-name: tmw-slot-banner;
         container-type: inline-size;
+        gap: 0.6rem;
+        padding-block: 14px;
+    }
+
+    .tmw-cr-slot-banner .tmw-cr-slot-banner__header {
+        padding-inline: 44px;
     }
 
     .tmw-cr-slot-banner .tmw-cr-slot-banner__headline {
@@ -346,20 +352,33 @@
         --item-height: 100px;
     }
 
+    .tmw-cr-slot-banner .tmw-cr-slot-banner__footer {
+        gap: 0.3rem;
+    }
+
+    .tmw-cr-slot-banner .tmw-cr-slot-banner__cta {
+        padding: 0.68rem 1.65rem;
+    }
+
     @container tmw-slot-banner (min-width: 600px) {
         .tmw-cr-slot-banner .tmw-cr-slot-banner__machine {
             display: grid;
-            grid-template-columns: minmax(150px, 0.8fr) minmax(280px, 1.4fr) minmax(130px, 0.7fr);
-            gap: clamp(12px, 2vw, 26px);
+            grid-template-columns: minmax(140px, 0.9fr) minmax(210px, 1fr) minmax(170px, 0.9fr);
+            gap: clamp(8px, 1.5vw, 18px);
             align-items: center;
-            padding: 12px 16px;
+            padding: 10px 12px;
         }
 
         .tmw-cr-slot-banner .tmw-cr-slot-banner__desktop-copy {
             display: flex;
             min-width: 0;
+            min-height: 74px;
             flex-direction: column;
+            justify-content: center;
             gap: 0.3rem;
+            padding: 10px 12px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, rgba(111, 56, 176, 0.3), rgba(38, 102, 183, 0.24));
             text-align: left;
         }
 
@@ -377,18 +396,26 @@
         }
 
         .tmw-cr-slot-banner .tmw-slot-container {
-            --item-height: 78px;
+            --item-height: 84px;
             gap: 8px;
             min-width: 0;
         }
 
         .tmw-cr-slot-banner .tmw-slot-container .outer-col {
-            max-width: 92px;
+            max-width: 98px;
+        }
+
+        .tmw-cr-slot-banner .tmw-slot-container .outer-col .icon .tmw-cr-slot-banner__reel-logo {
+            width: 86%;
+            height: 86%;
         }
 
         .tmw-cr-slot-banner .tmw-cr-slot-banner__spin {
+            box-sizing: border-box;
+            width: max-content;
             max-width: 100%;
-            padding: 0.65rem clamp(1rem, 2vw, 1.5rem);
+            padding: 0.6rem clamp(0.7rem, 1.4vw, 1.15rem);
+            font-size: clamp(0.78rem, 1.3vw, 0.9rem);
             white-space: nowrap;
         }
 

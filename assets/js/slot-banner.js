@@ -563,9 +563,9 @@
 
     function initializeBanner(banner) {
         var offers = parseOffers(banner);
-        var container = banner.querySelector('#container');
+        var container = banner.querySelector('.tmw-slot-container');
         var columnNodes = container ? Array.prototype.slice.call(container.querySelectorAll('.col')) : [];
-        var spinButton = banner.querySelector('#spin');
+        var spinButton = banner.querySelector('.tmw-cr-slot-banner__spin');
         var cta = banner.querySelector('.tmw-cr-slot-banner__cta');
         var offerNameTarget = banner.querySelector('.tmw-cr-slot-banner__offer-name');
         var resultLabel = banner.querySelector('.tmw-cr-slot-banner__result-label');

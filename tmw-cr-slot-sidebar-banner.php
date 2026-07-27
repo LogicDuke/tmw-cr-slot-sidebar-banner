@@ -371,14 +371,18 @@ class TMW_CR_Slot_Sidebar_Banner {
             </header>
 
             <div class="tmw-cr-slot-banner__machine" role="group" aria-label="<?php esc_attr_e( 'CrackRevenue offer banner', 'tmw-cr-slot-sidebar-banner' ); ?>">
-                <div id="container" class="tmw-slot-container" aria-hidden="true">
+                <div class="tmw-cr-slot-banner__desktop-copy" aria-hidden="true">
+                    <span class="tmw-cr-slot-banner__desktop-headline notranslate" translate="no" data-no-translate="1"><?php echo esc_html( $banner_data['headline'] ); ?></span>
+                    <span class="tmw-cr-slot-banner__desktop-subheadline notranslate" translate="no" data-no-translate="1"><?php echo esc_html( $banner_data['subheadline'] ); ?></span>
+                </div>
+                <div class="tmw-slot-container" aria-hidden="true">
                     <?php for ( $i = 0; $i < 3; $i++ ) : ?>
                         <div class="outer-col" data-reel-index="<?php echo esc_attr( $i ); ?>">
                             <div class="col"></div>
                         </div>
                     <?php endfor; ?>
                 </div>
-                <button type="button" id="spin" class="tmw-cr-slot-banner__spin"<?php echo empty( $slot_data['offers'] ) ? ' disabled' : ''; ?>>
+                <button type="button" class="tmw-cr-slot-banner__spin"<?php echo empty( $slot_data['offers'] ) ? ' disabled' : ''; ?>>
                     <span class="tmw-cr-slot-banner__spin-label"><?php echo esc_html( $banner_data['spin_button_text'] ); ?></span>
                 </button>
             </div>

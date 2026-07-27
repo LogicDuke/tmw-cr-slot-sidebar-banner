@@ -45,7 +45,11 @@
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
-#container {
+.tmw-cr-slot-banner .tmw-cr-slot-banner__desktop-copy {
+    display: none;
+}
+
+.tmw-cr-slot-banner .tmw-slot-container {
     --item-height: 92px;
     display: flex;
     justify-content: center;
@@ -54,7 +58,7 @@
     margin: 0 auto;
 }
 
-#container .outer-col {
+.tmw-cr-slot-banner .tmw-slot-container .outer-col {
     position: relative;
     flex: 1 1 0;
     max-width: 102px;
@@ -65,7 +69,7 @@
     overflow: hidden;
 }
 
-#container .outer-col::before {
+.tmw-cr-slot-banner .tmw-slot-container .outer-col::before {
     content: '';
     position: absolute;
     inset: 0;
@@ -76,7 +80,7 @@
     pointer-events: none;
 }
 
-#container .outer-col .col {
+.tmw-cr-slot-banner .tmw-slot-container .outer-col .col {
     position: relative;
     display: flex;
     flex-direction: column;
@@ -86,7 +90,7 @@
     z-index: 2;
 }
 
-#container .outer-col .icon {
+.tmw-cr-slot-banner .tmw-slot-container .outer-col .icon {
     flex: 0 0 var(--item-height);
     height: var(--item-height);
     display: flex;
@@ -94,13 +98,13 @@
     justify-content: center;
 }
 
-#container .outer-col .icon img {
+.tmw-cr-slot-banner .tmw-slot-container .outer-col .icon img {
     max-width: 72%;
     height: auto;
     transition: transform 0.4s ease, filter 0.4s ease;
 }
 
-#container .outer-col .icon .tmw-cr-slot-banner__reel-logo {
+.tmw-cr-slot-banner .tmw-slot-container .outer-col .icon .tmw-cr-slot-banner__reel-logo {
     width: 80%;
     height: 80%;
     object-fit: contain;
@@ -108,7 +112,7 @@
     display: block;
 }
 
-#container .outer-col .icon .tmw-cr-slot-banner__reel-text {
+.tmw-cr-slot-banner .tmw-slot-container .outer-col .icon .tmw-cr-slot-banner__reel-text {
     font-size: 1rem;
     font-weight: 700;
     letter-spacing: 0.12em;
@@ -311,7 +315,7 @@
     }
 }
 
-#container.spinning .col {
+.tmw-cr-slot-banner .tmw-slot-container.spinning .col {
     animation-name: scroll;
     animation-iteration-count: 1;
     animation-fill-mode: forwards;
@@ -325,16 +329,77 @@
 }
 
 @media (min-width: 768px) {
-    .tmw-cr-slot-banner__headline {
+    .tmw-cr-slot-banner {
+        container-name: tmw-slot-banner;
+        container-type: inline-size;
+    }
+
+    .tmw-cr-slot-banner .tmw-cr-slot-banner__headline {
         font-size: 1.45rem;
     }
 
-    .tmw-cr-slot-banner__subheadline {
+    .tmw-cr-slot-banner .tmw-cr-slot-banner__subheadline {
         font-size: 1rem;
     }
 
-    #container {
+    .tmw-cr-slot-banner .tmw-slot-container {
         --item-height: 100px;
+    }
+
+    @container tmw-slot-banner (min-width: 600px) {
+        .tmw-cr-slot-banner .tmw-cr-slot-banner__machine {
+            display: grid;
+            grid-template-columns: minmax(150px, 0.8fr) minmax(280px, 1.4fr) minmax(130px, 0.7fr);
+            gap: clamp(12px, 2vw, 26px);
+            align-items: center;
+            padding: 12px 16px;
+        }
+
+        .tmw-cr-slot-banner .tmw-cr-slot-banner__desktop-copy {
+            display: flex;
+            min-width: 0;
+            flex-direction: column;
+            gap: 0.3rem;
+            text-align: left;
+        }
+
+        .tmw-cr-slot-banner .tmw-cr-slot-banner__desktop-headline {
+            font-size: clamp(1rem, 1.8vw, 1.25rem);
+            font-weight: 700;
+            line-height: 1.15;
+        }
+
+        .tmw-cr-slot-banner .tmw-cr-slot-banner__desktop-subheadline {
+            color: rgba(255, 255, 255, 0.76);
+            font-size: clamp(0.82rem, 1.3vw, 0.95rem);
+            font-weight: 500;
+            line-height: 1.25;
+        }
+
+        .tmw-cr-slot-banner .tmw-slot-container {
+            --item-height: 78px;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .tmw-cr-slot-banner .tmw-slot-container .outer-col {
+            max-width: 92px;
+        }
+
+        .tmw-cr-slot-banner .tmw-cr-slot-banner__spin {
+            max-width: 100%;
+            padding: 0.65rem clamp(1rem, 2vw, 1.5rem);
+            white-space: nowrap;
+        }
+
+        .tmw-cr-slot-banner.tmw-cr-slot-banner--pre-win .tmw-cr-slot-banner__footer,
+        .tmw-cr-slot-banner .tmw-cr-slot-banner__footer.tmw-cr-slot-banner__footer--hidden {
+            display: none;
+        }
+
+        .tmw-cr-slot-banner.tmw-cr-slot-banner--win .tmw-cr-slot-banner__footer {
+            display: flex;
+        }
     }
 }
 

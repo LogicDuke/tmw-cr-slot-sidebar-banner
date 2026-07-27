@@ -45,6 +45,10 @@
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
+.tmw-cr-slot-banner .tmw-cr-slot-banner__desktop-copy {
+    display: none;
+}
+
 .tmw-cr-slot-banner .tmw-slot-container {
     --item-height: 92px;
     display: flex;

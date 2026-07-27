@@ -371,7 +371,7 @@ class TMW_CR_Slot_Sidebar_Banner {
             </header>
 
             <div class="tmw-cr-slot-banner__machine" role="group" aria-label="<?php esc_attr_e( 'CrackRevenue offer banner', 'tmw-cr-slot-sidebar-banner' ); ?>">
-                <div class="tmw-cr-slot-banner__desktop-copy" hidden aria-hidden="true">
+                <div class="tmw-cr-slot-banner__desktop-copy" aria-hidden="true">
                     <span class="tmw-cr-slot-banner__desktop-headline notranslate" translate="no" data-no-translate="1"><?php echo esc_html( $banner_data['headline'] ); ?></span>
                     <span class="tmw-cr-slot-banner__desktop-subheadline notranslate" translate="no" data-no-translate="1"><?php echo esc_html( $banner_data['subheadline'] ); ?></span>
                 </div>

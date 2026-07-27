@@ -346,7 +346,7 @@
         --item-height: 100px;
     }
 
-    @container tmw-slot-banner (min-width: 600px) {
+    @container tmw-slot-banner (min-width: 760px) {
         .tmw-cr-slot-banner {
             gap: 0.45rem;
             padding-block: 10px;
@@ -380,7 +380,7 @@
 
         .tmw-cr-slot-banner .tmw-cr-slot-banner__machine {
             display: grid;
-            grid-template-columns: minmax(300px, 1.15fr) minmax(320px, 1fr) minmax(290px, 1fr);
+            grid-template-columns: minmax(190px, 1.15fr) minmax(240px, 1fr) minmax(190px, 0.95fr);
             gap: 12px;
             align-items: center;
             padding: 12px 14px;

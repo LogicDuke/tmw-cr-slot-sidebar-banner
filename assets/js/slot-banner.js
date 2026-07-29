@@ -1,7 +1,7 @@
 (function() {
-    var BASE_SPINNING_DURATION = 3900;
+    var BASE_SPINNING_DURATION = 2600;
     var COLUMN_SPINNING_DURATION = 450;
-    var ICONS_PER_REEL = 40;
+    var ICONS_PER_REEL = 24;
     var POST_SPIN_RESULT_LABEL = 'Your match';
     var POST_SPIN_RESULT_SUFFIX = 'is ready';
     var INITIAL_SPIN_BUTTON_TEXT = '>>> SPIN NOW <<<';
@@ -160,7 +160,7 @@
             reel.cloneStart = 0;
 
             var fragment = document.createDocumentFragment();
-            var iconsToCreate = Math.max(ICONS_PER_REEL, state.offers.length * 5);
+            var iconsToCreate = Math.max(ICONS_PER_REEL, state.offers.length * 3);
             var offset = index % Math.max(1, state.offers.length);
 
             for (var i = 0; i < iconsToCreate; i++) {

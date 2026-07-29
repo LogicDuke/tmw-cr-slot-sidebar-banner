@@ -5541,6 +5541,14 @@ $tests['spinning_state_hides_result_and_cta'] = function() {
     tmw_assert_contains( "window.console.debug('[TMW-CR-CTA] hidden_non_win_result');", $js_file, 'Debug helper should include hidden non-win result trace.' );
 };
 
+$tests['reel_spin_timing_stays_synchronized_with_result_reveal'] = function() {
+    $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );
+    tmw_assert_contains( 'var BASE_SPINNING_DURATION = 3900;', $js_file, 'Reels should use the slower 3.9-second base spin duration.' );
+    tmw_assert_contains( 'var COLUMN_SPINNING_DURATION = 450;', $js_file, 'Reels should preserve the existing 450ms stagger increment.' );
+    tmw_assert_contains( 'var total = duration + delay;', $js_file, 'Spin completion should include each reel animation delay.' );
+    tmw_assert_contains( '}, maxTime + 80);', $js_file, 'Result reveal should remain synchronized after the final reel animation.' );
+};
+
 $tests['cta_text_updates_preserve_cta_label_span'] = function() {
     $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
     $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );

@@ -1,5 +1,5 @@
 (function() {
-    var BASE_SPINNING_DURATION = 2600;
+    var BASE_SPINNING_DURATION = 3900;
     var COLUMN_SPINNING_DURATION = 450;
     var ICONS_PER_REEL = 40;
     var POST_SPIN_RESULT_LABEL = 'Your match';

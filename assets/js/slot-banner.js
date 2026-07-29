@@ -1,7 +1,7 @@
 (function() {
     var BASE_SPINNING_DURATION = 2600;
     var COLUMN_SPINNING_DURATION = 450;
-    var ICONS_PER_REEL = 40;
+    var ICONS_PER_REEL = 24;
     var POST_SPIN_RESULT_LABEL = 'Your match';
     var POST_SPIN_RESULT_SUFFIX = 'is ready';
     var INITIAL_SPIN_BUTTON_TEXT = '>>> SPIN NOW <<<';
@@ -150,21 +150,40 @@
         iconState.offer = offer;
     }
 
+    function buildReelOfferSequence(offers, frameCount) {
+        var sequence = [];
+
+        while (sequence.length < frameCount) {
+            var shuffledOffers = offers.slice();
+
+            for (var i = shuffledOffers.length - 1; i > 0; i--) {
+                var randomIndex = Math.floor(Math.random() * (i + 1));
+                var currentOffer = shuffledOffers[i];
+                shuffledOffers[i] = shuffledOffers[randomIndex];
+                shuffledOffers[randomIndex] = currentOffer;
+            }
+
+            sequence = sequence.concat(shuffledOffers.slice(0, frameCount - sequence.length));
+        }
+
+        return sequence;
+    }
+
     function setInitialItems(state) {
         if (!state.offers.length || !state.columns.length) {
             return;
         }
 
-        state.columns.forEach(function(reel, index) {
+        state.columns.forEach(function(reel) {
             reel.items = [];
             reel.cloneStart = 0;
 
             var fragment = document.createDocumentFragment();
-            var iconsToCreate = Math.max(ICONS_PER_REEL, state.offers.length * 5);
-            var offset = index % Math.max(1, state.offers.length);
+            var iconsToCreate = Math.max(ICONS_PER_REEL, state.offers.length * 3);
+            var reelOffers = buildReelOfferSequence(state.offers, iconsToCreate);
 
             for (var i = 0; i < iconsToCreate; i++) {
-                var offer = state.offers[(offset + i) % state.offers.length];
+                var offer = reelOffers[i];
                 var iconState = createIcon(offer);
                 fragment.appendChild(iconState.node);
                 reel.items.push(iconState);
@@ -520,6 +539,7 @@
 
         applySpinningState(state);
 
+        setInitialItems(state);
         var results = setResult(state, true);
 
         if (!results.length) {

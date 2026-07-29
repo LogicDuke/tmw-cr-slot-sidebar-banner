@@ -5541,6 +5541,23 @@ $tests['spinning_state_hides_result_and_cta'] = function() {
     tmw_assert_contains( "window.console.debug('[TMW-CR-CTA] hidden_non_win_result');", $js_file, 'Debug helper should include hidden non-win result trace.' );
 };
 
+$tests['reel_spin_timing_stays_synchronized_with_result_reveal'] = function() {
+    $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );
+    tmw_assert_contains( 'var BASE_SPINNING_DURATION = 2600;', $js_file, 'Reels should preserve the original 2.6-second base spin duration.' );
+    tmw_assert_contains( 'var COLUMN_SPINNING_DURATION = 450;', $js_file, 'Reels should preserve the existing 450ms stagger increment.' );
+    tmw_assert_contains( 'var ICONS_PER_REEL = 24;', $js_file, 'Reels should use fewer frames so each offer remains readable for longer.' );
+    tmw_assert_contains( 'Math.max(ICONS_PER_REEL, state.offers.length * 3)', $js_file, 'Each eligible offer should repeat three times when that exceeds the minimum frame count.' );
+    tmw_assert_true( false === strpos( $js_file, 'state.offers.length * 5' ), 'The former five-times offer repetition multiplier should not remain.' );
+    tmw_assert_contains( 'function buildReelOfferSequence(offers, frameCount)', $js_file, 'Eligible offers should populate each reel through a dedicated sequence builder.' );
+    tmw_assert_contains( 'var shuffledOffers = offers.slice();', $js_file, 'Each repetition should begin with every eligible offer.' );
+    tmw_assert_contains( 'Math.floor(Math.random() * (i + 1))', $js_file, 'Reel order should be shuffled rather than permanently fixed.' );
+    tmw_assert_contains( 'var reelOffers = buildReelOfferSequence(state.offers, iconsToCreate);', $js_file, 'Reduced reel frames should be populated from eligible offers.' );
+    tmw_assert_contains( 'setInitialItems(state);' . PHP_EOL . '        var results = setResult(state, true);', $js_file, 'Each spin should rebuild its passing order before applying the existing winner.' );
+    tmw_assert_contains( 'return renderFinalSelection(state, winner, prepareForSpin);', $js_file, 'The selected winner should still land on all three reels.' );
+    tmw_assert_contains( 'var total = duration + delay;', $js_file, 'Spin completion should include each reel animation delay.' );
+    tmw_assert_contains( '}, maxTime + 80);', $js_file, 'Result reveal should remain synchronized after the final reel animation.' );
+};
+
 $tests['cta_text_updates_preserve_cta_label_span'] = function() {
     $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
     $js_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js' );

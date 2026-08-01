@@ -6853,6 +6853,7 @@ $tests['slot_setup_frontend_ready_count_requires_manual_final_url'] = function()
 function tmw_recommendation_test_offers() {
     return array(
         array( 'id' => '500', 'name' => 'Alpha Ordinary' ),
+        array( 'id' => '8780', 'name' => 'Jerkmate - PPS' ),
         array( 'id' => '10335', 'name' => 'Zulu Recommended' ),
         array( 'id' => '10139', 'name' => 'Beta Recommended' ),
         array( 'id' => '501', 'name' => 'Beta Ordinary' ),
@@ -6863,7 +6864,7 @@ $tests['recommended_eligible_offer_ranks_before_ordinary_and_smart_fill_keeps_or
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'o', 'm' );
     $ranked = $repo->rank_offers_for_slot( tmw_recommendation_test_offers(), array( 'rotation_mode' => 'manual' ), 'US', array(), false, true );
-    tmw_assert_same( array( '10335', '10139', '500', '501' ), array_column( $ranked, 'id' ), 'Recommendations should lead in catalog order and ordinary eligible offers should remain.' );
+    tmw_assert_same( array( '8780', '10335', '10139', '500', '501' ), array_column( $ranked, 'id' ), 'Recommendations should lead in catalog order and ordinary eligible offers should remain.' );
 };
 $tests['manual_priority_ordinary_precedes_recommended'] = function() {
     tmw_reset_test_state();
@@ -6874,8 +6875,47 @@ $tests['manual_priority_ordinary_precedes_recommended'] = function() {
 $tests['recommendations_apply_to_selected_group_when_unselected_empty'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'o', 'm' );
-    $ranked = $repo->rank_offers_for_slot( array_slice( tmw_recommendation_test_offers(), 0, 2 ), array( 'rotation_mode' => 'manual' ), 'US', array(), true, true );
-    tmw_assert_same( '10335', $ranked[0]['id'], 'Recommendation ordering must work for the selected group even with no unselected group.' );
+    $ranked = $repo->rank_offers_for_slot( array_slice( tmw_recommendation_test_offers(), 0, 3 ), array( 'rotation_mode' => 'manual' ), 'US', array(), true, true );
+    tmw_assert_same( '8780', $ranked[0]['id'], 'Recommendation ordering must work for the selected group even with no unselected group.' );
+};
+$tests['jerkmate_8780_is_global_recommendation_rank_one'] = function() {
+    tmw_reset_test_state();
+    tmw_assert_same( 1, tmw_cr_get_recommended_offer_priority( '8780' ), 'Jerkmate PPS 8780 must be global recommendation rank 1.' );
+    $expected_catalog = array( '8780', '10335', '10139', '10407', '9022', '10022', '10224', '3778', '153', '6224', '8266', '10292', '8835', '9293', '8837', '9768', '9927', '9048', '10093', '9248', '9976' );
+    foreach ( $expected_catalog as $index => $offer_id ) {
+        tmw_assert_same( $index + 1, tmw_cr_get_recommended_offer_priority( $offer_id ), 'Full recommendation catalog order must remain stable for offer ' . $offer_id . '.' );
+    }
+};
+$tests['frontend_final_winner_uses_first_ranked_eligible_offer_not_animation_randomness'] = function() {
+    $js_file = file_get_contents( dirname( __DIR__ ) . '/assets/js/slot-banner.js' );
+    tmw_assert_contains( 'winner = state.offers[0];', $js_file, 'Final winner must be the first ranked eligible offer.' );
+    tmw_assert_true( false === strpos( $js_file, 'state.offers[Math.floor(Math.random() * state.offers.length)]' ), 'Uniform random selection must not replace the ranked final winner.' );
+    tmw_assert_contains( 'Math.floor(Math.random() * (i + 1))', $js_file, 'Animation cards may continue to use a random shuffled sequence.' );
+    tmw_assert_contains( 'return renderFinalSelection(state, winner, prepareForSpin);', $js_file, 'The ranked winner must still drive the final three-reel result.' );
+    tmw_assert_contains( 'var nextHref = matchingOffer.cta_url || state.defaultCtaUrl ||', $js_file, 'Winner CTA fallback behavior must remain unchanged.' );
+    tmw_assert_contains( 'appendTrackingParam(state.cta, state.param, state.value);', $js_file, 'Winner tracking parameter behavior must remain unchanged.' );
+};
+$tests['eligible_8780_leads_frontend_pool_and_ineligible_8780_falls_through_to_rank_two'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( array(
+        '8780'  => array( 'id' => '8780', 'name' => 'Jerkmate - PPS', 'status' => 'active', 'payout_type' => 'pps' ),
+        '10335' => array( 'id' => '10335', 'name' => 'Candy AI - PPS', 'status' => 'active', 'payout_type' => 'pps' ),
+    ) );
+    $settings = array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array(), 'frontend_pool_mode' => 'smart_auto', 'rotation_mode' => 'manual' );
+    $overrides = array(
+        '8780'  => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/8780', 'allowed_countries' => 'US' ),
+        '10335' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/10335', 'allowed_countries' => 'US' ),
+    );
+    $repo->save_offer_overrides( $overrides );
+    $eligible = $repo->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    tmw_assert_same( '8780', $eligible[0]['id'], 'Eligible Jerkmate PPS 8780 must be the first offer consumed by deterministic winner selection.' );
+
+    $overrides['8780']['final_url_override'] = '';
+    $repo->save_offer_overrides( $overrides );
+    $fallback = $repo->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    tmw_assert_true( ! in_array( '8780', array_column( $fallback, 'id' ), true ), '8780 without a valid CTA must be excluded before winner selection.' );
+    tmw_assert_same( '10335', $fallback[0]['id'], 'When 8780 is ineligible, catalog rank 2 must become the first ranked winner.' );
 };
 $tests['disabled_recommended_offer_is_excluded_before_ranking'] = function() {
     tmw_reset_test_state();
@@ -6913,13 +6953,13 @@ $tests['selected_only_legacy_ranking_unchanged'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'o', 'm' );
     $ranked = $repo->rank_offers_for_slot( tmw_recommendation_test_offers(), array( 'rotation_mode' => 'manual' ), 'US', array(), true, false );
-    tmw_assert_same( array( '500', '501', '10139', '10335' ), array_column( $ranked, 'id' ), 'With recommendations disabled, legacy alphabetical selected-only ordering must remain.' );
+    tmw_assert_same( array( '500', '501', '10139', '8780', '10335' ), array_column( $ranked, 'id' ), 'With recommendations disabled, legacy alphabetical selected-only ordering must remain.' );
 };
 $tests['smart_auto_ignores_saved_manual_membership_priority'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'o', 'm' );
     $ranked = $repo->rank_offers_for_slot( tmw_recommendation_test_offers(), array( 'rotation_mode' => 'manual' ), 'US', array( '501' => 0 ), false, true );
-    tmw_assert_same( '10335', $ranked[0]['id'], 'Smart auto must not boost an ordinary offer with saved manual priority.' );
+    tmw_assert_same( '8780', $ranked[0]['id'], 'Smart auto must not boost an ordinary offer with saved manual priority.' );
 };
 $tests['ordinary_ties_preserve_name_order_manual_and_optimized'] = function() {
     tmw_reset_test_state();

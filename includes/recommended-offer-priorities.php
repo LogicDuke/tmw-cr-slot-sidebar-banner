@@ -25,10 +25,12 @@ function tmw_cr_get_recommended_offer_priority( $offer_id ) {
     $offer_id = (string) (int) $offer_id;
 
     $catalog = array(
+        // Global primary/default offer.
+        '8780',
         // AI.
         '10335', '10139', '10407', '9022', '10022', '10224',
         // Cam.
-        '8780', '3778', '153', '6224', '8266', '10292',
+        '3778', '153', '6224', '8266', '10292',
         // Fansite.
         '8835', '9293', '8837', '9768', '9927', '9048',
         // Adult Paysite / VOD.

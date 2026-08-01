@@ -295,7 +295,10 @@
         var winner = null;
 
         if (state.offers.length) {
-            winner = state.offers[Math.floor(Math.random() * state.offers.length)];
+            // The backend returns eligible offers in recommendation order. Randomness
+            // belongs only to the animated reel sequence; the best eligible offer is
+            // always the final result.
+            winner = state.offers[0];
 
             if (state.debugEnabled && window.console && typeof window.console.debug === 'function') {
                 window.console.debug('[TMW-BANNER-OFFER] select_start eligible_count=' + state.offers.length);

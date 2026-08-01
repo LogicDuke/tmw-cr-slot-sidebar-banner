@@ -3,7 +3,7 @@
  * Plugin Name: TMW CR Offer Sidebar Banner
  * Plugin URI: https://themilisofialtd.com/
  * Description: Displays a geo-targeted CrackRevenue offer recommendation banner with an animated offer selector in sidebar areas via shortcode or template tag.
- * Version: 1.9.13
+ * Version: 1.9.14
  * Author: The Milisofia LTD
  * Author URI: https://themilisofialtd.com/
  * License: GPL2
@@ -15,11 +15,12 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.13' );
+define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.14' );
 define( 'TMW_CR_SLOT_BANNER_PATH', plugin_dir_path( __FILE__ ) );
 define( 'TMW_CR_SLOT_BANNER_URL', plugin_dir_url( __FILE__ ) );
 
 require_once TMW_CR_SLOT_BANNER_PATH . 'includes/geo-helper.php';
+require_once TMW_CR_SLOT_BANNER_PATH . 'includes/recommended-offer-priorities.php';
 require_once TMW_CR_SLOT_BANNER_PATH . 'includes/class-offer-repository.php';
 require_once TMW_CR_SLOT_BANNER_PATH . 'includes/class-cr-api-client.php';
 require_once TMW_CR_SLOT_BANNER_PATH . 'includes/class-cr-api-inspector.php';

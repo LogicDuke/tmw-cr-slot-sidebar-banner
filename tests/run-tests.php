@@ -145,6 +145,7 @@ function tmw_reset_test_state() {
     $GLOBALS['tmw_test_cron_events'] = array();
     $GLOBALS['tmw_test_current_user_can'] = true;
     $GLOBALS['tmw_test_added_options_pages'] = array();
+    $GLOBALS['tmw_test_filters'] = array();
     $_GET  = array();
     $_POST = array();
 }
@@ -5406,17 +5407,17 @@ $tests['frontend_post_spin_cta_text_decoration_none'] = function() {
     tmw_assert_contains( 'border-bottom: 0 !important;', $css_file, 'CTA pseudo elements should not render underline borders.' );
 };
 
-$tests['plugin_version_bumped_to_1913'] = function() {
+$tests['plugin_version_bumped_to_1914'] = function() {
     $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
-    tmw_assert_contains( 'Version: 1.9.13', $plugin_file, 'Plugin header version should be 1.9.13.' );
-    tmw_assert_contains( "define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.13' );", $plugin_file, 'Asset version constant should be 1.9.13.' );
+    tmw_assert_contains( 'Version: 1.9.14', $plugin_file, 'Plugin header version should be 1.9.14.' );
+    tmw_assert_contains( "define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.14' );", $plugin_file, 'Asset version constant should be 1.9.14.' );
 };
 
 
 
-$tests['readme_stable_tag_bumped_to_1913'] = function() {
+$tests['readme_stable_tag_bumped_to_1914'] = function() {
     $readme_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'readme.txt' );
-    tmw_assert_contains( 'Stable tag: 1.9.13', $readme_file, 'Readme stable tag should be 1.9.13.' );
+    tmw_assert_contains( 'Stable tag: 1.9.14', $readme_file, 'Readme stable tag should be 1.9.14.' );
 };
 
 
@@ -6845,6 +6846,96 @@ $tests['slot_setup_frontend_ready_count_requires_manual_final_url'] = function()
     $_GET = array( 'tab' => 'slot-setup', 'include_all_offers' => 1 );
     ob_start(); $page->render_page(); $html = (string) ob_get_clean();
     tmw_assert_contains( 'Displayed setup rows currently frontend-eligible: 0', $html, 'Frontend-ready count should require manual final URL override.' );
+};
+
+
+// v1.9.14 runtime-only CrakRevenue recommendation priority.
+function tmw_recommendation_test_offers() {
+    return array(
+        array( 'id' => '500', 'name' => 'Alpha Ordinary' ),
+        array( 'id' => '10335', 'name' => 'Zulu Recommended' ),
+        array( 'id' => '10139', 'name' => 'Beta Recommended' ),
+        array( 'id' => '501', 'name' => 'Beta Ordinary' ),
+    );
+}
+
+$tests['recommended_eligible_offer_ranks_before_ordinary_and_smart_fill_keeps_ordinary'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'o', 'm' );
+    $ranked = $repo->rank_offers_for_slot( tmw_recommendation_test_offers(), array( 'rotation_mode' => 'manual' ), 'US', array(), false, true );
+    tmw_assert_same( array( '10335', '10139', '500', '501' ), array_column( $ranked, 'id' ), 'Recommendations should lead in catalog order and ordinary eligible offers should remain.' );
+};
+$tests['manual_priority_ordinary_precedes_recommended'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'o', 'm' );
+    $ranked = $repo->rank_offers_for_slot( tmw_recommendation_test_offers(), array( 'rotation_mode' => 'manual' ), 'US', array( '500' => 1 ), true, true );
+    tmw_assert_same( '500', $ranked[0]['id'], 'Explicit manual priority must precede recommendations.' );
+};
+$tests['recommendations_apply_to_selected_group_when_unselected_empty'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'o', 'm' );
+    $ranked = $repo->rank_offers_for_slot( array_slice( tmw_recommendation_test_offers(), 0, 2 ), array( 'rotation_mode' => 'manual' ), 'US', array(), true, true );
+    tmw_assert_same( '10335', $ranked[0]['id'], 'Recommendation ordering must work for the selected group even with no unselected group.' );
+};
+$tests['disabled_recommended_offer_is_excluded_before_ranking'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $fixture = tmw_test_pool_mode_synced_fixture();
+    $fixture['9927']['status'] = 'disabled';
+    $repo->save_synced_offers( $fixture );
+    $repo->save_offer_overrides( tmw_test_pool_mode_overrides_fixture() );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', tmw_test_pool_mode_settings( 'smart_auto' ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    tmw_assert_true( ! in_array( '9927', array_column( $offers, 'id' ), true ), 'Disabled recommended offers must be excluded by eligibility.' );
+};
+$tests['country_ineligible_recommended_offer_is_excluded_before_ranking'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_synced_offers( tmw_test_pool_mode_synced_fixture() );
+    $overrides = tmw_test_pool_mode_overrides_fixture();
+    $overrides['9927']['allowed_countries'] = 'BE';
+    $repo->save_offer_overrides( $overrides );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', tmw_test_pool_mode_settings( 'smart_auto' ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    tmw_assert_true( ! in_array( '9927', array_column( $offers, 'id' ), true ), 'Country-ineligible recommended offers must be excluded before ranking.' );
+};
+$tests['recommendation_filter_can_remove_and_reorder'] = function() {
+    tmw_reset_test_state();
+    add_filter( 'tmw_cr_slot_banner_recommended_offer_priorities', static function() { return array( '10139', '500' ); } );
+    tmw_assert_same( null, tmw_cr_get_recommended_offer_priority( '10335' ), 'Filter should remove a recommendation.' );
+    tmw_assert_same( 1, tmw_cr_get_recommended_offer_priority( '010139' ), 'Filter should reorder recommendations and IDs should normalize.' );
+    tmw_assert_same( 2, tmw_cr_get_recommended_offer_priority( 500 ), 'Filtered numeric ID should normalize.' );
+};
+$tests['recommendation_helper_returns_null_never_zero'] = function() {
+    tmw_reset_test_state();
+    tmw_assert_same( null, tmw_cr_get_recommended_offer_priority( 'not-an-id' ), 'Invalid ID must return null.' );
+    tmw_assert_same( null, tmw_cr_get_recommended_offer_priority( '999999' ), 'Ordinary ID must return null.' );
+};
+$tests['selected_only_legacy_ranking_unchanged'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'o', 'm' );
+    $ranked = $repo->rank_offers_for_slot( tmw_recommendation_test_offers(), array( 'rotation_mode' => 'manual' ), 'US', array(), true, false );
+    tmw_assert_same( array( '500', '501', '10139', '10335' ), array_column( $ranked, 'id' ), 'With recommendations disabled, legacy alphabetical selected-only ordering must remain.' );
+};
+$tests['smart_auto_ignores_saved_manual_membership_priority'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'o', 'm' );
+    $ranked = $repo->rank_offers_for_slot( tmw_recommendation_test_offers(), array( 'rotation_mode' => 'manual' ), 'US', array( '501' => 0 ), false, true );
+    tmw_assert_same( '10335', $ranked[0]['id'], 'Smart auto must not boost an ordinary offer with saved manual priority.' );
+};
+$tests['ordinary_ties_preserve_name_order_manual_and_optimized'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'o', 'm' );
+    $ordinary = array( array( 'id' => '700', 'name' => 'Zulu' ), array( 'id' => '701', 'name' => 'Alpha' ) );
+    $manual = $repo->rank_offers_for_slot( $ordinary, array( 'rotation_mode' => 'manual' ), 'US', array(), false, true );
+    tmw_assert_same( array( '701', '700' ), array_column( $manual, 'id' ), 'Manual branch ordinary ties must retain name ordering.' );
+    $optimized = $repo->rank_offers_for_slot( $ordinary, array( 'rotation_mode' => 'epc_desc', 'optimization_enabled' => 1 ), 'US', array(), false, true );
+    tmw_assert_same( array( '701', '700' ), array_column( $optimized, 'id' ), 'Optimized branch ordinary ties must retain name ordering.' );
+};
+$tests['recommendation_sorting_is_deterministic'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'o', 'm' );
+    $first = $repo->rank_offers_for_slot( tmw_recommendation_test_offers(), array( 'rotation_mode' => 'manual' ), 'US', array(), false, true );
+    $second = $repo->rank_offers_for_slot( array_reverse( tmw_recommendation_test_offers() ), array( 'rotation_mode' => 'manual' ), 'US', array(), false, true );
+    tmw_assert_same( array_column( $first, 'id' ), array_column( $second, 'id' ), 'Ranking must be deterministic regardless of input order.' );
 };
 
 foreach ( $tests as $name => $test ) {

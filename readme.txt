@@ -3,7 +3,7 @@ Contributors: themilisofia
 Tags: affiliate marketing, crackrevenue, sidebar, banner, shortcode
 Requires at least: 5.8
 Tested up to: 6.4
-Stable tag: 1.9.13
+Stable tag: 1.9.14
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -42,6 +42,11 @@ Yes. Developers can hook into the `tmw_cr_slot_banner_offers` filter to provide 
 Yes. Version 1.3.0 ships with optimized PNG assets inside `assets/img/offers/` so the offer recommendation banner works out of the box. You can still override or extend the catalog with your own creatives via filters.
 
 == Changelog ==
+
+= 1.9.14 =
+* [TMW-SEO-AUTO] Added a runtime-only, filterable CrakRevenue recommended-offer priority layer for smart-fill and smart-auto pools.
+* Recommendations never override eligibility, disabled status, country targeting, allowed offer types, logo requirements, or CTA URL validation, and explicit manual priority remains first in `manual_priority_smart_fill`.
+* Developers can customize the catalog with `tmw_cr_slot_banner_recommended_offer_priorities` and inspect an offer with `tmw_cr_get_recommended_offer_priority()`; recommendation data is never stored in WordPress options.
 
 = 1.9.13 =
 * [TMW-FIX] Frontend pool architecture: default mode is now `manual_priority_smart_fill` so eligible non-selected synced offers (PPS, non-Fanvue Revshare, Revshare Lifetime) are no longer hidden when manually-selected offers exist. Selected offers still rank above non-selected.

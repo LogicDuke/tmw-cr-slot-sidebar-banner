@@ -1342,7 +1342,7 @@ class TMW_CR_Slot_Admin_Page {
             <?php wp_nonce_field( 'tmw_cr_slot_banner_save_pool_mode' ); ?>
             <input type="hidden" name="action" value="tmw_cr_slot_banner_save_pool_mode" />
             <h3><?php esc_html_e( 'Frontend pool mode', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
-            <p class="description"><?php esc_html_e( 'Selected offers get priority, but eligible synced offers can still fill the banner. Manual selected only restricts the banner to selected offers.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+            <p class="description"><?php esc_html_e( 'Explicit manual selections and priorities rank first. CR Recommended offers then rank before ordinary smart-fill offers, without overriding eligibility, country targeting, disabled status, or allowed offer types. Manual selected only remains restricted to selected offers.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
             <p>
                 <?php foreach ( $pool_mode_options as $mode_key => $mode_label ) : ?>
                     <label style="display:block;margin:0 0 6px 0;">

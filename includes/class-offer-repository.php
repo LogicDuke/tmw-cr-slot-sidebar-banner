@@ -2367,8 +2367,8 @@ class TMW_CR_Slot_Offer_Repository {
         // selected_only / smart_auto -> single combined ranking (legacy behaviour).
         // manual_priority_smart_fill -> rank selected and unselected separately, then concat (selected first).
         if ( 'manual_priority_smart_fill' === $pool_mode && ! empty( $unselected_offers ) ) {
-            $ranked_selected   = $this->rank_offers_for_slot( array_values( array_filter( $selected_offers ) ), $settings, $country, $priorities );
-            $ranked_unselected = $this->rank_offers_for_slot( array_values( array_filter( $unselected_offers ) ), $settings, $country, $priorities );
+            $ranked_selected   = $this->rank_offers_for_slot( array_values( array_filter( $selected_offers ) ), $settings, $country, $priorities, true, true );
+            $ranked_unselected = $this->rank_offers_for_slot( array_values( array_filter( $unselected_offers ) ), $settings, $country, $priorities, true, true );
 
             // Deduplicate (an offer could in theory be in both groups if data was malformed).
             $seen_ids = array();
@@ -2382,7 +2382,7 @@ class TMW_CR_Slot_Offer_Repository {
                 $offers[]         = $candidate;
             }
         } else {
-            $offers = $this->rank_offers_for_slot( $offers, $settings, $country, $priorities );
+            $offers = $this->rank_offers_for_slot( $offers, $settings, $country, $priorities, 'smart_auto' === $pool_mode );
         }
 
         if ( count( $offers ) < 3 ) {
@@ -2597,10 +2597,12 @@ class TMW_CR_Slot_Offer_Repository {
      * @param array<string,mixed>             $settings Settings.
      * @param string                          $country Country name/code.
      * @param array<string,mixed>             $priorities Manual priorities.
+     * @param bool                            $use_recommendations Apply runtime CR recommendation ordering.
+     * @param bool                            $manual_overrides_first Rank manual priority ahead of optimization scores.
      *
      * @return array<int,array<string,string>>
      */
-    public function rank_offers_for_slot( $offers, $settings, $country, $priorities = array() ) {
+    public function rank_offers_for_slot( $offers, $settings, $country, $priorities = array(), $use_recommendations = false, $manual_overrides_first = false ) {
         $mode = isset( $settings['rotation_mode'] ) ? sanitize_key( (string) $settings['rotation_mode'] ) : 'manual';
         $optimization = $this->get_optimization_settings( $settings );
         if ( '' === $mode ) {
@@ -2610,12 +2612,36 @@ class TMW_CR_Slot_Offer_Repository {
         if ( 'manual' === $mode || empty( $optimization['optimization_enabled'] ) ) {
             usort(
                 $offers,
-                static function ( $left, $right ) use ( $priorities ) {
-                    $left_priority  = isset( $priorities[ $left['id'] ] ) ? (int) $priorities[ $left['id'] ] : 9999;
-                    $right_priority = isset( $priorities[ $right['id'] ] ) ? (int) $priorities[ $right['id'] ] : 9999;
+                static function ( $left, $right ) use ( $priorities, $use_recommendations ) {
+                    $left_manual  = array_key_exists( (string) $left['id'], $priorities );
+                    $right_manual = array_key_exists( (string) $right['id'], $priorities );
+
+                    if ( $left_manual !== $right_manual ) {
+                        return $left_manual ? -1 : 1;
+                    }
+
+                    $left_priority  = $left_manual ? (int) $priorities[ $left['id'] ] : 9999;
+                    $right_priority = $right_manual ? (int) $priorities[ $right['id'] ] : 9999;
 
                     if ( $left_priority !== $right_priority ) {
                         return $left_priority <=> $right_priority;
+                    }
+
+                    if ( $use_recommendations ) {
+                        $left_recommended  = tmw_cr_get_recommended_offer_priority( $left['id'] );
+                        $right_recommended = tmw_cr_get_recommended_offer_priority( $right['id'] );
+                        if ( null !== $left_recommended || null !== $right_recommended ) {
+                            if ( null === $left_recommended ) {
+                                return 1;
+                            }
+                            if ( null === $right_recommended ) {
+                                return -1;
+                            }
+                            if ( $left_recommended !== $right_recommended ) {
+                                return $left_recommended <=> $right_recommended;
+                            }
+                        }
+                        return strnatcasecmp( (string) $left['id'], (string) $right['id'] );
                     }
 
                     return strcasecmp( $left['name'], $right['name'] );
@@ -2649,7 +2675,37 @@ class TMW_CR_Slot_Offer_Repository {
 
         usort(
             $scored,
-            static function ( $left, $right ) use ( $priorities ) {
+            static function ( $left, $right ) use ( $priorities, $use_recommendations, $manual_overrides_first ) {
+                if ( $manual_overrides_first ) {
+                    $left_manual  = array_key_exists( (string) $left['id'], $priorities );
+                    $right_manual = array_key_exists( (string) $right['id'], $priorities );
+                    if ( $left_manual !== $right_manual ) {
+                        return $left_manual ? -1 : 1;
+                    }
+                    if ( $left_manual ) {
+                        $manual_comparison = (int) $priorities[ $left['id'] ] <=> (int) $priorities[ $right['id'] ];
+                        if ( 0 !== $manual_comparison ) {
+                            return $manual_comparison;
+                        }
+                    }
+                }
+
+                if ( $use_recommendations ) {
+                    $left_recommended  = tmw_cr_get_recommended_offer_priority( $left['id'] );
+                    $right_recommended = tmw_cr_get_recommended_offer_priority( $right['id'] );
+                    if ( null !== $left_recommended || null !== $right_recommended ) {
+                        if ( null === $left_recommended ) {
+                            return 1;
+                        }
+                        if ( null === $right_recommended ) {
+                            return -1;
+                        }
+                        if ( $left_recommended !== $right_recommended ) {
+                            return $left_recommended <=> $right_recommended;
+                        }
+                    }
+                }
+
                 if ( $left['_tmw_score'] !== $right['_tmw_score'] ) {
                     return $right['_tmw_score'] <=> $left['_tmw_score'];
                 }
@@ -2658,13 +2714,15 @@ class TMW_CR_Slot_Offer_Repository {
                     return $right['_tmw_has_country_stats'] <=> $left['_tmw_has_country_stats'];
                 }
 
-                $left_priority  = isset( $priorities[ $left['id'] ] ) ? (int) $priorities[ $left['id'] ] : 9999;
-                $right_priority = isset( $priorities[ $right['id'] ] ) ? (int) $priorities[ $right['id'] ] : 9999;
-                if ( $left_priority !== $right_priority ) {
-                    return $left_priority <=> $right_priority;
+                if ( ! $manual_overrides_first ) {
+                    $left_priority  = isset( $priorities[ $left['id'] ] ) ? (int) $priorities[ $left['id'] ] : 9999;
+                    $right_priority = isset( $priorities[ $right['id'] ] ) ? (int) $priorities[ $right['id'] ] : 9999;
+                    if ( $left_priority !== $right_priority ) {
+                        return $left_priority <=> $right_priority;
+                    }
                 }
 
-                return strcasecmp( $left['name'], $right['name'] );
+                return $use_recommendations ? strnatcasecmp( (string) $left['id'], (string) $right['id'] ) : strcasecmp( $left['name'], $right['name'] );
             }
         );
 

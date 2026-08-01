@@ -39,7 +39,8 @@ integration that intentionally owns final ordering can explicitly return
 `false` from `tmw_cr_slot_banner_preserve_ranked_order`.
 
 The Offer Setup screen stores a separate explicit-priority marker when “Use
-manual priority” is checked. Numeric `100` values automatically emitted by older
-admin forms are treated as implicit during read-only migration, while legacy
-customized values and newly marked values—including an intentional `100`—remain
-manual priorities.
+manual priority” is checked. A one-time settings migration treats numeric `100`
+values automatically emitted by older admin forms as implicit and marks legacy
+non-default custom values explicitly. After migration, ranking requires both a
+saved value and its marker—including for an intentional `100`—and never infers
+operator intent from the number during frontend requests.

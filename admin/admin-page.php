@@ -242,7 +242,9 @@ class TMW_CR_Slot_Admin_Page {
             }
         }
 
-        $output['slot_offer_priority'] = array();
+        // Preserve rows not present on the current paginated admin screen; submitted rows replace
+        // their own values below. Explicit markers are handled with the same page-safe semantics.
+        $output['slot_offer_priority'] = isset( $existing['slot_offer_priority'] ) && is_array( $existing['slot_offer_priority'] ) ? $existing['slot_offer_priority'] : array();
         if ( isset( $input['slot_offer_priority'] ) && is_array( $input['slot_offer_priority'] ) ) {
             foreach ( $input['slot_offer_priority'] as $offer_id => $priority ) {
                 $offer_id = sanitize_text_field( (string) $offer_id );
@@ -257,7 +259,11 @@ class TMW_CR_Slot_Admin_Page {
         // The marker is authoritative once the priority controls have been submitted. This
         // separates operator intent from the numeric default emitted for every displayed row.
         if ( ! empty( $input['slot_offer_priority_explicit_submitted'] ) ) {
-            $output['slot_offer_priority_explicit'] = array();
+            $submitted_priority_ids = array_map( 'strval', array_keys( (array) ( $input['slot_offer_priority'] ?? array() ) ) );
+            $existing_explicit_ids  = is_array( $existing['slot_offer_priority_explicit'] ?? null ) ? array_map( 'strval', $existing['slot_offer_priority_explicit'] ) : array();
+            $output['slot_offer_priority_explicit'] = array_values(
+                array_diff( $existing_explicit_ids, $submitted_priority_ids )
+            );
             foreach ( (array) ( $input['slot_offer_priority_explicit'] ?? array() ) as $offer_id ) {
                 $offer_id = sanitize_text_field( (string) $offer_id );
                 if ( '' !== $offer_id && isset( $output['slot_offer_priority'][ $offer_id ] ) ) {
@@ -1826,7 +1832,7 @@ class TMW_CR_Slot_Admin_Page {
                             $offer_id    = (string) ( $offer['id'] ?? '' );
                             $selected    = ! empty( $offer['is_selected_for_slot'] );
                             $priority    = isset( $settings['slot_offer_priority'][ $offer_id ] ) ? (int) $settings['slot_offer_priority'][ $offer_id ] : 100;
-                            $priority_is_explicit = $this->offer_repository->is_explicit_slot_offer_priority( $offer_id, (array) $settings['slot_offer_priority'], $settings );
+                            $priority_is_explicit = $this->offer_repository->is_explicit_slot_offer_priority( $offer_id, (array) $settings['slot_offer_priority'], (array) ( $settings['slot_offer_priority_explicit'] ?? array() ) );
                             $image_value = isset( $settings['offer_image_overrides'][ $offer_id ] ) ? (string) $settings['offer_image_overrides'][ $offer_id ] : '';
                             $override    = $this->offer_repository->get_offer_override( $offer_id );
                             $enabled     = ! isset( $override['enabled'] ) || ! empty( $override['enabled'] );

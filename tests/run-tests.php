@@ -6623,6 +6623,7 @@ $tests['pool_mode_f_manual_priority_smart_fill_ranks_explicit_priority_first'] =
 
     $settings = tmw_test_pool_mode_settings( 'manual_priority_smart_fill' );
     $settings['slot_offer_priority'] = array( '10393' => 1 );
+    $settings['slot_offer_priority_explicit'] = array( '10393' );
     $offers = $repo->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
     tmw_assert_true( count( $offers ) > 0, 'Smart-fill pool must not be empty.' );
     tmw_assert_same( '10393', (string) $offers[0]['id'], 'An explicitly prioritized selected offer must remain first.' );
@@ -6863,7 +6864,7 @@ $tests['recommended_eligible_offer_ranks_before_ordinary_and_smart_fill_keeps_or
 $tests['manual_priority_ordinary_precedes_recommended'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'o', 'm' );
-    $ranked = $repo->rank_offers_for_slot( tmw_recommendation_test_offers(), array( 'rotation_mode' => 'manual' ), 'US', array( '500' => 1 ), true, true );
+    $ranked = $repo->rank_offers_for_slot( tmw_recommendation_test_offers(), array( 'rotation_mode' => 'manual', 'slot_offer_priority_explicit' => array( '500' ) ), 'US', array( '500' => 1 ), true, true );
     tmw_assert_same( '500', $ranked[0]['id'], 'Explicit manual priority must precede recommendations.' );
 };
 $tests['recommendations_apply_to_selected_group_when_unselected_empty'] = function() {
@@ -6988,7 +6989,7 @@ function tmw_final_pool_fixture( $jerkmate_url = 'https://trk.example.test/8780'
 }
 
 function tmw_final_pool_settings( $priorities = array() ) {
-    return array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '500' ), 'slot_offer_priority' => $priorities, 'frontend_pool_mode' => 'manual_priority_smart_fill', 'rotation_mode' => 'manual' );
+    return array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '500' ), 'slot_offer_priority' => $priorities, 'slot_offer_priority_explicit' => array_map( 'strval', array_keys( $priorities ) ), 'frontend_pool_mode' => 'manual_priority_smart_fill', 'rotation_mode' => 'manual' );
 }
 
 $tests['final_serialized_pool_starts_with_8780_without_explicit_manual_priority'] = function() {
@@ -7011,6 +7012,7 @@ $tests['final_pool_priority_entry_9999_is_still_explicit'] = function() {
 $tests['legacy_admin_default_priority_100_is_implicit'] = function() {
     tmw_reset_test_state();
     $settings = tmw_final_pool_settings( array( '500' => 100 ) );
+    $settings['slot_offer_priority_explicit'] = array();
     $offers = tmw_final_pool_fixture()->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
     tmw_assert_same( '8780', (string) $offers[0]['id'], 'A legacy admin-emitted default 100 row must not outrank Jerkmate.' );
 };
@@ -7021,13 +7023,13 @@ $tests['operator_can_explicitly_assign_priority_100'] = function() {
     $offers = tmw_final_pool_fixture()->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
     tmw_assert_same( '500', (string) $offers[0]['id'], 'Explicit metadata must allow an operator-assigned priority of 100 to outrank recommendations.' );
 };
-$tests['explicit_priority_helper_migrates_legacy_custom_values_without_writes'] = function() {
+$tests['explicit_priority_helper_requires_value_and_marker'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'o', 'm' );
-    tmw_assert_true( ! $repo->is_explicit_slot_offer_priority( '500', array( '500' => 100 ), array() ), 'Legacy default 100 must normalize as implicit.' );
-    tmw_assert_true( $repo->is_explicit_slot_offer_priority( '500', array( '500' => 25 ), array() ), 'Legacy customized values must remain explicit.' );
-    tmw_assert_true( $repo->is_explicit_slot_offer_priority( '500', array( '500' => 100 ), array( 'slot_offer_priority_explicit' => array( '500' ) ) ), 'Authoritative metadata must preserve intentional priority 100.' );
-    tmw_assert_true( empty( $GLOBALS['tmw_test_options'] ), 'Read-only migration must not mutate settings on a frontend request.' );
+    tmw_assert_true( ! $repo->is_explicit_slot_offer_priority( '500', array( '500' => 100 ), array() ), 'A saved value without a marker must be implicit.' );
+    tmw_assert_true( ! $repo->is_explicit_slot_offer_priority( '500', array( '500' => 25 ), array() ), 'Numeric customization alone must not bypass authoritative metadata.' );
+    tmw_assert_true( ! $repo->is_explicit_slot_offer_priority( '500', array(), array( '500' ) ), 'A marker without a saved value must not establish precedence.' );
+    tmw_assert_true( $repo->is_explicit_slot_offer_priority( '500', array( '500' => 100 ), array( '500' ) ), 'A saved value plus authoritative marker must preserve intentional priority 100.' );
 };
 $tests['admin_priority_marker_distinguishes_operator_intent'] = function() {
     tmw_reset_test_state();
@@ -7036,6 +7038,14 @@ $tests['admin_priority_marker_distinguishes_operator_intent'] = function() {
     tmw_assert_same( array(), $implicit['slot_offer_priority_explicit'], 'Unticked default rows must be saved as implicit.' );
     $explicit = $page->sanitize_settings( array( 'slot_offer_priority' => array( '500' => 100 ), 'slot_offer_priority_explicit_submitted' => 1, 'slot_offer_priority_explicit' => array( '500' ) ) );
     tmw_assert_same( array( '500' ), $explicit['slot_offer_priority_explicit'], 'Ticked rows must persist explicit operator intent independently of numeric value.' );
+};
+$tests['admin_priority_marker_preserves_unsubmitted_offer_metadata'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'slot_offer_priority' => array( '500' => 10, 'outside-page' => 20 ), 'slot_offer_priority_explicit' => array( '500', 'outside-page' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    $saved = $page->sanitize_settings( array( 'slot_offer_priority' => array( '500' => 100 ), 'slot_offer_priority_explicit_submitted' => 1 ) );
+    tmw_assert_same( array( 'outside-page' ), $saved['slot_offer_priority_explicit'], 'Saving displayed rows must not delete explicit markers belonging to unsubmitted rows.' );
+    tmw_assert_same( 20, $saved['slot_offer_priority']['outside-page'], 'Saving displayed rows must preserve the corresponding unsubmitted priority value.' );
 };
 $tests['final_pool_ineligible_8780_is_absent_and_rank_two_is_first'] = function() {
     tmw_reset_test_state();

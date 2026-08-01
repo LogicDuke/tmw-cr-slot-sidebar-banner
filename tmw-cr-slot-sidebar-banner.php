@@ -756,6 +756,8 @@ function tmw_cr_slot_banner_purge_output_cache() {
  * @return void
  */
 function tmw_cr_slot_banner_maybe_invalidate_version_cache() {
+    tmw_cr_slot_banner_migrate_explicit_priorities();
+
     $installed_version = (string) get_option( TMW_CR_SLOT_BANNER_VERSION_OPTION, '' );
     if ( TMW_CR_SLOT_BANNER_VERSION === $installed_version ) {
         return;
@@ -763,6 +765,31 @@ function tmw_cr_slot_banner_maybe_invalidate_version_cache() {
 
     tmw_cr_slot_banner_purge_output_cache();
     update_option( TMW_CR_SLOT_BANNER_VERSION_OPTION, TMW_CR_SLOT_BANNER_VERSION, false );
+}
+
+/**
+ * Migrates legacy customized priorities to explicit metadata once.
+ *
+ * The old form contract always emitted 100 for untouched rows. Non-100 legacy values are the
+ * only durable evidence of customization; after this one-time migration all detection uses the
+ * explicit marker exclusively. The complete settings array is preserved.
+ *
+ * @return void
+ */
+function tmw_cr_slot_banner_migrate_explicit_priorities() {
+    $settings = get_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array() );
+    if ( ! is_array( $settings ) || array_key_exists( 'slot_offer_priority_explicit', $settings ) ) {
+        return;
+    }
+
+    $explicit_ids = array();
+    foreach ( (array) ( $settings['slot_offer_priority'] ?? array() ) as $offer_id => $priority ) {
+        if ( 100 !== (int) $priority ) {
+            $explicit_ids[] = sanitize_text_field( (string) $offer_id );
+        }
+    }
+    $settings['slot_offer_priority_explicit'] = array_values( array_filter( array_unique( $explicit_ids ), 'strlen' ) );
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $settings, false );
 }
 
 add_action( 'plugins_loaded', 'tmw_cr_slot_banner_maybe_invalidate_version_cache', 20 );
@@ -782,6 +809,7 @@ function tmw_cr_slot_sidebar_banner_activate() {
     if ( ! get_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY ) ) {
         update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, TMW_CR_Slot_Sidebar_Banner::get_settings() );
     }
+    tmw_cr_slot_banner_migrate_explicit_priorities();
 
     if ( ! get_option( TMW_CR_Slot_Sidebar_Banner::OFFERS_OPTION_KEY ) ) {
         update_option( TMW_CR_Slot_Sidebar_Banner::OFFERS_OPTION_KEY, array() );

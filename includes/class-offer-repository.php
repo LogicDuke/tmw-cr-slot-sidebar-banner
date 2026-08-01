@@ -2661,9 +2661,10 @@ class TMW_CR_Slot_Offer_Repository {
         $mode = isset( $settings['rotation_mode'] ) ? sanitize_key( (string) $settings['rotation_mode'] ) : 'manual';
         $optimization = $this->get_optimization_settings( $settings );
         $explicit_priorities = array();
+        $explicit_priority_ids = isset( $settings['slot_offer_priority_explicit'] ) && is_array( $settings['slot_offer_priority_explicit'] ) ? $settings['slot_offer_priority_explicit'] : array();
         foreach ( $offers as $candidate ) {
             $candidate_id = (string) ( $candidate['id'] ?? '' );
-            if ( $this->is_explicit_slot_offer_priority( $candidate_id, $priorities, $settings ) ) {
+            if ( $this->is_explicit_slot_offer_priority( $candidate_id, $priorities, $explicit_priority_ids ) ) {
                 $explicit_priorities[ $candidate_id ] = (int) $priorities[ $candidate_id ];
             }
         }
@@ -2674,11 +2675,12 @@ class TMW_CR_Slot_Offer_Repository {
         if ( 'manual' === $mode || empty( $optimization['optimization_enabled'] ) ) {
             usort(
                 $offers,
-                static function ( $left, $right ) use ( $explicit_priorities, $manual_precedence, $recommendation_precedence ) {
-                    $left_has_priority  = array_key_exists( (string) $left['id'], $explicit_priorities );
-                    $right_has_priority = array_key_exists( (string) $right['id'], $explicit_priorities );
-                    $left_priority      = $left_has_priority ? $explicit_priorities[ $left['id'] ] : 0;
-                    $right_priority     = $right_has_priority ? $explicit_priorities[ $right['id'] ] : 0;
+                static function ( $left, $right ) use ( $priorities, $explicit_priorities, $manual_precedence, $recommendation_precedence ) {
+                    $priority_source    = $recommendation_precedence ? $explicit_priorities : $priorities;
+                    $left_has_priority  = array_key_exists( (string) $left['id'], $priority_source );
+                    $right_has_priority = array_key_exists( (string) $right['id'], $priority_source );
+                    $left_priority      = $left_has_priority ? (int) $priority_source[ $left['id'] ] : 0;
+                    $right_priority     = $right_has_priority ? (int) $priority_source[ $right['id'] ] : 0;
 
                     if ( $manual_precedence ) {
                         if ( $left_has_priority !== $right_has_priority ) {
@@ -2781,27 +2783,22 @@ class TMW_CR_Slot_Offer_Repository {
     /**
      * Determines whether a saved slot priority represents operator intent.
      *
-     * New settings use an authoritative ID list. Older settings without that metadata retain
-     * customized non-default values, while admin-emitted priority 100 rows migrate as implicit.
-     * This normalization is read-only and never writes settings during a frontend request.
+     * The explicit ID list is authoritative. Legacy inference belongs exclusively to the
+     * one-time settings migration and is never repeated during frontend ranking.
      *
      * @param string              $offer_id Offer ID.
      * @param array<string,mixed> $priorities Saved priority values.
-     * @param array<string,mixed> $settings Complete settings.
+     * @param array<int,string>   $explicit_priority_ids Explicitly marked offer IDs.
      *
      * @return bool
      */
-    public function is_explicit_slot_offer_priority( $offer_id, $priorities, $settings ) {
+    public function is_explicit_slot_offer_priority( $offer_id, $priorities, $explicit_priority_ids ) {
         $offer_id = (string) $offer_id;
         if ( '' === $offer_id || ! array_key_exists( $offer_id, $priorities ) ) {
             return false;
         }
 
-        if ( isset( $settings['slot_offer_priority_explicit'] ) && is_array( $settings['slot_offer_priority_explicit'] ) ) {
-            return in_array( $offer_id, array_map( 'strval', $settings['slot_offer_priority_explicit'] ), true );
-        }
-
-        return 100 !== (int) $priorities[ $offer_id ];
+        return in_array( $offer_id, array_map( 'strval', (array) $explicit_priority_ids ), true );
     }
 
     /**

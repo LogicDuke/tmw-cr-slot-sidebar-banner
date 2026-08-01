@@ -36,7 +36,7 @@ Enter a line for each country on the settings page using the format `CC|Image UR
 Yes. The shortcode outputs responsive markup that adapts well to any narrow column or block area.
 
 = Can I override the bundled offer list? =
-Yes. Developers can hook into the `tmw_cr_slot_banner_offers` filter to provide their own offer array or integrate directly with the CrackRevenue API.
+Yes. Developers can hook into `tmw_cr_slot_banner_offers` to remove or edit offers and append integrations. Ranked IDs keep their authoritative order by default; an integration that intentionally owns final ordering can return `false` from `tmw_cr_slot_banner_preserve_ranked_order`.
 
 = Do you include graphics? =
 Yes. Version 1.3.0 ships with optimized PNG assets inside `assets/img/offers/` so the offer recommendation banner works out of the box. You can still override or extend the catalog with your own creatives via filters.

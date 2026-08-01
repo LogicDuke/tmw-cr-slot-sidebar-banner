@@ -2465,6 +2465,20 @@ class TMW_CR_Slot_Offer_Repository {
         $ranked_offers  = $offers;
         $filtered       = apply_filters( 'tmw_cr_slot_banner_offers', $ranked_offers, '', $banner_data );
         $filtered       = is_array( $filtered ) ? array_values( array_filter( $filtered ) ) : $ranked_offers;
+
+        /**
+         * Allows an intentional integration to take ownership of final offer ordering.
+         *
+         * @param bool                           $preserve_ranked_order Whether to preserve ranked IDs.
+         * @param array<int,array<string,mixed>> $filtered Filtered offers.
+         * @param array<int,array<string,mixed>> $ranked_offers Authoritative ranked offers.
+         * @param array<string,mixed>            $banner_data Banner data.
+         */
+        $preserve_ranked_order = apply_filters( 'tmw_cr_slot_banner_preserve_ranked_order', true, $filtered, $ranked_offers, $banner_data );
+        if ( ! $preserve_ranked_order ) {
+            return $filtered;
+        }
+
         $filtered_by_id = array();
         $filtered_new   = array();
 
@@ -2655,11 +2669,18 @@ class TMW_CR_Slot_Offer_Repository {
             usort(
                 $offers,
                 static function ( $left, $right ) use ( $priorities, $manual_precedence, $recommendation_precedence ) {
-                    $left_priority  = isset( $priorities[ $left['id'] ] ) ? (int) $priorities[ $left['id'] ] : 9999;
-                    $right_priority = isset( $priorities[ $right['id'] ] ) ? (int) $priorities[ $right['id'] ] : 9999;
+                    $left_has_priority  = array_key_exists( (string) $left['id'], $priorities );
+                    $right_has_priority = array_key_exists( (string) $right['id'], $priorities );
+                    $left_priority      = $left_has_priority ? (int) $priorities[ $left['id'] ] : 0;
+                    $right_priority     = $right_has_priority ? (int) $priorities[ $right['id'] ] : 0;
 
-                    if ( $manual_precedence && $left_priority !== $right_priority ) {
-                        return $left_priority <=> $right_priority;
+                    if ( $manual_precedence ) {
+                        if ( $left_has_priority !== $right_has_priority ) {
+                            return $left_has_priority ? -1 : 1;
+                        }
+                        if ( $left_has_priority && $left_priority !== $right_priority ) {
+                            return $left_priority <=> $right_priority;
+                        }
                     }
 
                     if ( $recommendation_precedence ) {
@@ -2706,9 +2727,14 @@ class TMW_CR_Slot_Offer_Repository {
             $scored,
             static function ( $left, $right ) use ( $priorities, $manual_precedence, $recommendation_precedence ) {
                 if ( $manual_precedence && $recommendation_precedence ) {
-                    $left_priority  = isset( $priorities[ $left['id'] ] ) ? (int) $priorities[ $left['id'] ] : 9999;
-                    $right_priority = isset( $priorities[ $right['id'] ] ) ? (int) $priorities[ $right['id'] ] : 9999;
-                    if ( $left_priority !== $right_priority ) { return $left_priority <=> $right_priority; }
+                    $left_has_priority  = array_key_exists( (string) $left['id'], $priorities );
+                    $right_has_priority = array_key_exists( (string) $right['id'], $priorities );
+                    if ( $left_has_priority !== $right_has_priority ) { return $left_has_priority ? -1 : 1; }
+                    if ( $left_has_priority ) {
+                        $left_priority  = (int) $priorities[ $left['id'] ];
+                        $right_priority = (int) $priorities[ $right['id'] ];
+                        if ( $left_priority !== $right_priority ) { return $left_priority <=> $right_priority; }
+                    }
                 }
                 if ( $recommendation_precedence ) {
                     $left_recommended  = tmw_cr_get_recommended_offer_priority( $left['id'] );

@@ -7002,6 +7002,11 @@ $tests['final_pool_explicit_manual_priority_remains_ahead_of_8780'] = function()
     $offers = tmw_final_pool_fixture()->get_frontend_slot_offers( 'sidebar', tmw_final_pool_settings( array( '500' => 1 ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
     tmw_assert_same( array( '500', '8780' ), array_slice( array_column( $offers, 'id' ), 0, 2 ), 'Explicit manual priority must remain ahead of Jerkmate.' );
 };
+$tests['final_pool_priority_entry_9999_is_still_explicit'] = function() {
+    tmw_reset_test_state();
+    $offers = tmw_final_pool_fixture()->get_frontend_slot_offers( 'sidebar', tmw_final_pool_settings( array( '500' => 9999 ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    tmw_assert_same( array( '500', '8780' ), array_slice( array_column( $offers, 'id' ), 0, 2 ), 'The existence of a saved priority entry, rather than a magic default number, must establish manual precedence.' );
+};
 $tests['final_pool_ineligible_8780_is_absent_and_rank_two_is_first'] = function() {
     tmw_reset_test_state();
     $offers = tmw_final_pool_fixture( '' )->get_frontend_slot_offers( 'sidebar', tmw_final_pool_settings(), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
@@ -7013,6 +7018,13 @@ $tests['post_ranking_offer_filter_cannot_reverse_authoritative_order'] = functio
     add_filter( 'tmw_cr_slot_banner_offers', static function ( $offers ) { return array_reverse( $offers ); } );
     $offers = tmw_final_pool_fixture()->get_frontend_slot_offers( 'sidebar', tmw_final_pool_settings(), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
     tmw_assert_same( array( '8780', '10335', '500' ), array_column( $offers, 'id' ), 'A post-ranking filter must not accidentally reorder the ranked pool.' );
+};
+$tests['post_ranking_offer_filter_has_explicit_order_opt_out'] = function() {
+    tmw_reset_test_state();
+    add_filter( 'tmw_cr_slot_banner_offers', static function ( $offers ) { return array_reverse( $offers ); } );
+    add_filter( 'tmw_cr_slot_banner_preserve_ranked_order', static function () { return false; } );
+    $offers = tmw_final_pool_fixture()->get_frontend_slot_offers( 'sidebar', tmw_final_pool_settings(), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    tmw_assert_same( array( '500', '10335', '8780' ), array_column( $offers, 'id' ), 'An integration must be able to explicitly take ownership of final order without changing the historical offer filter signature.' );
 };
 $tests['legacy_top_up_appends_after_ranked_offers'] = function() {
     tmw_reset_test_state();
@@ -7038,6 +7050,7 @@ $tests['shortcode_serializes_once_logs_final_ids_and_upgrade_invalidates_cache']
     tmw_assert_contains( "defined( 'WP_DEBUG' ) && WP_DEBUG", $plugin, 'Final-pool diagnostic must be behind the existing WP_DEBUG flag.' );
     tmw_assert_contains( 'tmw_cr_slot_banner_maybe_invalidate_version_cache', $plugin, 'Plugin updates must invalidate stale old-order output.' );
     tmw_assert_contains( "add_action( 'update_option_' . TMW_CR_Slot_Sidebar_Banner::OPTION_KEY", $plugin, 'Settings changes must invalidate cached shortcode output.' );
+    tmw_assert_true( strpos( $plugin, '[TMW-BANNER-FINAL-POOL]' ) < strpos( $plugin, "\$offers_json = wp_json_encode" ), 'Final-pool diagnostics must run immediately before serialization.' );
 };
 
 foreach ( $tests as $name => $test ) {

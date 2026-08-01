@@ -333,10 +333,6 @@ class TMW_CR_Slot_Sidebar_Banner {
 
         $banner_data = $this->build_banner_data( $settings, $overrides, $country );
         $slot_data   = $this->build_slot_data( $settings, $banner_data, $country );
-        $offers_json = wp_json_encode( $slot_data['offers'] );
-        if ( false === $offers_json ) {
-            $offers_json = '[]';
-        }
         if ( defined( 'WP_DEBUG' ) && WP_DEBUG && function_exists( 'error_log' ) ) {
             $final_ids = array_values(
                 array_filter(
@@ -358,6 +354,10 @@ class TMW_CR_Slot_Sidebar_Banner {
                     false === $jerkmate_index ? -1 : (int) $jerkmate_index
                 )
             );
+        }
+        $offers_json = wp_json_encode( $slot_data['offers'] );
+        if ( false === $offers_json ) {
+            $offers_json = '[]';
         }
         error_log(
             sprintf(

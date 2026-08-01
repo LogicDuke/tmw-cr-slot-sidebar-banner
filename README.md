@@ -31,3 +31,9 @@ or `null` for an ordinary offer. Recommendations do not override eligibility,
 disabled status, country targeting, allowed offer types, logo requirements, or
 CTA URL validation, and do not override explicit manual priority in
 `manual_priority_smart_fill`. The catalog is not saved to WordPress options.
+
+The existing `tmw_cr_slot_banner_offers` filter may still remove offers, edit
+their fields, or append integration-provided offers. By default, surviving
+ranked IDs retain their authoritative order and new IDs append afterward. An
+integration that intentionally owns final ordering can explicitly return
+`false` from `tmw_cr_slot_banner_preserve_ranked_order`.

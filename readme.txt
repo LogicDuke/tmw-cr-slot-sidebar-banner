@@ -46,6 +46,7 @@ Yes. Version 1.3.0 ships with optimized PNG assets inside `assets/img/offers/` s
 = 1.9.15 =
 * [TMW-FIX] Preserved the authoritative eligible recommendation order through smart-fill composition, legacy top-up, the public offer filter, and final `data-slot-offers` serialization.
 * Explicit saved manual priorities still outrank recommendations; otherwise eligible Jerkmate PPS offer 8780 leads the final deterministic pool, with the next eligible recommendation taking its place when unavailable.
+* Added explicit-priority metadata so untouched admin-default priority 100 rows no longer outrank recommendations, while intentional priority 100 and legacy customized priorities remain supported.
 * Added debug-only `[TMW-BANNER-FINAL-POOL]` ID-order diagnostics and invalidated object/page-cache integrations after plugin upgrades, offer sync/override changes, and banner settings updates.
 
 = 1.9.14 =

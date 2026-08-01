@@ -2122,8 +2122,8 @@ class TMW_CR_Slot_Offer_Repository {
      * Returns the configured frontend pool mode.
      *
      * Modes:
-     *  - 'manual_priority_smart_fill' (default): evaluate ALL eligible synced offers; manual selected offers receive
-     *                                            a priority/ranking boost but do not block discovery of others.
+     *  - 'manual_priority_smart_fill' (default): evaluate ALL eligible synced offers; only explicitly marked
+     *                                            priorities receive a boost and selection is membership-only.
      *  - 'selected_only'                       : backward-compatible mode where only manually-selected offers can enter
      *                                            the pool. Empty selected => empty pool (no auto-fallback).
      *  - 'smart_auto'                          : all eligible synced offers, no manual priority boost.
@@ -2237,8 +2237,8 @@ class TMW_CR_Slot_Offer_Repository {
         // Build the ordered candidate ID list.
         //
         // selected_only: ONLY selected offers are candidates. Empty selected => empty pool (no implicit fallback).
-        // manual_priority_smart_fill / smart_auto: ALL synced offers are candidates; selected offers ranked first
-        //                                          (in smart_fill) or treated equally (in smart_auto).
+        // manual_priority_smart_fill / smart_auto: ALL synced offers are candidates. Selection controls
+        // membership only; explicit priority metadata is applied later by the authoritative ranking pass.
         $selected_offers   = array();
         $unselected_offers = array();
 
@@ -2282,7 +2282,7 @@ class TMW_CR_Slot_Offer_Repository {
                 }
             );
 
-            // Process selected offers in their saved order first, so the priority boost preserves saved ordering.
+            // Process selected offers first for candidate construction only; this does not grant precedence.
             $processed_ids = array();
             foreach ( $selected_ids as $selected_id ) {
                 $selected_id = (string) $selected_id;
@@ -2332,8 +2332,7 @@ class TMW_CR_Slot_Offer_Repository {
             }
 
             // Pool composition is finalised below, after the override-fallback. Stored as two
-            // groups so the manual_priority_smart_fill mode can rank them separately and
-            // guarantee selected ranks above non-selected even when both default to priority 9999.
+            // groups so candidate sources remain traceable until the authoritative combined ranking pass.
             $offers = array_merge( $selected_offers, $unselected_offers );
         }
 
@@ -2661,6 +2660,13 @@ class TMW_CR_Slot_Offer_Repository {
     public function rank_offers_for_slot( $offers, $settings, $country, $priorities = array(), $manual_precedence = true, $recommendation_precedence = false ) {
         $mode = isset( $settings['rotation_mode'] ) ? sanitize_key( (string) $settings['rotation_mode'] ) : 'manual';
         $optimization = $this->get_optimization_settings( $settings );
+        $explicit_priorities = array();
+        foreach ( $offers as $candidate ) {
+            $candidate_id = (string) ( $candidate['id'] ?? '' );
+            if ( $this->is_explicit_slot_offer_priority( $candidate_id, $priorities, $settings ) ) {
+                $explicit_priorities[ $candidate_id ] = (int) $priorities[ $candidate_id ];
+            }
+        }
         if ( '' === $mode ) {
             $mode = 'manual';
         }
@@ -2668,11 +2674,11 @@ class TMW_CR_Slot_Offer_Repository {
         if ( 'manual' === $mode || empty( $optimization['optimization_enabled'] ) ) {
             usort(
                 $offers,
-                static function ( $left, $right ) use ( $priorities, $manual_precedence, $recommendation_precedence ) {
-                    $left_has_priority  = array_key_exists( (string) $left['id'], $priorities );
-                    $right_has_priority = array_key_exists( (string) $right['id'], $priorities );
-                    $left_priority      = $left_has_priority ? (int) $priorities[ $left['id'] ] : 0;
-                    $right_priority     = $right_has_priority ? (int) $priorities[ $right['id'] ] : 0;
+                static function ( $left, $right ) use ( $explicit_priorities, $manual_precedence, $recommendation_precedence ) {
+                    $left_has_priority  = array_key_exists( (string) $left['id'], $explicit_priorities );
+                    $right_has_priority = array_key_exists( (string) $right['id'], $explicit_priorities );
+                    $left_priority      = $left_has_priority ? $explicit_priorities[ $left['id'] ] : 0;
+                    $right_priority     = $right_has_priority ? $explicit_priorities[ $right['id'] ] : 0;
 
                     if ( $manual_precedence ) {
                         if ( $left_has_priority !== $right_has_priority ) {
@@ -2725,14 +2731,14 @@ class TMW_CR_Slot_Offer_Repository {
 
         usort(
             $scored,
-            static function ( $left, $right ) use ( $priorities, $manual_precedence, $recommendation_precedence ) {
+            static function ( $left, $right ) use ( $priorities, $explicit_priorities, $manual_precedence, $recommendation_precedence ) {
                 if ( $manual_precedence && $recommendation_precedence ) {
-                    $left_has_priority  = array_key_exists( (string) $left['id'], $priorities );
-                    $right_has_priority = array_key_exists( (string) $right['id'], $priorities );
+                    $left_has_priority  = array_key_exists( (string) $left['id'], $explicit_priorities );
+                    $right_has_priority = array_key_exists( (string) $right['id'], $explicit_priorities );
                     if ( $left_has_priority !== $right_has_priority ) { return $left_has_priority ? -1 : 1; }
                     if ( $left_has_priority ) {
-                        $left_priority  = (int) $priorities[ $left['id'] ];
-                        $right_priority = (int) $priorities[ $right['id'] ];
+                        $left_priority  = $explicit_priorities[ $left['id'] ];
+                        $right_priority = $explicit_priorities[ $right['id'] ];
                         if ( $left_priority !== $right_priority ) { return $left_priority <=> $right_priority; }
                     }
                 }
@@ -2755,8 +2761,9 @@ class TMW_CR_Slot_Offer_Repository {
                 }
 
                 if ( $manual_precedence ) {
-                    $left_priority  = isset( $priorities[ $left['id'] ] ) ? (int) $priorities[ $left['id'] ] : 9999;
-                    $right_priority = isset( $priorities[ $right['id'] ] ) ? (int) $priorities[ $right['id'] ] : 9999;
+                    $priority_source = $recommendation_precedence ? $explicit_priorities : $priorities;
+                    $left_priority  = isset( $priority_source[ $left['id'] ] ) ? (int) $priority_source[ $left['id'] ] : 9999;
+                    $right_priority = isset( $priority_source[ $right['id'] ] ) ? (int) $priority_source[ $right['id'] ] : 9999;
                     if ( $left_priority !== $right_priority ) { return $left_priority <=> $right_priority; }
                 }
 
@@ -2769,6 +2776,32 @@ class TMW_CR_Slot_Offer_Repository {
         }
 
         return $scored;
+    }
+
+    /**
+     * Determines whether a saved slot priority represents operator intent.
+     *
+     * New settings use an authoritative ID list. Older settings without that metadata retain
+     * customized non-default values, while admin-emitted priority 100 rows migrate as implicit.
+     * This normalization is read-only and never writes settings during a frontend request.
+     *
+     * @param string              $offer_id Offer ID.
+     * @param array<string,mixed> $priorities Saved priority values.
+     * @param array<string,mixed> $settings Complete settings.
+     *
+     * @return bool
+     */
+    public function is_explicit_slot_offer_priority( $offer_id, $priorities, $settings ) {
+        $offer_id = (string) $offer_id;
+        if ( '' === $offer_id || ! array_key_exists( $offer_id, $priorities ) ) {
+            return false;
+        }
+
+        if ( isset( $settings['slot_offer_priority_explicit'] ) && is_array( $settings['slot_offer_priority_explicit'] ) ) {
+            return in_array( $offer_id, array_map( 'strval', $settings['slot_offer_priority_explicit'] ), true );
+        }
+
+        return 100 !== (int) $priorities[ $offer_id ];
     }
 
     /**

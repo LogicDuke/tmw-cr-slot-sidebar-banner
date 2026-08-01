@@ -190,6 +190,7 @@ class TMW_CR_Slot_Sidebar_Banner {
             'cr_api_key'             => '',
             'slot_offer_ids'         => array(),
             'slot_offer_priority'    => array(),
+            'slot_offer_priority_explicit' => null,
             'offer_image_overrides'  => array(),
             'rotation_mode'          => 'manual',
             'optimization_enabled'   => 1,
@@ -221,6 +222,7 @@ class TMW_CR_Slot_Sidebar_Banner {
         }
         $settings['slot_offer_ids']        = is_array( $settings['slot_offer_ids'] ) ? array_values( $settings['slot_offer_ids'] ) : array();
         $settings['slot_offer_priority']   = is_array( $settings['slot_offer_priority'] ) ? $settings['slot_offer_priority'] : array();
+        $settings['slot_offer_priority_explicit'] = is_array( $settings['slot_offer_priority_explicit'] ) ? array_values( $settings['slot_offer_priority_explicit'] ) : null;
         $settings['offer_image_overrides'] = is_array( $settings['offer_image_overrides'] ) ? $settings['offer_image_overrides'] : array();
         $settings['rotation_mode']         = sanitize_key( (string) $settings['rotation_mode'] );
         if ( ! in_array( $settings['rotation_mode'], array( 'manual', 'payout_desc', 'conversions_desc', 'epc_desc', 'country_epc_desc', 'hybrid_score', 'safe_hybrid_score' ), true ) ) {

@@ -24,6 +24,7 @@ class TMW_CR_Slot_Sidebar_Banner {
             'cr_api_key'             => '',
             'slot_offer_ids'         => array(),
             'slot_offer_priority'    => array(),
+            'slot_offer_priority_explicit' => null,
             'offer_image_overrides'  => array(),
             'rotation_mode'          => 'manual',
             'optimization_enabled'   => 1,
@@ -7006,6 +7007,35 @@ $tests['final_pool_priority_entry_9999_is_still_explicit'] = function() {
     tmw_reset_test_state();
     $offers = tmw_final_pool_fixture()->get_frontend_slot_offers( 'sidebar', tmw_final_pool_settings( array( '500' => 9999 ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
     tmw_assert_same( array( '500', '8780' ), array_slice( array_column( $offers, 'id' ), 0, 2 ), 'The existence of a saved priority entry, rather than a magic default number, must establish manual precedence.' );
+};
+$tests['legacy_admin_default_priority_100_is_implicit'] = function() {
+    tmw_reset_test_state();
+    $settings = tmw_final_pool_settings( array( '500' => 100 ) );
+    $offers = tmw_final_pool_fixture()->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    tmw_assert_same( '8780', (string) $offers[0]['id'], 'A legacy admin-emitted default 100 row must not outrank Jerkmate.' );
+};
+$tests['operator_can_explicitly_assign_priority_100'] = function() {
+    tmw_reset_test_state();
+    $settings = tmw_final_pool_settings( array( '500' => 100 ) );
+    $settings['slot_offer_priority_explicit'] = array( '500' );
+    $offers = tmw_final_pool_fixture()->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    tmw_assert_same( '500', (string) $offers[0]['id'], 'Explicit metadata must allow an operator-assigned priority of 100 to outrank recommendations.' );
+};
+$tests['explicit_priority_helper_migrates_legacy_custom_values_without_writes'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'o', 'm' );
+    tmw_assert_true( ! $repo->is_explicit_slot_offer_priority( '500', array( '500' => 100 ), array() ), 'Legacy default 100 must normalize as implicit.' );
+    tmw_assert_true( $repo->is_explicit_slot_offer_priority( '500', array( '500' => 25 ), array() ), 'Legacy customized values must remain explicit.' );
+    tmw_assert_true( $repo->is_explicit_slot_offer_priority( '500', array( '500' => 100 ), array( 'slot_offer_priority_explicit' => array( '500' ) ) ), 'Authoritative metadata must preserve intentional priority 100.' );
+    tmw_assert_true( empty( $GLOBALS['tmw_test_options'] ), 'Read-only migration must not mutate settings on a frontend request.' );
+};
+$tests['admin_priority_marker_distinguishes_operator_intent'] = function() {
+    tmw_reset_test_state();
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    $implicit = $page->sanitize_settings( array( 'slot_offer_priority' => array( '500' => 100 ), 'slot_offer_priority_explicit_submitted' => 1 ) );
+    tmw_assert_same( array(), $implicit['slot_offer_priority_explicit'], 'Unticked default rows must be saved as implicit.' );
+    $explicit = $page->sanitize_settings( array( 'slot_offer_priority' => array( '500' => 100 ), 'slot_offer_priority_explicit_submitted' => 1, 'slot_offer_priority_explicit' => array( '500' ) ) );
+    tmw_assert_same( array( '500' ), $explicit['slot_offer_priority_explicit'], 'Ticked rows must persist explicit operator intent independently of numeric value.' );
 };
 $tests['final_pool_ineligible_8780_is_absent_and_rank_two_is_first'] = function() {
     tmw_reset_test_state();

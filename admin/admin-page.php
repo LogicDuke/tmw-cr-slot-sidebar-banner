@@ -254,6 +254,21 @@ class TMW_CR_Slot_Admin_Page {
             }
         }
 
+        // The marker is authoritative once the priority controls have been submitted. This
+        // separates operator intent from the numeric default emitted for every displayed row.
+        if ( ! empty( $input['slot_offer_priority_explicit_submitted'] ) ) {
+            $output['slot_offer_priority_explicit'] = array();
+            foreach ( (array) ( $input['slot_offer_priority_explicit'] ?? array() ) as $offer_id ) {
+                $offer_id = sanitize_text_field( (string) $offer_id );
+                if ( '' !== $offer_id && isset( $output['slot_offer_priority'][ $offer_id ] ) ) {
+                    $output['slot_offer_priority_explicit'][] = $offer_id;
+                }
+            }
+            $output['slot_offer_priority_explicit'] = array_values( array_unique( $output['slot_offer_priority_explicit'] ) );
+        } elseif ( array_key_exists( 'slot_offer_priority_explicit', $existing ) ) {
+            $output['slot_offer_priority_explicit'] = is_array( $existing['slot_offer_priority_explicit'] ) ? array_values( $existing['slot_offer_priority_explicit'] ) : null;
+        }
+
         $output['offer_image_overrides'] = array();
         if ( isset( $input['offer_image_overrides'] ) && is_array( $input['offer_image_overrides'] ) ) {
             foreach ( $input['offer_image_overrides'] as $offer_id => $image_url ) {
@@ -1342,7 +1357,7 @@ class TMW_CR_Slot_Admin_Page {
             <?php wp_nonce_field( 'tmw_cr_slot_banner_save_pool_mode' ); ?>
             <input type="hidden" name="action" value="tmw_cr_slot_banner_save_pool_mode" />
             <h3><?php esc_html_e( 'Frontend pool mode', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
-            <p class="description"><?php esc_html_e( 'Selected offers get priority, but eligible synced offers can still fill the banner. Manual selected only restricts the banner to selected offers.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+            <p class="description"><?php esc_html_e( 'Selection controls pool membership only. Check “Use manual priority” for offers that should outrank recommendations. Manual selected only restricts the banner to selected offers.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
             <p>
                 <?php foreach ( $pool_mode_options as $mode_key => $mode_label ) : ?>
                     <label style="display:block;margin:0 0 6px 0;">
@@ -1394,6 +1409,7 @@ class TMW_CR_Slot_Admin_Page {
 
         <form method="post" action="options.php">
             <?php settings_fields( 'tmw_cr_slot_banner' ); ?>
+            <input type="hidden" name="<?php echo esc_attr( $this->option_key ); ?>[slot_offer_priority_explicit_submitted]" value="1" />
             <p class="description">
                 <?php
                 echo esc_html(
@@ -1810,6 +1826,7 @@ class TMW_CR_Slot_Admin_Page {
                             $offer_id    = (string) ( $offer['id'] ?? '' );
                             $selected    = ! empty( $offer['is_selected_for_slot'] );
                             $priority    = isset( $settings['slot_offer_priority'][ $offer_id ] ) ? (int) $settings['slot_offer_priority'][ $offer_id ] : 100;
+                            $priority_is_explicit = $this->offer_repository->is_explicit_slot_offer_priority( $offer_id, (array) $settings['slot_offer_priority'], $settings );
                             $image_value = isset( $settings['offer_image_overrides'][ $offer_id ] ) ? (string) $settings['offer_image_overrides'][ $offer_id ] : '';
                             $override    = $this->offer_repository->get_offer_override( $offer_id );
                             $enabled     = ! isset( $override['enabled'] ) || ! empty( $override['enabled'] );
@@ -1830,7 +1847,10 @@ class TMW_CR_Slot_Admin_Page {
                                     </label>
                                 </td>
                                 <td><strong><?php echo esc_html( (string) ( $offer['name'] ?? '' ) ); ?></strong><br /><code><?php echo esc_html( $offer_id ); ?></code></td>
-                                <td><input type="number" min="0" step="1" name="<?php echo esc_attr( $this->option_key ); ?>[slot_offer_priority][<?php echo esc_attr( $offer_id ); ?>]" value="<?php echo esc_attr( (string) $priority ); ?>" style="width:90px;" /></td>
+                                <td>
+                                    <input type="number" min="0" step="1" name="<?php echo esc_attr( $this->option_key ); ?>[slot_offer_priority][<?php echo esc_attr( $offer_id ); ?>]" value="<?php echo esc_attr( (string) $priority ); ?>" style="width:90px;" />
+                                    <label><input type="checkbox" name="<?php echo esc_attr( $this->option_key ); ?>[slot_offer_priority_explicit][]" value="<?php echo esc_attr( $offer_id ); ?>" <?php checked( $priority_is_explicit ); ?> /> <?php esc_html_e( 'Use manual priority', 'tmw-cr-slot-sidebar-banner' ); ?></label>
+                                </td>
                                 <td>
                                     <input type="url" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_image_overrides][<?php echo esc_attr( $offer_id ); ?>]" value="<?php echo esc_attr( $image_value ); ?>" />
                                     <input type="url" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_overrides][<?php echo esc_attr( $offer_id ); ?>][image_url_override]" value="<?php echo esc_attr( (string) ( $override['image_url_override'] ?? '' ) ); ?>" placeholder="<?php esc_attr_e( 'Per-offer image override', 'tmw-cr-slot-sidebar-banner' ); ?>" />

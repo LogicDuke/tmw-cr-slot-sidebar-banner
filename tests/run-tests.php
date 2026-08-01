@@ -141,7 +141,6 @@ class TMW_Test_Logo_Repository_Missing_Manifest_File extends TMW_CR_Slot_Offer_R
 function tmw_reset_test_state() {
     $GLOBALS['tmw_test_options']      = array();
     $GLOBALS['tmw_test_transients']   = array();
-    $GLOBALS['tmw_test_cache_flushes'] = 0;
     $GLOBALS['tmw_test_remote_get']   = null;
     $GLOBALS['tmw_test_last_redirect'] = '';
     $GLOBALS['tmw_test_cron_events'] = array();
@@ -5409,17 +5408,17 @@ $tests['frontend_post_spin_cta_text_decoration_none'] = function() {
     tmw_assert_contains( 'border-bottom: 0 !important;', $css_file, 'CTA pseudo elements should not render underline borders.' );
 };
 
-$tests['plugin_version_bumped_to_1915'] = function() {
+$tests['plugin_version_bumped_to_1916'] = function() {
     $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
-    tmw_assert_contains( 'Version: 1.9.15', $plugin_file, 'Plugin header version should be 1.9.15.' );
-    tmw_assert_contains( "define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.15' );", $plugin_file, 'Asset version constant should be 1.9.15.' );
+    tmw_assert_contains( 'Version: 1.9.16', $plugin_file, 'Plugin header version should be 1.9.16.' );
+    tmw_assert_contains( "define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.16' );", $plugin_file, 'Asset version constant should be 1.9.16.' );
 };
 
 
 
-$tests['readme_stable_tag_bumped_to_1915'] = function() {
+$tests['readme_stable_tag_bumped_to_1916'] = function() {
     $readme_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'readme.txt' );
-    tmw_assert_contains( 'Stable tag: 1.9.15', $readme_file, 'Readme stable tag should be 1.9.15.' );
+    tmw_assert_contains( 'Stable tag: 1.9.16', $readme_file, 'Readme stable tag should be 1.9.16.' );
 };
 
 
@@ -7046,6 +7045,45 @@ $tests['admin_priority_marker_preserves_unsubmitted_offer_metadata'] = function(
     $saved = $page->sanitize_settings( array( 'slot_offer_priority' => array( '500' => 100 ), 'slot_offer_priority_explicit_submitted' => 1 ) );
     tmw_assert_same( array( 'outside-page' ), $saved['slot_offer_priority_explicit'], 'Saving displayed rows must not delete explicit markers belonging to unsubmitted rows.' );
     tmw_assert_same( 20, $saved['slot_offer_priority']['outside-page'], 'Saving displayed rows must preserve the corresponding unsubmitted priority value.' );
+};
+$tests['priority_payload_intent_preserves_clears_and_replaces_safely'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'slot_offer_priority' => array( 'shown' => 10, 'hidden' => 20 ), 'slot_offer_priority_explicit' => array( 'shown', 'hidden' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+
+    $omitted = $page->sanitize_settings( array( 'headline' => 'Performance-only save' ) );
+    tmw_assert_same( array( 'shown' => 10, 'hidden' => 20 ), $omitted['slot_offer_priority'], 'A form without priority controls must preserve every numeric priority.' );
+    tmw_assert_same( array( 'shown', 'hidden' ), $omitted['slot_offer_priority_explicit'], 'A form without priority controls must preserve every explicit marker.' );
+
+    $partial = $page->sanitize_settings( array( 'tmw_priority_payload_present' => 1, 'tmw_priority_payload_complete' => 0, 'slot_offer_priority_present' => array( 'shown' => 1 ), 'slot_offer_priority' => array( 'shown' => 100 ), 'slot_offer_priority_clear' => array( 'shown' => 1 ) ) );
+    tmw_assert_same( array( 'hidden' => 20 ), $partial['slot_offer_priority'], 'A partial payload must clear only the displayed row explicitly marked clear.' );
+    tmw_assert_same( array( 'hidden' ), $partial['slot_offer_priority_explicit'], 'Clearing a numeric priority must clear only its matching marker.' );
+
+    $complete = $page->sanitize_settings( array( 'tmw_priority_payload_present' => 1, 'tmw_priority_payload_complete' => 1, 'slot_offer_priority_present' => array( 'replacement' => 1 ), 'slot_offer_priority' => array( 'replacement' => 100 ), 'slot_offer_priority_explicit' => array( 'replacement' ) ) );
+    tmw_assert_same( array( 'replacement' => 100 ), $complete['slot_offer_priority'], 'A payload explicitly marked complete may replace the full numeric state.' );
+    tmw_assert_same( array( 'replacement' ), $complete['slot_offer_priority_explicit'], 'A complete payload must keep explicit metadata synchronized.' );
+};
+$tests['multiple_selected_implicit_defaults_do_not_beat_jerkmate'] = function() {
+    tmw_reset_test_state();
+    $repo = tmw_final_pool_fixture();
+    $settings = tmw_final_pool_settings();
+    $settings['slot_offer_ids'] = array( '500', '10335' );
+    $settings['slot_offer_priority'] = array( '500' => 100, '10335' => 100 );
+    $settings['slot_offer_priority_explicit'] = array();
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    tmw_assert_same( '8780', (string) $offers[0]['id'], 'Several selected rows with implicit default 100 must not outrank Jerkmate.' );
+    tmw_assert_true( 0 === strpos( wp_json_encode( $offers ), '[{"id":"8780"' ), 'Production-like serialized output must begin with Jerkmate.' );
+};
+$tests['plugin_cache_invalidation_is_scoped_and_versioned'] = function() {
+    tmw_reset_test_state();
+    set_transient( 'unrelated_cache', 'keep' );
+    set_transient( 'tmw_cr_slot_banner_frontend_pool', 'old' );
+    tmw_assert_same( 'keep', get_transient( 'unrelated_cache' ), 'Unrelated cached values must remain untouched.' );
+    $plugin = file_get_contents( dirname( __DIR__ ) . '/tmw-cr-slot-sidebar-banner.php' );
+    tmw_assert_contains( "update_option( TMW_CR_SLOT_BANNER_CACHE_VERSION_OPTION, tmw_cr_slot_banner_get_cache_version() + 1, false )", $plugin, 'Invalidation must bump only the plugin cache namespace.' );
+    tmw_assert_contains( "delete_transient( 'tmw_cr_slot_banner_frontend_pool' )", $plugin, 'Invalidation must delete only the known plugin transient.' );
+    tmw_assert_contains( "'tmw_cr_slot_banner_v' . tmw_cr_slot_banner_get_cache_version()", $plugin, 'Plugin-owned keys must include the cache namespace version.' );
+    tmw_assert_true( false === strpos( $plugin, 'wp_cache_' . 'flush(' ), 'No plugin code path may call a global object-cache flush.' );
 };
 $tests['final_pool_ineligible_8780_is_absent_and_rank_two_is_first'] = function() {
     tmw_reset_test_state();

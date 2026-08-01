@@ -7,7 +7,6 @@ define( 'TMW_CR_SLOT_BANNER_VERSION', '1.8.1-test' );
 
 $GLOBALS['tmw_test_options']      = array();
 $GLOBALS['tmw_test_transients']   = array();
-$GLOBALS['tmw_test_cache_flushes'] = 0;
 $GLOBALS['tmw_test_remote_get']   = null;
 $GLOBALS['tmw_test_last_redirect'] = '';
 $GLOBALS['tmw_test_nonce_ok']     = true;
@@ -168,7 +167,7 @@ function get_option( $key, $default = false ) { return array_key_exists( $key, $
 function update_option( $key, $value ) { $GLOBALS['tmw_test_options'][ $key ] = $value; return true; }
 function get_transient( $key ) { return array_key_exists( $key, $GLOBALS['tmw_test_transients'] ) ? $GLOBALS['tmw_test_transients'][ $key ] : false; }
 function set_transient( $key, $value ) { $GLOBALS['tmw_test_transients'][ $key ] = $value; return true; }
-function wp_cache_flush() { ++$GLOBALS['tmw_test_cache_flushes']; return true; }
+function delete_transient( $key ) { unset( $GLOBALS['tmw_test_transients'][ $key ] ); return true; }
 if ( ! function_exists( 'array_is_list' ) ) {
     function array_is_list( $array ) {
         if ( ! is_array( $array ) ) {

@@ -13,7 +13,7 @@ Key capabilities:
 * 🧠 Filters that let developers override the offer catalog or targeting logic.
 ## CrakRevenue recommended-offer priority
 
-Version 1.9.15 includes a built-in runtime-only recommendation catalog in
+Version 1.9.16 includes a built-in runtime-only recommendation catalog in
 `includes/recommended-offer-priorities.php`. In `manual_priority_smart_fill`,
 offers with an explicitly saved manual priority remain first, followed by eligible
 recommended offers and then other eligible synced offers (including saved pool
@@ -21,8 +21,15 @@ members without an explicit priority). In `smart_auto`,
 eligible recommendations precede the existing smart-auto order without a saved
 manual-priority membership boost. `selected_only` retains its existing behavior.
 The ranked order is preserved through legacy top-up, the public offer filter,
-and final HTML serialization. Cached output is invalidated when the plugin
-version, settings, synced offers, or offer overrides change.
+and final HTML serialization. Plugin-owned cached output uses a versioned
+namespace that is bumped when the plugin version, settings, synced offers, or
+offer overrides change; unrelated WordPress object and page caches are untouched.
+
+Selected membership is pool membership only. Recommendations are outranked only
+by priorities with both a saved numeric value and an explicit operator marker,
+including an intentionally marked value of `100`. Partial admin forms preserve
+priority values and markers for omitted rows; only a payload explicitly marked
+as complete may replace the entire priority state.
 
 Customize the ordered ID list with the
 `tmw_cr_slot_banner_recommended_offer_priorities` filter. The helper

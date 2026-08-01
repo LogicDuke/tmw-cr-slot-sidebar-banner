@@ -242,38 +242,61 @@ class TMW_CR_Slot_Admin_Page {
             }
         }
 
-        // Preserve rows not present on the current paginated admin screen; submitted rows replace
-        // their own values below. Explicit markers are handled with the same page-safe semantics.
-        $output['slot_offer_priority'] = isset( $existing['slot_offer_priority'] ) && is_array( $existing['slot_offer_priority'] ) ? $existing['slot_offer_priority'] : array();
-        if ( isset( $input['slot_offer_priority'] ) && is_array( $input['slot_offer_priority'] ) ) {
-            foreach ( $input['slot_offer_priority'] as $offer_id => $priority ) {
-                $offer_id = sanitize_text_field( (string) $offer_id );
+        $priorities    = isset( $existing['slot_offer_priority'] ) && is_array( $existing['slot_offer_priority'] ) ? $existing['slot_offer_priority'] : array();
+        $explicit_ids  = is_array( $existing['slot_offer_priority_explicit'] ?? null ) ? array_map( 'strval', $existing['slot_offer_priority_explicit'] ) : array();
+        $payload_present = ! empty( $input['tmw_priority_payload_present'] ) || ! empty( $input['slot_offer_priority_explicit_submitted'] );
+
+        if ( $payload_present ) {
+            $complete = ! empty( $input['tmw_priority_payload_complete'] );
+            if ( $complete ) {
+                $priorities   = array();
+                $explicit_ids = array();
+            }
+
+            $present_rows = array_keys( (array) ( $input['slot_offer_priority_present'] ?? array() ) );
+            // Backward compatibility for the first explicit-marker form, which used the numeric
+            // inputs themselves as its row-presence signal.
+            if ( empty( $present_rows ) ) {
+                $present_rows = array_keys( (array) ( $input['slot_offer_priority'] ?? array() ) );
+            }
+
+            $submitted_explicit = array();
+            foreach ( (array) ( $input['slot_offer_priority_explicit'] ?? array() ) as $key => $value ) {
+                $submitted_explicit[] = is_string( $key ) && ! is_numeric( $key ) ? $key : $value;
+            }
+            $submitted_explicit = array_map( 'strval', $submitted_explicit );
+
+            foreach ( $present_rows as $raw_offer_id ) {
+                $offer_id = sanitize_text_field( (string) $raw_offer_id );
                 if ( '' === $offer_id ) {
                     continue;
                 }
 
-                $output['slot_offer_priority'][ $offer_id ] = max( 0, (int) $priority );
+                $explicit_ids = array_values( array_diff( $explicit_ids, array( $offer_id ) ) );
+                if ( ! empty( $input['slot_offer_priority_clear'][ $offer_id ] ) ) {
+                    unset( $priorities[ $offer_id ] );
+                    continue;
+                }
+                if ( array_key_exists( $offer_id, (array) ( $input['slot_offer_priority'] ?? array() ) ) ) {
+                    $priorities[ $offer_id ] = max( 0, (int) $input['slot_offer_priority'][ $offer_id ] );
+                }
+                if ( array_key_exists( $offer_id, $priorities ) && in_array( $offer_id, $submitted_explicit, true ) ) {
+                    $explicit_ids[] = $offer_id;
+                }
             }
         }
 
-        // The marker is authoritative once the priority controls have been submitted. This
-        // separates operator intent from the numeric default emitted for every displayed row.
-        if ( ! empty( $input['slot_offer_priority_explicit_submitted'] ) ) {
-            $submitted_priority_ids = array_map( 'strval', array_keys( (array) ( $input['slot_offer_priority'] ?? array() ) ) );
-            $existing_explicit_ids  = is_array( $existing['slot_offer_priority_explicit'] ?? null ) ? array_map( 'strval', $existing['slot_offer_priority_explicit'] ) : array();
-            $output['slot_offer_priority_explicit'] = array_values(
-                array_diff( $existing_explicit_ids, $submitted_priority_ids )
-            );
-            foreach ( (array) ( $input['slot_offer_priority_explicit'] ?? array() ) as $offer_id ) {
-                $offer_id = sanitize_text_field( (string) $offer_id );
-                if ( '' !== $offer_id && isset( $output['slot_offer_priority'][ $offer_id ] ) ) {
-                    $output['slot_offer_priority_explicit'][] = $offer_id;
+        // A marker without a numeric value can never be explicit. This also repairs any legacy
+        // inconsistent state without changing unrelated settings.
+        $output['slot_offer_priority'] = $priorities;
+        $output['slot_offer_priority_explicit'] = array_values(
+            array_filter(
+                array_unique( $explicit_ids ),
+                static function ( $offer_id ) use ( $priorities ) {
+                    return array_key_exists( (string) $offer_id, $priorities );
                 }
-            }
-            $output['slot_offer_priority_explicit'] = array_values( array_unique( $output['slot_offer_priority_explicit'] ) );
-        } elseif ( array_key_exists( 'slot_offer_priority_explicit', $existing ) ) {
-            $output['slot_offer_priority_explicit'] = is_array( $existing['slot_offer_priority_explicit'] ) ? array_values( $existing['slot_offer_priority_explicit'] ) : null;
-        }
+            )
+        );
 
         $output['offer_image_overrides'] = array();
         if ( isset( $input['offer_image_overrides'] ) && is_array( $input['offer_image_overrides'] ) ) {
@@ -1415,7 +1438,8 @@ class TMW_CR_Slot_Admin_Page {
 
         <form method="post" action="options.php">
             <?php settings_fields( 'tmw_cr_slot_banner' ); ?>
-            <input type="hidden" name="<?php echo esc_attr( $this->option_key ); ?>[slot_offer_priority_explicit_submitted]" value="1" />
+            <input type="hidden" name="<?php echo esc_attr( $this->option_key ); ?>[tmw_priority_payload_present]" value="1" />
+            <input type="hidden" name="<?php echo esc_attr( $this->option_key ); ?>[tmw_priority_payload_complete]" value="0" />
             <p class="description">
                 <?php
                 echo esc_html(
@@ -1854,8 +1878,10 @@ class TMW_CR_Slot_Admin_Page {
                                 </td>
                                 <td><strong><?php echo esc_html( (string) ( $offer['name'] ?? '' ) ); ?></strong><br /><code><?php echo esc_html( $offer_id ); ?></code></td>
                                 <td>
+                                    <input type="hidden" name="<?php echo esc_attr( $this->option_key ); ?>[slot_offer_priority_present][<?php echo esc_attr( $offer_id ); ?>]" value="1" />
                                     <input type="number" min="0" step="1" name="<?php echo esc_attr( $this->option_key ); ?>[slot_offer_priority][<?php echo esc_attr( $offer_id ); ?>]" value="<?php echo esc_attr( (string) $priority ); ?>" style="width:90px;" />
                                     <label><input type="checkbox" name="<?php echo esc_attr( $this->option_key ); ?>[slot_offer_priority_explicit][]" value="<?php echo esc_attr( $offer_id ); ?>" <?php checked( $priority_is_explicit ); ?> /> <?php esc_html_e( 'Use manual priority', 'tmw-cr-slot-sidebar-banner' ); ?></label>
+                                    <label><input type="checkbox" name="<?php echo esc_attr( $this->option_key ); ?>[slot_offer_priority_clear][<?php echo esc_attr( $offer_id ); ?>]" value="1" /> <?php esc_html_e( 'Clear saved priority', 'tmw-cr-slot-sidebar-banner' ); ?></label>
                                 </td>
                                 <td>
                                     <input type="url" class="regular-text" name="<?php echo esc_attr( $this->option_key ); ?>[offer_image_overrides][<?php echo esc_attr( $offer_id ); ?>]" value="<?php echo esc_attr( $image_value ); ?>" />

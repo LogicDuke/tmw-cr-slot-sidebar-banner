@@ -13,6 +13,7 @@ $GLOBALS['tmw_test_nonce_ok']     = true;
 $GLOBALS['tmw_test_cron_events']  = array();
 $GLOBALS['tmw_test_current_user_can'] = true;
 $GLOBALS['tmw_test_added_options_pages'] = array();
+$GLOBALS['tmw_test_filters'] = array();
 
 class WP_Error {
     protected $code;
@@ -69,7 +70,8 @@ function submit_button( $text = 'Submit', $type = 'primary', $name = 'submit', $
 }
 function register_setting() {}
 function add_action() {}
-function add_filter() {}
+function add_filter( $tag, $callback, $priority = 10 ) { $GLOBALS['tmw_test_filters'][ $tag ][ $priority ][] = $callback; return true; }
+function remove_all_filters( $tag = null ) { if ( null === $tag ) { $GLOBALS['tmw_test_filters'] = array(); } else { unset( $GLOBALS['tmw_test_filters'][ $tag ] ); } return true; }
 function add_options_page( $page_title, $menu_title, $capability, $menu_slug, $callback ) {
     $GLOBALS['tmw_test_added_options_pages'][] = array(
         'page_title' => $page_title,
@@ -122,7 +124,18 @@ function wp_register_script() {}
 function wp_enqueue_style() {}
 function wp_enqueue_script() {}
 function plugins_url( $path, $file ) { unset( $file ); return 'https://example.test/plugins/tmw/' . ltrim( $path, '/' ); }
-function apply_filters( $tag, $value ) { unset( $tag ); return $value; }
+function apply_filters( $tag, $value ) {
+    // The lightweight harness historically treats filters as no-ops. Exercise
+    // only the recommendation API added by this release to avoid changing
+    // unrelated legacy test assumptions.
+    if ( 'tmw_cr_slot_banner_recommended_offer_priorities' !== $tag ) { return $value; }
+    if ( empty( $GLOBALS['tmw_test_filters'][ $tag ] ) ) { return $value; }
+    ksort( $GLOBALS['tmw_test_filters'][ $tag ] );
+    foreach ( $GLOBALS['tmw_test_filters'][ $tag ] as $callbacks ) {
+        foreach ( $callbacks as $callback ) { $value = call_user_func( $callback, $value ); }
+    }
+    return $value;
+}
 function wp_safe_redirect( $url ) { $GLOBALS['tmw_test_last_redirect'] = $url; }
 function wp_die( $message ) { throw new Exception( $message ); }
 function add_query_arg( $args, $url ) {
@@ -167,6 +180,7 @@ function tmw_assert_true( $condition, $message ) { if ( ! $condition ) { throw n
 function tmw_assert_same( $expected, $actual, $message ) { if ( $expected !== $actual ) { throw new Exception( $message . ' Expected: ' . var_export( $expected, true ) . ' Actual: ' . var_export( $actual, true ) ); } }
 function tmw_assert_contains( $needle, $haystack, $message ) { if ( false === strpos( (string) $haystack, (string) $needle ) ) { throw new Exception( $message . ' Missing: ' . $needle ); } }
 
+require_once dirname( __DIR__ ) . '/includes/recommended-offer-priorities.php';
 require_once dirname( __DIR__ ) . '/includes/class-offer-repository.php';
 require_once dirname( __DIR__ ) . '/includes/geo-helper.php';
 require_once dirname( __DIR__ ) . '/includes/class-cr-api-client.php';

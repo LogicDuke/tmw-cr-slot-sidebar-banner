@@ -7,6 +7,7 @@ define( 'TMW_CR_SLOT_BANNER_VERSION', '1.8.1-test' );
 
 $GLOBALS['tmw_test_options']      = array();
 $GLOBALS['tmw_test_transients']   = array();
+$GLOBALS['tmw_test_cache_flushes'] = 0;
 $GLOBALS['tmw_test_remote_get']   = null;
 $GLOBALS['tmw_test_last_redirect'] = '';
 $GLOBALS['tmw_test_nonce_ok']     = true;
@@ -125,14 +126,14 @@ function wp_enqueue_style() {}
 function wp_enqueue_script() {}
 function plugins_url( $path, $file ) { unset( $file ); return 'https://example.test/plugins/tmw/' . ltrim( $path, '/' ); }
 function apply_filters( $tag, $value ) {
-    // The lightweight harness historically treats filters as no-ops. Exercise
-    // only the recommendation API added by this release to avoid changing
-    // unrelated legacy test assumptions.
-    if ( 'tmw_cr_slot_banner_recommended_offer_priorities' !== $tag ) { return $value; }
     if ( empty( $GLOBALS['tmw_test_filters'][ $tag ] ) ) { return $value; }
+    $args = func_get_args();
     ksort( $GLOBALS['tmw_test_filters'][ $tag ] );
     foreach ( $GLOBALS['tmw_test_filters'][ $tag ] as $callbacks ) {
-        foreach ( $callbacks as $callback ) { $value = call_user_func( $callback, $value ); }
+        foreach ( $callbacks as $callback ) {
+            $args[1] = $value;
+            $value = call_user_func_array( $callback, array_slice( $args, 1 ) );
+        }
     }
     return $value;
 }
@@ -167,6 +168,7 @@ function get_option( $key, $default = false ) { return array_key_exists( $key, $
 function update_option( $key, $value ) { $GLOBALS['tmw_test_options'][ $key ] = $value; return true; }
 function get_transient( $key ) { return array_key_exists( $key, $GLOBALS['tmw_test_transients'] ) ? $GLOBALS['tmw_test_transients'][ $key ] : false; }
 function set_transient( $key, $value ) { $GLOBALS['tmw_test_transients'][ $key ] = $value; return true; }
+function wp_cache_flush() { ++$GLOBALS['tmw_test_cache_flushes']; return true; }
 if ( ! function_exists( 'array_is_list' ) ) {
     function array_is_list( $array ) {
         if ( ! is_array( $array ) ) {

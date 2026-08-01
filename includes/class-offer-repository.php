@@ -2365,22 +2365,24 @@ class TMW_CR_Slot_Offer_Repository {
 
         // Ranking strategy depends on pool mode.
         // selected_only / smart_auto -> single combined ranking (legacy behaviour).
-        // manual_priority_smart_fill -> rank selected and unselected separately, then concat (selected first).
+        // manual_priority_smart_fill -> rank the complete eligible pool together. An explicitly
+        // saved priority wins; otherwise runtime recommendations win. Merely belonging to the
+        // saved selection must not hide a higher recommended smart-fill candidate behind an old
+        // default selection.
         if ( 'manual_priority_smart_fill' === $pool_mode ) {
-            $ranked_selected   = $this->rank_offers_for_slot( array_values( array_filter( $selected_offers ) ), $settings, $country, $priorities, true, true );
-            $ranked_unselected = $this->rank_offers_for_slot( array_values( array_filter( $unselected_offers ) ), $settings, $country, $priorities, false, true );
-
-            // Deduplicate (an offer could in theory be in both groups if data was malformed).
+            // Deduplicate before the one authoritative ranking pass (an offer could in theory
+            // be in both groups if malformed data was saved).
             $seen_ids = array();
-            $offers   = array();
-            foreach ( array_merge( $ranked_selected, $ranked_unselected ) as $candidate ) {
+            $combined = array();
+            foreach ( array_merge( $selected_offers, $unselected_offers ) as $candidate ) {
                 $cid = (string) ( $candidate['id'] ?? '' );
                 if ( '' === $cid || isset( $seen_ids[ $cid ] ) ) {
                     continue;
                 }
                 $seen_ids[ $cid ] = true;
-                $offers[]         = $candidate;
+                $combined[]       = $candidate;
             }
+            $offers = $this->rank_offers_for_slot( $combined, $settings, $country, $priorities, true, true );
         } else {
             $offers = $this->rank_offers_for_slot( $offers, $settings, $country, $priorities, 'selected_only' === $pool_mode, 'smart_auto' === $pool_mode );
         }
@@ -2457,7 +2459,47 @@ class TMW_CR_Slot_Offer_Repository {
             error_log( '[TMW-BANNER-TYPE] frontend_pool_empty safe_empty_state=1' );
         }
 
-        return apply_filters( 'tmw_cr_slot_banner_offers', $offers, '', $banner_data );
+        // The public filter may edit/remove offers or append integrations, but it must not be
+        // able to accidentally reverse the authoritative ranked pool. Preserve surviving ranked
+        // IDs in their original order and append genuinely new filtered offers afterwards.
+        $ranked_offers  = $offers;
+        $filtered       = apply_filters( 'tmw_cr_slot_banner_offers', $ranked_offers, '', $banner_data );
+        $filtered       = is_array( $filtered ) ? array_values( array_filter( $filtered ) ) : $ranked_offers;
+        $filtered_by_id = array();
+        $filtered_new   = array();
+
+        foreach ( $filtered as $candidate ) {
+            if ( ! is_array( $candidate ) ) {
+                continue;
+            }
+            $candidate_id = (string) ( $candidate['id'] ?? '' );
+            if ( '' !== $candidate_id ) {
+                $filtered_by_id[ $candidate_id ] = $candidate;
+            } else {
+                $filtered_new[] = $candidate;
+            }
+        }
+
+        $offers = array();
+        foreach ( $ranked_offers as $ranked_offer ) {
+            $ranked_id = (string) ( $ranked_offer['id'] ?? '' );
+            if ( '' === $ranked_id || ! isset( $filtered_by_id[ $ranked_id ] ) ) {
+                continue;
+            }
+            $offers[] = $filtered_by_id[ $ranked_id ];
+            unset( $filtered_by_id[ $ranked_id ] );
+        }
+        foreach ( $filtered as $candidate ) {
+            if ( ! is_array( $candidate ) ) {
+                continue;
+            }
+            $candidate_id = (string) ( $candidate['id'] ?? '' );
+            if ( '' !== $candidate_id && isset( $filtered_by_id[ $candidate_id ] ) ) {
+                $offers[] = $filtered_by_id[ $candidate_id ];
+                unset( $filtered_by_id[ $candidate_id ] );
+            }
+        }
+        return array_values( array_merge( $offers, $filtered_new ) );
     }
 
     /**

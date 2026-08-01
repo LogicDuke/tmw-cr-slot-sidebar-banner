@@ -3,7 +3,7 @@ Contributors: themilisofia
 Tags: affiliate marketing, crackrevenue, sidebar, banner, shortcode
 Requires at least: 5.8
 Tested up to: 6.4
-Stable tag: 1.9.14
+Stable tag: 1.9.15
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -42,6 +42,11 @@ Yes. Developers can hook into the `tmw_cr_slot_banner_offers` filter to provide 
 Yes. Version 1.3.0 ships with optimized PNG assets inside `assets/img/offers/` so the offer recommendation banner works out of the box. You can still override or extend the catalog with your own creatives via filters.
 
 == Changelog ==
+
+= 1.9.15 =
+* [TMW-FIX] Preserved the authoritative eligible recommendation order through smart-fill composition, legacy top-up, the public offer filter, and final `data-slot-offers` serialization.
+* Explicit saved manual priorities still outrank recommendations; otherwise eligible Jerkmate PPS offer 8780 leads the final deterministic pool, with the next eligible recommendation taking its place when unavailable.
+* Added debug-only `[TMW-BANNER-FINAL-POOL]` ID-order diagnostics and invalidated object/page-cache integrations after plugin upgrades, offer sync/override changes, and banner settings updates.
 
 = 1.9.14 =
 * [TMW-SEO-AUTO] Added a runtime-only, filterable CrakRevenue recommended-offer priority layer for smart-fill and smart-auto pools.

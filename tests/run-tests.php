@@ -140,6 +140,7 @@ class TMW_Test_Logo_Repository_Missing_Manifest_File extends TMW_CR_Slot_Offer_R
 function tmw_reset_test_state() {
     $GLOBALS['tmw_test_options']      = array();
     $GLOBALS['tmw_test_transients']   = array();
+    $GLOBALS['tmw_test_cache_flushes'] = 0;
     $GLOBALS['tmw_test_remote_get']   = null;
     $GLOBALS['tmw_test_last_redirect'] = '';
     $GLOBALS['tmw_test_cron_events'] = array();
@@ -5407,17 +5408,17 @@ $tests['frontend_post_spin_cta_text_decoration_none'] = function() {
     tmw_assert_contains( 'border-bottom: 0 !important;', $css_file, 'CTA pseudo elements should not render underline borders.' );
 };
 
-$tests['plugin_version_bumped_to_1914'] = function() {
+$tests['plugin_version_bumped_to_1915'] = function() {
     $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
-    tmw_assert_contains( 'Version: 1.9.14', $plugin_file, 'Plugin header version should be 1.9.14.' );
-    tmw_assert_contains( "define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.14' );", $plugin_file, 'Asset version constant should be 1.9.14.' );
+    tmw_assert_contains( 'Version: 1.9.15', $plugin_file, 'Plugin header version should be 1.9.15.' );
+    tmw_assert_contains( "define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.15' );", $plugin_file, 'Asset version constant should be 1.9.15.' );
 };
 
 
 
-$tests['readme_stable_tag_bumped_to_1914'] = function() {
+$tests['readme_stable_tag_bumped_to_1915'] = function() {
     $readme_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'readme.txt' );
-    tmw_assert_contains( 'Stable tag: 1.9.14', $readme_file, 'Readme stable tag should be 1.9.14.' );
+    tmw_assert_contains( 'Stable tag: 1.9.15', $readme_file, 'Readme stable tag should be 1.9.15.' );
 };
 
 
@@ -6612,27 +6613,19 @@ $tests['pool_mode_e_selected_only_mode_restricts_pool_to_selected_offers'] = fun
     tmw_assert_true( ! in_array( '5170',  $ids, true ), 'selected_only mode must not include non-selected Revshare Lifetime 5170.' );
 };
 
-// ---- Test F: Manual priority + smart fill — selected ranks above non-selected. ----
-$tests['pool_mode_f_manual_priority_smart_fill_ranks_selected_above_unselected'] = function() {
+// ---- Test F: Manual priority + smart fill — explicit priorities outrank recommendations. ----
+$tests['pool_mode_f_manual_priority_smart_fill_ranks_explicit_priority_first'] = function() {
     tmw_reset_test_state();
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
     $repo->save_synced_offers( tmw_test_pool_mode_synced_fixture() );
     $repo->save_offer_overrides( tmw_test_pool_mode_overrides_fixture() );
 
-    $offers = $repo->get_frontend_slot_offers( 'sidebar', tmw_test_pool_mode_settings( 'manual_priority_smart_fill' ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    $settings = tmw_test_pool_mode_settings( 'manual_priority_smart_fill' );
+    $settings['slot_offer_priority'] = array( '10393' => 1 );
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
     tmw_assert_true( count( $offers ) > 0, 'Smart-fill pool must not be empty.' );
-
-    // Walk the pool: once we encounter a non-Fanvue (non-selected) offer, no Fanvue (selected) offer may appear afterwards.
-    $saw_unselected = false;
-    foreach ( $offers as $offer ) {
-        $is_selected = false !== strpos( (string) ( $offer['name'] ?? '' ), 'Fanvue' );
-        if ( ! $is_selected ) {
-            $saw_unselected = true;
-        } elseif ( $saw_unselected ) {
-            throw new Exception( 'Manual priority + smart fill: selected offer ranked AFTER an unselected offer (name=' . (string) $offer['name'] . ').' );
-        }
-    }
-    tmw_assert_true( $saw_unselected, 'Smart-fill pool must also contain non-selected eligible offers after the selected block.' );
+    tmw_assert_same( '10393', (string) $offers[0]['id'], 'An explicitly prioritized selected offer must remain first.' );
+    tmw_assert_true( in_array( '7106', array_column( $offers, 'id' ), true ), 'Smart-fill must retain unselected eligible offers.' );
 };
 
 // ---- Test G: include_all_offers in admin display does not affect frontend pool. ----
@@ -6976,6 +6969,75 @@ $tests['recommendation_sorting_is_deterministic'] = function() {
     $first = $repo->rank_offers_for_slot( tmw_recommendation_test_offers(), array( 'rotation_mode' => 'manual' ), 'US', array(), false, true );
     $second = $repo->rank_offers_for_slot( array_reverse( tmw_recommendation_test_offers() ), array( 'rotation_mode' => 'manual' ), 'US', array(), false, true );
     tmw_assert_same( array_column( $first, 'id' ), array_column( $second, 'id' ), 'Ranking must be deterministic regardless of input order.' );
+};
+
+function tmw_final_pool_fixture( $jerkmate_url = 'https://trk.example.test/8780' ) {
+    $repo = new TMW_CR_Slot_Offer_Repository( 'final_offers', 'final_meta', 'final_overrides' );
+    $repo->save_synced_offers( array(
+        '500'   => array( 'id' => '500', 'name' => 'Fanvue', 'status' => 'active', 'payout_type' => 'pps' ),
+        '8780'  => array( 'id' => '8780', 'name' => 'Jerkmate - PPS', 'status' => 'active', 'payout_type' => 'pps' ),
+        '10335' => array( 'id' => '10335', 'name' => 'Candy AI - PPS', 'status' => 'active', 'payout_type' => 'pps' ),
+    ) );
+    $repo->save_offer_overrides( array(
+        '500'   => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/500', 'allowed_countries' => 'US' ),
+        '8780'  => array( 'enabled' => 1, 'final_url_override' => $jerkmate_url, 'allowed_countries' => 'US' ),
+        '10335' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/10335', 'allowed_countries' => 'US' ),
+    ) );
+    return $repo;
+}
+
+function tmw_final_pool_settings( $priorities = array() ) {
+    return array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '500' ), 'slot_offer_priority' => $priorities, 'frontend_pool_mode' => 'manual_priority_smart_fill', 'rotation_mode' => 'manual' );
+}
+
+$tests['final_serialized_pool_starts_with_8780_without_explicit_manual_priority'] = function() {
+    tmw_reset_test_state();
+    $offers = tmw_final_pool_fixture()->get_frontend_slot_offers( 'sidebar', tmw_final_pool_settings(), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    $json = wp_json_encode( $offers );
+    tmw_assert_same( '8780', (string) $offers[0]['id'], 'The array immediately serialized into data-slot-offers must start with 8780.' );
+    tmw_assert_true( 0 === strpos( $json, '[{"id":"8780"' ), 'Actual serialized JSON must begin with offer ID 8780.' );
+};
+$tests['final_pool_explicit_manual_priority_remains_ahead_of_8780'] = function() {
+    tmw_reset_test_state();
+    $offers = tmw_final_pool_fixture()->get_frontend_slot_offers( 'sidebar', tmw_final_pool_settings( array( '500' => 1 ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    tmw_assert_same( array( '500', '8780' ), array_slice( array_column( $offers, 'id' ), 0, 2 ), 'Explicit manual priority must remain ahead of Jerkmate.' );
+};
+$tests['final_pool_ineligible_8780_is_absent_and_rank_two_is_first'] = function() {
+    tmw_reset_test_state();
+    $offers = tmw_final_pool_fixture( '' )->get_frontend_slot_offers( 'sidebar', tmw_final_pool_settings(), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    tmw_assert_true( ! in_array( '8780', array_column( $offers, 'id' ), true ), 'Ineligible Jerkmate must be absent.' );
+    tmw_assert_same( '10335', (string) $offers[0]['id'], 'Recommendation rank two must become first.' );
+};
+$tests['post_ranking_offer_filter_cannot_reverse_authoritative_order'] = function() {
+    tmw_reset_test_state();
+    add_filter( 'tmw_cr_slot_banner_offers', static function ( $offers ) { return array_reverse( $offers ); } );
+    $offers = tmw_final_pool_fixture()->get_frontend_slot_offers( 'sidebar', tmw_final_pool_settings(), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    tmw_assert_same( array( '8780', '10335', '500' ), array_column( $offers, 'id' ), 'A post-ranking filter must not accidentally reorder the ranked pool.' );
+};
+$tests['legacy_top_up_appends_after_ranked_offers'] = function() {
+    tmw_reset_test_state();
+    $repo = tmw_final_pool_fixture();
+    $legacy = array( array( 'id' => 'legacy', 'name' => 'Group Fallback - Legacy', 'cta_url' => 'https://legacy.example.test', 'image_url' => 'https://img.example.test/legacy.png' ) );
+    $repo->save_synced_offers( array_intersect_key( $repo->get_synced_offers(), array( '8780' => true, '10335' => true ) ) );
+    $settings = tmw_final_pool_settings();
+    $settings['allowed_offer_types'][] = 'fallback';
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => 'https://legacy.example.test/click', 'cta_text' => 'CTA' ), 'US', $legacy );
+    tmw_assert_same( array( '8780', '10335', 'legacy' ), array_column( $offers, 'id' ), 'Legacy top-up must append after ranked offers.' );
+};
+$tests['repeated_final_pool_renders_are_deterministic'] = function() {
+    tmw_reset_test_state();
+    $repo = tmw_final_pool_fixture();
+    $first = $repo->get_frontend_slot_offers( 'sidebar', tmw_final_pool_settings(), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    $second = $repo->get_frontend_slot_offers( 'sidebar', tmw_final_pool_settings(), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
+    tmw_assert_same( array_column( $first, 'id' ), array_column( $second, 'id' ), 'Repeated renders must serialize the same order.' );
+};
+$tests['shortcode_serializes_once_logs_final_ids_and_upgrade_invalidates_cache'] = function() {
+    $plugin = file_get_contents( dirname( __DIR__ ) . '/tmw-cr-slot-sidebar-banner.php' );
+    tmw_assert_contains( "data-slot-offers=\"<?php echo esc_attr( \$offers_json ); ?>\"", $plugin, 'Shortcode HTML must use the once-computed final JSON.' );
+    tmw_assert_contains( '[TMW-BANNER-FINAL-POOL] ids=%s jerkmate_present=%d jerkmate_index=%d', $plugin, 'Debug final-pool diagnostic must report IDs, presence, and index.' );
+    tmw_assert_contains( "defined( 'WP_DEBUG' ) && WP_DEBUG", $plugin, 'Final-pool diagnostic must be behind the existing WP_DEBUG flag.' );
+    tmw_assert_contains( 'tmw_cr_slot_banner_maybe_invalidate_version_cache', $plugin, 'Plugin updates must invalidate stale old-order output.' );
+    tmw_assert_contains( "add_action( 'update_option_' . TMW_CR_Slot_Sidebar_Banner::OPTION_KEY", $plugin, 'Settings changes must invalidate cached shortcode output.' );
 };
 
 foreach ( $tests as $name => $test ) {

@@ -3,7 +3,7 @@
  * Plugin Name: TMW CR Offer Sidebar Banner
  * Plugin URI: https://themilisofialtd.com/
  * Description: Displays a geo-targeted CrackRevenue offer recommendation banner with an animated offer selector in sidebar areas via shortcode or template tag.
- * Version: 1.9.14
+ * Version: 1.9.15
  * Author: The Milisofia LTD
  * Author URI: https://themilisofialtd.com/
  * License: GPL2
@@ -15,7 +15,8 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.14' );
+define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.15' );
+define( 'TMW_CR_SLOT_BANNER_VERSION_OPTION', 'tmw_cr_slot_banner_installed_version' );
 define( 'TMW_CR_SLOT_BANNER_PATH', plugin_dir_path( __FILE__ ) );
 define( 'TMW_CR_SLOT_BANNER_URL', plugin_dir_url( __FILE__ ) );
 
@@ -332,6 +333,32 @@ class TMW_CR_Slot_Sidebar_Banner {
 
         $banner_data = $this->build_banner_data( $settings, $overrides, $country );
         $slot_data   = $this->build_slot_data( $settings, $banner_data, $country );
+        $offers_json = wp_json_encode( $slot_data['offers'] );
+        if ( false === $offers_json ) {
+            $offers_json = '[]';
+        }
+        if ( defined( 'WP_DEBUG' ) && WP_DEBUG && function_exists( 'error_log' ) ) {
+            $final_ids = array_values(
+                array_filter(
+                    array_map(
+                        static function ( $offer ) {
+                            return is_array( $offer ) ? (string) ( $offer['id'] ?? '' ) : '';
+                        },
+                        $slot_data['offers']
+                    ),
+                    'strlen'
+                )
+            );
+            $jerkmate_index = array_search( '8780', $final_ids, true );
+            error_log(
+                sprintf(
+                    '[TMW-BANNER-FINAL-POOL] ids=%s jerkmate_present=%d jerkmate_index=%d',
+                    implode( ',', $final_ids ),
+                    false === $jerkmate_index ? 0 : 1,
+                    false === $jerkmate_index ? -1 : (int) $jerkmate_index
+                )
+            );
+        }
         error_log(
             sprintf(
                 '[TMW-BANNER-TEXT] headline_empty=%s subheadline_empty=%s cta_empty=%s offer_cta_empty=%s',
@@ -363,7 +390,7 @@ class TMW_CR_Slot_Sidebar_Banner {
             data-subid-value="<?php echo esc_attr( $settings['subid_value'] ); ?>"
             data-default-cta-text="<?php echo esc_attr( $banner_data['cta_text'] ); ?>"
             data-default-cta-url="<?php echo esc_url( $banner_data['cta_url'] ); ?>"
-            data-slot-offers="<?php echo esc_attr( wp_json_encode( $slot_data['offers'] ) ); ?>"
+            data-slot-offers="<?php echo esc_attr( $offers_json ); ?>"
             data-debug-enabled="<?php echo esc_attr( ( defined( 'WP_DEBUG' ) && WP_DEBUG ) ? '1' : '0' ); ?>"
         >
             <header class="tmw-cr-slot-banner__header">
@@ -697,11 +724,59 @@ class TMW_CR_Slot_Sidebar_Banner {
 new TMW_CR_Slot_Sidebar_Banner();
 
 /**
+ * Purges cached shortcode/page output after an order-affecting change.
+ *
+ * WordPress' object cache is the only universal cache API. The named calls are
+ * guarded integrations for commonly deployed page-cache plugins.
+ *
+ * @return void
+ */
+function tmw_cr_slot_banner_purge_output_cache() {
+    if ( function_exists( 'wp_cache_flush' ) ) {
+        wp_cache_flush();
+    }
+    if ( function_exists( 'rocket_clean_domain' ) ) {
+        rocket_clean_domain();
+    }
+    if ( function_exists( 'w3tc_flush_all' ) ) {
+        w3tc_flush_all();
+    }
+    if ( function_exists( 'wp_cache_clear_cache' ) ) {
+        wp_cache_clear_cache();
+    }
+
+    do_action( 'tmw_cr_slot_banner_output_cache_purged' );
+}
+
+/**
+ * Invalidates payload caches once per installed plugin version.
+ *
+ * @return void
+ */
+function tmw_cr_slot_banner_maybe_invalidate_version_cache() {
+    $installed_version = (string) get_option( TMW_CR_SLOT_BANNER_VERSION_OPTION, '' );
+    if ( TMW_CR_SLOT_BANNER_VERSION === $installed_version ) {
+        return;
+    }
+
+    tmw_cr_slot_banner_purge_output_cache();
+    update_option( TMW_CR_SLOT_BANNER_VERSION_OPTION, TMW_CR_SLOT_BANNER_VERSION, false );
+}
+
+add_action( 'plugins_loaded', 'tmw_cr_slot_banner_maybe_invalidate_version_cache', 20 );
+add_action( 'update_option_' . TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, 'tmw_cr_slot_banner_purge_output_cache', 10, 0 );
+add_action( 'update_option_' . TMW_CR_Slot_Sidebar_Banner::OFFER_OVERRIDES_OPTION_KEY, 'tmw_cr_slot_banner_purge_output_cache', 10, 0 );
+add_action( 'update_option_' . TMW_CR_Slot_Sidebar_Banner::OFFERS_OPTION_KEY, 'tmw_cr_slot_banner_purge_output_cache', 10, 0 );
+
+/**
  * Activation routine.
  *
  * @return void
  */
 function tmw_cr_slot_sidebar_banner_activate() {
+    tmw_cr_slot_banner_purge_output_cache();
+    update_option( TMW_CR_SLOT_BANNER_VERSION_OPTION, TMW_CR_SLOT_BANNER_VERSION, false );
+
     if ( ! get_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY ) ) {
         update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, TMW_CR_Slot_Sidebar_Banner::get_settings() );
     }

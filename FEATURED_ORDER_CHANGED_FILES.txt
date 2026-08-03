@@ -1,8 +1,0 @@
-README.md
-admin/admin-page.php
-assets/css/admin-dashboard.css
-assets/js/admin-dashboard.js
-includes/class-offer-repository.php
-readme.txt
-tests/run-tests.php
-tmw-cr-slot-sidebar-banner.php

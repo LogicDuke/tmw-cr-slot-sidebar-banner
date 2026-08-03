@@ -110,7 +110,7 @@ class TMW_CR_Slot_Offer_Repository {
      *
      * @param mixed $input Raw list of offer IDs (any shape).
      *
-     * @return array<int,string> Ordered, de-duplicated, digit-only offer IDs, capped at 25.
+     * @return array<int,string> Ordered, de-duplicated, digit-only offer IDs.
      */
     public function sanitize_featured_offer_ids( $input ) {
         $input = is_array( $input ) ? $input : array();
@@ -118,6 +118,10 @@ class TMW_CR_Slot_Offer_Repository {
         $clean = array();
 
         foreach ( $input as $raw_id ) {
+            if ( ! is_scalar( $raw_id ) ) {
+                continue;
+            }
+
             $value = trim( (string) $raw_id );
             if ( '' === $value || ! ctype_digit( $value ) ) {
                 continue;
@@ -133,9 +137,6 @@ class TMW_CR_Slot_Offer_Repository {
             $seen[ $value ] = true;
             $clean[]        = $value;
 
-            if ( count( $clean ) >= 25 ) {
-                break;
-            }
         }
 
         return $clean;
@@ -150,7 +151,11 @@ class TMW_CR_Slot_Offer_Repository {
         $stored = get_option( $this->featured_offer_ids_option_key, array() );
         $stored = is_array( $stored ) ? $stored : array();
 
-        return $this->sanitize_featured_offer_ids( $stored );
+        $clean = $this->sanitize_featured_offer_ids( $stored );
+
+        // An over-limit value cannot be produced by save_featured_offer_ids().
+        // Treat externally corrupted data as invalid rather than truncating it.
+        return count( $clean ) > 25 ? array() : $clean;
     }
 
     /**
@@ -161,10 +166,14 @@ class TMW_CR_Slot_Offer_Repository {
      *
      * @param mixed $input Raw list of offer IDs (any shape).
      *
-     * @return array<int,string> The sanitized list that was saved.
+     * @return array<int,string>|false The sanitized list, or false when over the limit.
      */
     public function save_featured_offer_ids( $input ) {
         $clean = $this->sanitize_featured_offer_ids( $input );
+        if ( count( $clean ) > 25 ) {
+            return false;
+        }
+
         update_option( $this->featured_offer_ids_option_key, $clean, false );
 
         return $clean;

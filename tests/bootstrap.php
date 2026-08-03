@@ -29,11 +29,11 @@ class WP_Error {
     }
 }
 
-function __( $text ) { return $text; }
-function esc_html__( $text ) { return $text; }
-function esc_attr__( $text ) { return $text; }
-function esc_html_e( $text ) { echo $text; }
-function esc_attr_e( $text ) { echo $text; }
+function __( $text, $domain = 'default' ) { unset( $domain ); return $text; }
+function esc_html__( $text, $domain = 'default' ) { unset( $domain ); return $text; }
+function esc_attr__( $text, $domain = 'default' ) { unset( $domain ); return $text; }
+function esc_html_e( $text, $domain = 'default' ) { unset( $domain ); echo $text; }
+function esc_attr_e( $text, $domain = 'default' ) { unset( $domain ); echo $text; }
 function sanitize_text_field( $text ) { return trim( strip_tags( (string) $text ) ); }
 function sanitize_textarea_field( $text ) { return trim( (string) $text ); }
 function sanitize_key( $key ) { return preg_replace( '/[^a-z0-9_\-]/', '', strtolower( (string) $key ) ); }

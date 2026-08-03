@@ -839,15 +839,16 @@ class TMW_CR_Slot_Admin_Page {
 
         $raw = isset( $_POST['tmw_offer_config'] ) && is_array( $_POST['tmw_offer_config'] ) ? (array) wp_unslash( $_POST['tmw_offer_config'] ) : array();
 
-        $return_query = isset( $raw['offer_q'] ) ? sanitize_text_field( (string) $raw['offer_q'] ) : '';
-        $offer_id     = isset( $raw['offer_id'] ) ? trim( sanitize_text_field( (string) $raw['offer_id'] ) ) : '';
+        $return_query        = isset( $raw['offer_q'] ) ? sanitize_text_field( (string) $raw['offer_q'] ) : '';
+        $return_blocked_only = ! empty( $raw['offer_blocked_only'] ) && '0' !== (string) $raw['offer_blocked_only'] ? 1 : 0;
+        $offer_id            = isset( $raw['offer_id'] ) ? trim( sanitize_text_field( (string) $raw['offer_id'] ) ) : '';
 
         if ( '' === $offer_id || ! ctype_digit( $offer_id ) ) {
             $this->redirect_with_notice_to_tab(
                 'error',
                 'Offer ID must be a digit-only value. Nothing was saved.',
                 'slot-setup',
-                array( 'offer_q' => $return_query )
+                array( 'offer_q' => $return_query, 'offer_blocked_only' => $return_blocked_only )
             );
             return;
         }
@@ -863,7 +864,7 @@ class TMW_CR_Slot_Admin_Page {
                 'error',
                 sprintf( 'Offer %s is not in the synced pool and has no saved override. Nothing was saved.', $offer_id ),
                 'slot-setup',
-                array( 'offer_q' => $return_query )
+                array( 'offer_q' => $return_query, 'offer_blocked_only' => $return_blocked_only )
             );
             return;
         }
@@ -989,7 +990,8 @@ class TMW_CR_Slot_Admin_Page {
             'slot-setup',
             array(
                 'offer_edit' => $offer_id,
-                'offer_q'    => $return_query,
+                'offer_q'              => $return_query,
+                'offer_blocked_only' => $return_blocked_only,
             )
         );
     }
@@ -1478,7 +1480,7 @@ class TMW_CR_Slot_Admin_Page {
         $synced_total   = count( $this->offer_repository->get_synced_offers() );
 
         $result_limit = 20;
-        $scan_limit   = $blocked_only ? 100 : $result_limit;
+        $scan_limit   = $blocked_only ? max( 1, $synced_total ) : $result_limit;
         $rows         = array();
         $scanned      = 0;
 

@@ -7520,6 +7520,24 @@ $tests['workbench_state_reports_selected_membership'] = function() {
     tmw_assert_same( 100, (int) $other_state['priority'], 'Offers without a stored priority default to 100.' );
 };
 
+$tests['workbench_state_respects_selected_only_membership'] = function() {
+    tmw_reset_test_state();
+    $settings = array(
+        'allowed_offer_types' => array( 'pps' ),
+        'frontend_pool_mode'  => 'selected_only',
+        'slot_offer_ids'      => array(),
+    );
+    $repo = tmw_workbench_test_repo(
+        array( '8780' => tmw_workbench_offer( '8780', 'Jerkmate PPS' ) ),
+        array( '8780' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/8780', 'allowed_countries' => 'Belgium' ) )
+    );
+
+    $state = $repo->get_offer_setup_state( '8780', $settings, 'Belgium' );
+
+    tmw_assert_same( false, (bool) $state['eligibility']['is_eligible'], 'Unselected offers must not be reported eligible in selected_only mode.' );
+    tmw_assert_same( 'not_selected_for_selected_only', (string) $state['eligibility']['block_reason'], 'Selected-only membership should be the workbench blocker.' );
+};
+
 $tests['workbench_state_flags_url_accepted_by_import_but_rejected_by_winner'] = function() {
     tmw_reset_test_state();
     $settings   = array( 'allowed_offer_types' => array( 'pps' ), 'cta_url' => '' );
@@ -7785,6 +7803,28 @@ $tests['save_offer_config_redirects_back_to_the_same_offer'] = function() {
     tmw_assert_same( 'slot-setup', (string) $page->notice['tab'], 'Save should redirect back to the Offer Setup tab.' );
     tmw_assert_same( '153', (string) $page->notice['args']['offer_edit'], 'Save should preserve offer_edit.' );
     tmw_assert_same( 'Roulette', (string) $page->notice['args']['offer_q'], 'Save should preserve offer_q.' );
+};
+
+$tests['save_offer_config_preserves_blocked_only_filter'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'pps' ) ) );
+    $repo = tmw_workbench_test_repo( array( '153' => tmw_workbench_offer( '153', 'Slut Roulette - PPS' ) ) );
+
+    $page = tmw_workbench_run_save(
+        $repo,
+        array(
+            'offer_id'          => '153',
+            'offer_q'           => 'Roulette',
+            'offer_blocked_only'=> '1',
+        )
+    );
+
+    tmw_assert_same( 1, (int) $page->notice['args']['offer_blocked_only'], 'Save redirect should preserve the blocked-only search filter.' );
+};
+
+$tests['workbench_blocked_filter_scans_complete_match_set'] = function() {
+    $source = file_get_contents( dirname( __DIR__ ) . '/admin/admin-page.php' );
+    tmw_assert_contains( '$blocked_only ? max( 1, $synced_total ) : $result_limit', (string) $source, 'Blocked-only search must scan the full synced match set before limiting displayed results.' );
 };
 
 $tests['save_offer_config_notice_reports_remaining_block_reason'] = function() {

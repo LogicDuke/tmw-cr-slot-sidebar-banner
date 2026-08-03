@@ -2381,6 +2381,13 @@ class TMW_CR_Slot_Offer_Repository {
         $state['country_allowed'] = $this->is_offer_allowed_for_country( $offer_id, $country, $override, $offer, $legacy_catalog );
         $state['eligibility']     = $this->get_offer_frontend_eligibility_summary( $offer, $settings, $country, $legacy_catalog );
 
+        if ( 'selected_only' === $state['pool_mode'] && ! $state['is_selected'] && ! empty( $state['eligibility']['is_eligible'] ) ) {
+            $state['eligibility'] = array(
+                'is_eligible'  => false,
+                'block_reason' => 'not_selected_for_selected_only',
+            );
+        }
+
         return $state;
     }
 

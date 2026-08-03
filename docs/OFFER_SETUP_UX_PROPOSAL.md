@@ -441,7 +441,7 @@ Two related message fixes:
 | Change | Location |
 |---|---|
 | New read-only `public function get_offer_setup_state( $offer_id, $settings, $country, $legacy_catalog = array() )` | after `get_offer_frontend_eligibility_summary()` |
-| New read-only `public function search_offers_for_setup( $query, $settings, $limit = 20 )` — exact-ID key lookup first, then delegate to `get_filtered_synced_offers_for_admin()` with `search`, `selected_only => false`, `per_page => $limit` | after `get_filtered_synced_offers_for_admin()` |
+| New read-only `public function search_offers_for_setup( $query, $limit = 20 )` — exact-ID key lookup first, then a direct scan of `get_synced_offers()` for partial ID/name matches, alphabetised and capped at `$limit` | after `get_offer_frontend_eligibility_summary()` |
 
 No existing repository method is modified. No eligibility predicate is rewritten, reordered, or bypassed.
 

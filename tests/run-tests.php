@@ -6893,12 +6893,14 @@ $tests['jerkmate_8780_is_global_recommendation_rank_one'] = function() {
         tmw_assert_same( $index + 1, tmw_cr_get_recommended_offer_priority( $offer_id ), 'Full recommendation catalog order must remain stable for offer ' . $offer_id . '.' );
     }
 };
-$tests['frontend_final_winner_uses_first_ranked_eligible_offer_not_animation_randomness'] = function() {
+$tests['frontend_winner_uses_initial_rank_then_rotates_complete_pool'] = function() {
     $js_file = file_get_contents( dirname( __DIR__ ) . '/assets/js/slot-banner.js' );
-    tmw_assert_contains( 'winner = state.offers[0];', $js_file, 'Final winner must be the first ranked eligible offer.' );
-    tmw_assert_true( false === strpos( $js_file, 'state.offers[Math.floor(Math.random() * state.offers.length)]' ), 'Uniform random selection must not replace the ranked final winner.' );
+    $selection_file = file_get_contents( dirname( __DIR__ ) . '/assets/js/slot-selection.js' );
+    tmw_assert_contains( 'selectOffer(state.offers, state.hasSelectedInitialOffer)', $js_file, 'Winner selection must use the complete eligible state pool.' );
+    tmw_assert_contains( 'if (hasSelectedInitialOffer)', $selection_file, 'Only selections after the deterministic initial result should randomize.' );
+    tmw_assert_contains( 'index = Math.floor(normalizedValue * offers.length);', $selection_file, 'Later selections must map randomness across every pool index.' );
     tmw_assert_contains( 'Math.floor(Math.random() * (i + 1))', $js_file, 'Animation cards may continue to use a random shuffled sequence.' );
-    tmw_assert_contains( 'return renderFinalSelection(state, winner, prepareForSpin);', $js_file, 'The ranked winner must still drive the final three-reel result.' );
+    tmw_assert_contains( 'return renderFinalSelection(state, winner, prepareForSpin);', $js_file, 'The selected offer must still drive the final three-reel result.' );
     tmw_assert_contains( 'var nextHref = matchingOffer.cta_url || state.defaultCtaUrl ||', $js_file, 'Winner CTA fallback behavior must remain unchanged.' );
     tmw_assert_contains( 'appendTrackingParam(state.cta, state.param, state.value);', $js_file, 'Winner tracking parameter behavior must remain unchanged.' );
 };
@@ -7961,6 +7963,27 @@ $tests['workbench_panel_renders_search_results_and_configure_link'] = function()
     tmw_assert_contains( 'Slut Roulette - PPS', $html, 'The workbench should list the matching offer.' );
     tmw_assert_contains( 'Not eligible - missing_valid_cta', $html, 'The workbench should show the exact block reason.' );
     tmw_assert_contains( 'offer_edit=153', $html, 'The workbench should offer a Configure link for the matched offer.' );
+};
+
+$tests['featured_rotation_pool_and_serialization_keep_all_eligible_offers'] = function() {
+    tmw_reset_test_state();
+    $repo = tmw_featured_order_test_repo(
+        array(
+            '8780'  => array( 'name' => 'Jerkmate - PPS' ),
+            '153'   => array( 'name' => 'Slut Roulette - PPS' ),
+            '10022' => array( 'name' => 'Candy.ai - PPS' ),
+            '3778'  => array( 'name' => 'Stripchat - Revshare Lifetime', 'final_url_override' => '' ),
+        )
+    );
+    $repo->save_featured_offer_ids( array( '8780', '3778', '153', '10022' ) );
+
+    $pool = $repo->get_frontend_slot_offers( 'sidebar', tmw_featured_order_test_settings(), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    tmw_assert_same( array( '8780', '153', '10022' ), array_column( $pool, 'id' ), 'An ineligible featured entry must be skipped without collapsing the eligible ordered pool.' );
+
+    $serialized = wp_json_encode( $pool );
+    foreach ( array( '8780', '153', '10022' ) as $offer_id ) {
+        tmw_assert_contains( '"id":"' . $offer_id . '"', $serialized, 'Serialized frontend data must contain eligible offer ' . $offer_id . '.' );
+    }
 };
 
 $tests['workbench_editor_renders_isolated_form_fields'] = function() {

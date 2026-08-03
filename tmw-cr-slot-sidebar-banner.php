@@ -139,17 +139,23 @@ class TMW_CR_Slot_Sidebar_Banner {
      * @return void
      */
     public function register_assets() {
-        $css_version = TMW_CR_SLOT_BANNER_VERSION;
-        $js_version  = TMW_CR_SLOT_BANNER_VERSION;
-        $css_path    = TMW_CR_SLOT_BANNER_PATH . 'assets/css/slot-banner.css';
-        $js_path     = TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js';
-        $css_mtime   = file_exists( $css_path ) ? filemtime( $css_path ) : false;
-        $js_mtime    = file_exists( $js_path ) ? filemtime( $js_path ) : false;
+        $css_version   = TMW_CR_SLOT_BANNER_VERSION;
+        $js_version    = TMW_CR_SLOT_BANNER_VERSION;
+        $helper_version = TMW_CR_SLOT_BANNER_VERSION;
+        $css_path      = TMW_CR_SLOT_BANNER_PATH . 'assets/css/slot-banner.css';
+        $js_path       = TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-banner.js';
+        $selection_path = TMW_CR_SLOT_BANNER_PATH . 'assets/js/slot-selection.js';
+        $css_mtime     = file_exists( $css_path ) ? filemtime( $css_path ) : false;
+        $js_mtime      = file_exists( $js_path ) ? filemtime( $js_path ) : false;
+        $helper_mtime  = file_exists( $selection_path ) ? filemtime( $selection_path ) : false;
         if ( false !== $css_mtime ) {
             $css_version .= '-' . (string) $css_mtime;
         }
         if ( false !== $js_mtime ) {
             $js_version .= '-' . (string) $js_mtime;
+        }
+        if ( false !== $helper_mtime ) {
+            $helper_version .= '-' . (string) $helper_mtime;
         }
 
         wp_register_style(
@@ -160,9 +166,17 @@ class TMW_CR_Slot_Sidebar_Banner {
         );
 
         wp_register_script(
+            'tmw-cr-slot-selection',
+            self::asset_url( 'assets/js/slot-selection.js' ),
+            array(),
+            $helper_version,
+            true
+        );
+
+        wp_register_script(
             'tmw-cr-slot-banner',
             self::asset_url( 'assets/js/slot-banner.js' ),
-            array(),
+            array( 'tmw-cr-slot-selection' ),
             $js_version,
             true
         );
@@ -345,6 +359,10 @@ class TMW_CR_Slot_Sidebar_Banner {
 
         $banner_data = $this->build_banner_data( $settings, $overrides, $country );
         $slot_data   = $this->build_slot_data( $settings, $banner_data, $country );
+        $slot_offers_json = wp_json_encode( $slot_data['offers'] );
+        if ( defined( 'WP_DEBUG' ) && WP_DEBUG && function_exists( 'error_log' ) ) {
+            error_log( '[TMW-SPIN-AUDIT] data-slot-offers=' . $slot_offers_json );
+        }
         error_log(
             sprintf(
                 '[TMW-BANNER-TEXT] headline_empty=%s subheadline_empty=%s cta_empty=%s offer_cta_empty=%s',
@@ -376,7 +394,7 @@ class TMW_CR_Slot_Sidebar_Banner {
             data-subid-value="<?php echo esc_attr( $settings['subid_value'] ); ?>"
             data-default-cta-text="<?php echo esc_attr( $banner_data['cta_text'] ); ?>"
             data-default-cta-url="<?php echo esc_url( $banner_data['cta_url'] ); ?>"
-            data-slot-offers="<?php echo esc_attr( wp_json_encode( $slot_data['offers'] ) ); ?>"
+            data-slot-offers="<?php echo esc_attr( $slot_offers_json ); ?>"
             data-debug-enabled="<?php echo esc_attr( ( defined( 'WP_DEBUG' ) && WP_DEBUG ) ? '1' : '0' ); ?>"
         >
             <header class="tmw-cr-slot-banner__header">

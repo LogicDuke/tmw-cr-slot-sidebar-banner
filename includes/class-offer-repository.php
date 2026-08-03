@@ -2821,6 +2821,16 @@ class TMW_CR_Slot_Offer_Repository {
         // and ranking are complete; only permutes offers already in the pool.
         $offers = $this->apply_featured_offer_order( $offers );
 
+        if ( defined( 'WP_DEBUG' ) && WP_DEBUG && function_exists( 'error_log' ) ) {
+            error_log(
+                sprintf(
+                    '[TMW-BANNER-POOL] final_ids=%s frontend_count=%d',
+                    implode( ',', array_map( 'strval', array_column( $offers, 'id' ) ) ),
+                    count( $offers )
+                )
+            );
+        }
+
         return apply_filters( 'tmw_cr_slot_banner_offers', $offers, '', $banner_data );
     }
 

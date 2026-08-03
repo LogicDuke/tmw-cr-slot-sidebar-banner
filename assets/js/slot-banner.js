@@ -293,16 +293,19 @@
     function setResult(state, prepareForSpin) {
         var results = [];
         var winner = null;
+        var selectedIndex = -1;
 
         if (state.offers.length) {
-            // The backend returns eligible offers in recommendation order. Randomness
-            // belongs only to the animated reel sequence; the best eligible offer is
-            // always the final result.
-            winner = state.offers[0];
+            // Featured position one is deterministic for the visitor's first result.
+            // Subsequent results rotate over the complete eligible browser pool.
+            var selection = window.TMWSpinRotation.selectOffer(state.offers, state.hasSelectedInitialOffer);
+            winner = selection.offer;
+            selectedIndex = selection.index;
+            state.hasSelectedInitialOffer = true;
 
             if (state.debugEnabled && window.console && typeof window.console.debug === 'function') {
-                window.console.debug('[TMW-BANNER-OFFER] select_start eligible_count=' + state.offers.length);
-                window.console.debug('[TMW-BANNER-OFFER] selected offer_id=' + (winner.id || '') + ' logo="' + (winner.logo_filename || '') + '"');
+                window.console.debug('[TMW-SPIN-AUDIT] candidates=' + state.offers.map(function(offer) { return offer.id; }).join(','));
+                window.console.debug('[TMW-SPIN-AUDIT] random_index=' + selectedIndex + ' final_offer_id=' + (winner.id || ''));
             }
         }
 
@@ -633,6 +636,7 @@
             isSpinning: false,
             hasWin: false,
             currentWinningOffer: null,
+            hasSelectedInitialOffer: false,
             hasSpun: false,
             debugEnabled: debugEnabled
         };

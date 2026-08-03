@@ -3,7 +3,7 @@ Contributors: themilisofia
 Tags: affiliate marketing, crackrevenue, sidebar, banner, shortcode
 Requires at least: 5.8
 Tested up to: 6.4
-Stable tag: 1.9.14
+Stable tag: 1.9.15
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -42,6 +42,12 @@ Yes. Developers can hook into the `tmw_cr_slot_banner_offers` filter to provide 
 Yes. Version 1.3.0 ships with optimized PNG assets inside `assets/img/offers/` so the offer recommendation banner works out of the box. You can still override or extend the catalog with your own creatives via filters.
 
 == Changelog ==
+
+= 1.9.15 =
+* [TMW-FEATURED-ORDER] Added a manual "Featured Offer Order" control to the Offer Setup tab: search offers by name or ID, add them to a compact list, drag to reorder, and remove — no numeric priority field required for normal use.
+* [TMW-FEATURED-ORDER] Featured order is stored as a single ordered list in its own option (`tmw_cr_slot_banner_featured_offer_ids`), saved through its own admin-post action and nonce. It never touches `slot_offer_ids`, `slot_offer_priority`, offer overrides, or any other settings key, and is immune to saves on the Performance or Settings tabs.
+* [TMW-FEATURED-ORDER] Frontend ranking: eligible featured offers are moved to the front of the already-ranked pool in the exact saved order; ineligible featured offers are skipped, never promoted; every other offer keeps its existing relative order. An empty featured list leaves current frontend behavior completely unchanged.
+* This is a manual ordering control, not a new automatic ranking system. No changes to eligibility, CTA/URL handling, country targeting, offer-type detection, logo resolution, caching, sync, stats, geo detection, or the frontend banner script/animation.
 
 = 1.9.14 =
 * [TMW-SEO-AUTO] Added a runtime-only, filterable CrakRevenue recommended-offer priority layer for smart-fill and smart-auto pools.

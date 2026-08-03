@@ -158,3 +158,108 @@
     border-color: #e6c576;
     color: #8a5600;
 }
+
+/* [TMW-FEATURED-ORDER] Featured Offer Order panel. Scoped to .tmw-cr-featured-order
+   so it cannot affect any other admin dashboard section. */
+.tmw-cr-featured-order {
+    margin: 0 0 24px;
+    padding: 16px;
+    background: #fff;
+    border: 1px solid #dcdcde;
+    border-radius: 6px;
+}
+
+.tmw-cr-featured-order__search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tmw-cr-featured-search-results {
+    position: relative;
+    z-index: 5;
+    max-width: 480px;
+    margin: 4px 0 12px;
+    padding: 4px;
+    list-style: none;
+    background: #fff;
+    border: 1px solid #dcdcde;
+    border-radius: 4px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.tmw-cr-featured-search-results__item {
+    display: block;
+    width: 100%;
+    padding: 6px 8px;
+    text-align: left;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+}
+
+.tmw-cr-featured-search-results__item:hover,
+.tmw-cr-featured-search-results__item:focus {
+    background: #f0f6fc;
+}
+
+.tmw-cr-featured-search-results__notice {
+    padding: 6px 8px;
+    color: #8a5600;
+}
+
+.tmw-cr-featured-list {
+    list-style: none;
+    margin: 0 0 12px;
+    padding: 0;
+    max-width: 640px;
+}
+
+.tmw-cr-featured-list__empty {
+    padding: 10px;
+    color: #50575e;
+    font-style: italic;
+}
+
+.tmw-cr-featured-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px;
+    margin: 0 0 6px;
+    background: #f9f9f9;
+    border: 1px solid #dcdcde;
+    border-radius: 4px;
+    cursor: grab;
+}
+
+.tmw-cr-featured-row.is-dragging {
+    opacity: 0.5;
+}
+
+.tmw-cr-featured-row.is-duplicate-flash {
+    background: #fff8e5;
+    border-color: #e6c576;
+}
+
+.tmw-cr-featured-row__handle {
+    flex: 0 0 auto;
+    color: #787c82;
+    cursor: grab;
+}
+
+.tmw-cr-featured-row__position {
+    flex: 0 0 auto;
+    font-weight: 600;
+    min-width: 20px;
+}
+
+.tmw-cr-featured-row__body {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.tmw-cr-featured-row__remove {
+    flex: 0 0 auto;
+    align-self: flex-start;
+}

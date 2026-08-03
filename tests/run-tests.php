@@ -5407,17 +5407,17 @@ $tests['frontend_post_spin_cta_text_decoration_none'] = function() {
     tmw_assert_contains( 'border-bottom: 0 !important;', $css_file, 'CTA pseudo elements should not render underline borders.' );
 };
 
-$tests['plugin_version_bumped_to_1914'] = function() {
+$tests['plugin_version_bumped_to_1915'] = function() {
     $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
-    tmw_assert_contains( 'Version: 1.9.14', $plugin_file, 'Plugin header version should be 1.9.14.' );
-    tmw_assert_contains( "define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.14' );", $plugin_file, 'Asset version constant should be 1.9.14.' );
+    tmw_assert_contains( 'Version: 1.9.15', $plugin_file, 'Plugin header version should be 1.9.15.' );
+    tmw_assert_contains( "define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.15' );", $plugin_file, 'Asset version constant should be 1.9.15.' );
 };
 
 
 
-$tests['readme_stable_tag_bumped_to_1914'] = function() {
+$tests['readme_stable_tag_bumped_to_1915'] = function() {
     $readme_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'readme.txt' );
-    tmw_assert_contains( 'Stable tag: 1.9.14', $readme_file, 'Readme stable tag should be 1.9.14.' );
+    tmw_assert_contains( 'Stable tag: 1.9.15', $readme_file, 'Readme stable tag should be 1.9.15.' );
 };
 
 
@@ -6976,6 +6976,308 @@ $tests['recommendation_sorting_is_deterministic'] = function() {
     $first = $repo->rank_offers_for_slot( tmw_recommendation_test_offers(), array( 'rotation_mode' => 'manual' ), 'US', array(), false, true );
     $second = $repo->rank_offers_for_slot( array_reverse( tmw_recommendation_test_offers() ), array( 'rotation_mode' => 'manual' ), 'US', array(), false, true );
     tmw_assert_same( array_column( $first, 'id' ), array_column( $second, 'id' ), 'Ranking must be deterministic regardless of input order.' );
+};
+
+// -----------------------------------------------------------------------
+// [TMW-FEATURED-ORDER] Featured Offer Order — focused test coverage.
+// -----------------------------------------------------------------------
+
+/**
+ * Builds a repository with a small set of synced+eligible PPS offers.
+ * Each offer gets a valid final_url_override and allowed_countries so it
+ * passes eligibility for the given $country unless explicitly overridden.
+ *
+ * @return TMW_CR_Slot_Offer_Repository
+ */
+function tmw_featured_order_test_repo( array $offers_by_id, $country = 'Belgium' ) {
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta', 'dashboard_meta', 'skipped', 'featured' );
+
+    $synced    = array();
+    $overrides = array();
+    foreach ( $offers_by_id as $offer_id => $config ) {
+        $offer_id = (string) $offer_id;
+        $synced[ $offer_id ] = array(
+            'id'          => $offer_id,
+            'name'        => isset( $config['name'] ) ? $config['name'] : ( 'Offer ' . $offer_id ),
+            'status'      => 'active',
+            'payout_type' => 'PPS',
+        );
+        $overrides[ $offer_id ] = array(
+            'enabled'            => 1,
+            'final_url_override' => isset( $config['final_url_override'] ) ? $config['final_url_override'] : 'https://trk.example.test/' . $offer_id,
+            'allowed_countries'  => isset( $config['allowed_countries'] ) ? $config['allowed_countries'] : $country,
+        );
+    }
+
+    $repo->save_synced_offers( $synced );
+    $repo->save_offer_overrides( $overrides );
+
+    return $repo;
+}
+
+function tmw_featured_order_test_settings( array $overrides = array() ) {
+    return array_merge(
+        array(
+            'allowed_offer_types' => array( 'pps' ),
+            'cta_url'             => '',
+            'cta_text'            => 'CTA',
+        ),
+        $overrides
+    );
+}
+
+$tests['featured_order_empty_list_leaves_pool_unchanged'] = function() {
+    tmw_reset_test_state();
+    $repo = tmw_featured_order_test_repo(
+        array(
+            '500' => array( 'name' => 'Zulu Offer' ),
+            '600' => array( 'name' => 'Alpha Offer' ),
+        )
+    );
+    $settings = tmw_featured_order_test_settings();
+
+    tmw_assert_same( array(), $repo->get_featured_offer_ids(), 'Featured list should be empty by default.' );
+
+    $pool = $repo->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    // With no featured list, ranking falls through to existing name-order tie-break: Alpha before Zulu.
+    tmw_assert_same( array( '600', '500' ), array_column( $pool, 'id' ), 'Empty featured list must preserve today\'s existing ranking.' );
+};
+
+$tests['featured_8780_at_position_1_becomes_first_when_eligible'] = function() {
+    tmw_reset_test_state();
+    $repo = tmw_featured_order_test_repo(
+        array(
+            '500'  => array( 'name' => 'Alpha Offer' ),
+            '8780' => array( 'name' => 'Jerkmate PPS' ),
+        )
+    );
+    $repo->save_featured_offer_ids( array( '8780' ) );
+    $settings = tmw_featured_order_test_settings();
+
+    $pool = $repo->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    tmw_assert_same( '8780', $pool[0]['id'], 'Featured offer 8780 at position 1 must be the first eligible frontend offer, overriding alphabetical order.' );
+};
+
+$tests['featured_order_exact_saved_order_is_preserved'] = function() {
+    tmw_reset_test_state();
+    $repo = tmw_featured_order_test_repo(
+        array(
+            '500'   => array( 'name' => 'Zulu Offer' ),
+            '8780'  => array( 'name' => 'Jerkmate PPS' ),
+            '10335' => array( 'name' => 'Candy.ai' ),
+        )
+    );
+    $repo->save_featured_offer_ids( array( '500', '8780', '10335' ) );
+    $settings = tmw_featured_order_test_settings();
+
+    $pool = $repo->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    tmw_assert_same( array( '500', '8780', '10335' ), array_column( $pool, 'id' ), 'Featured offers must appear in the exact saved order.' );
+};
+
+$tests['featured_order_moving_another_offer_ahead_of_8780_changes_first_result'] = function() {
+    tmw_reset_test_state();
+    $repo = tmw_featured_order_test_repo(
+        array(
+            '8780'  => array( 'name' => 'Jerkmate PPS' ),
+            '10335' => array( 'name' => 'Candy.ai' ),
+        )
+    );
+    $repo->save_featured_offer_ids( array( '10335', '8780' ) );
+    $settings = tmw_featured_order_test_settings();
+
+    $pool = $repo->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    tmw_assert_same( '10335', $pool[0]['id'], 'Reordering the featured list must change which offer is first.' );
+};
+
+$tests['featured_order_ineligible_featured_offer_is_skipped_entirely'] = function() {
+    tmw_reset_test_state();
+    $repo = tmw_featured_order_test_repo(
+        array(
+            '8780' => array( 'name' => 'Jerkmate PPS', 'allowed_countries' => 'Germany' ), // blocked for Belgium.
+            '500'  => array( 'name' => 'Alpha Offer' ),
+        )
+    );
+    $repo->save_featured_offer_ids( array( '8780' ) );
+    $settings = tmw_featured_order_test_settings();
+
+    $pool = $repo->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    tmw_assert_true( ! in_array( '8780', array_column( $pool, 'id' ), true ), 'An ineligible featured offer must never appear in the frontend pool.' );
+};
+
+$tests['featured_order_next_eligible_featured_offer_becomes_first'] = function() {
+    tmw_reset_test_state();
+    $repo = tmw_featured_order_test_repo(
+        array(
+            '8780'  => array( 'name' => 'Jerkmate PPS', 'allowed_countries' => 'Germany' ), // blocked for Belgium.
+            '10335' => array( 'name' => 'Candy.ai' ),
+            '500'   => array( 'name' => 'Alpha Offer' ),
+        )
+    );
+    $repo->save_featured_offer_ids( array( '8780', '10335' ) );
+    $settings = tmw_featured_order_test_settings();
+
+    $pool = $repo->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    tmw_assert_same( '10335', $pool[0]['id'], 'When the first featured offer is ineligible, the next eligible featured offer must become first.' );
+};
+
+$tests['featured_order_non_featured_offers_retain_original_relative_order'] = function() {
+    tmw_reset_test_state();
+    $repo = tmw_featured_order_test_repo(
+        array(
+            '8780' => array( 'name' => 'Jerkmate PPS' ),
+            '100'  => array( 'name' => 'Alpha Offer' ),
+            '200'  => array( 'name' => 'Bravo Offer' ),
+            '300'  => array( 'name' => 'Charlie Offer' ),
+        )
+    );
+    $settings = tmw_featured_order_test_settings();
+    $baseline = $repo->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    $baseline_non_featured = array_values( array_diff( array_column( $baseline, 'id' ), array( '8780' ) ) );
+
+    $repo->save_featured_offer_ids( array( '8780' ) );
+    $pool = $repo->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    $pool_non_featured = array_values( array_diff( array_column( $pool, 'id' ), array( '8780' ) ) );
+
+    tmw_assert_same( $baseline_non_featured, $pool_non_featured, 'Non-featured offers must retain their existing relative order after featuring another offer.' );
+};
+
+$tests['featured_order_sanitize_removes_duplicate_ids'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta', 'dashboard_meta', 'skipped', 'featured' );
+    $saved = $repo->save_featured_offer_ids( array( '8780', '8780', '10335' ) );
+    tmw_assert_same( array( '8780', '10335' ), $saved, 'Duplicate IDs must be removed, keeping the first occurrence.' );
+};
+
+$tests['featured_order_sanitize_removes_invalid_non_numeric_ids'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta', 'dashboard_meta', 'skipped', 'featured' );
+    $saved = $repo->save_featured_offer_ids( array( 'abc', '8780', '12x34', '' ) );
+    tmw_assert_same( array( '8780' ), $saved, 'Non-digit IDs must be removed while valid numeric IDs are kept.' );
+};
+
+$tests['featured_order_unknown_numeric_id_preserved_but_ignored_on_frontend'] = function() {
+    tmw_reset_test_state();
+    $repo = tmw_featured_order_test_repo(
+        array(
+            '500' => array( 'name' => 'Alpha Offer' ),
+        )
+    );
+    $repo->save_featured_offer_ids( array( '999999', '500' ) );
+
+    tmw_assert_same( array( '999999', '500' ), $repo->get_featured_offer_ids(), 'An unknown/unsynced numeric ID must remain stored, not silently deleted.' );
+
+    $settings = tmw_featured_order_test_settings();
+    $pool = $repo->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    tmw_assert_same( array( '500' ), array_column( $pool, 'id' ), 'An unknown featured ID must be silently ignored on the frontend, not cause an error or a placeholder entry.' );
+};
+
+$tests['featured_order_removing_offer_affects_only_featured_list'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'slot_offer_ids' => array( '1', '2' ), 'slot_offer_priority' => array( '1' => 50 ) ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta', 'dashboard_meta', 'skipped', 'featured' );
+    $repo->save_featured_offer_ids( array( '8780', '10335' ) );
+
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $_POST = array( '_wpnonce' => '1', 'featured_offer_ids' => array( '10335' ) );
+    $page->handle_save_featured_order();
+
+    tmw_assert_same( array( '10335' ), $repo->get_featured_offer_ids(), 'Removing an offer should update only the featured list.' );
+    $settings_after = get_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY );
+    tmw_assert_same( array( '1', '2' ), $settings_after['slot_offer_ids'], 'Removing a featured offer must not touch slot_offer_ids.' );
+    tmw_assert_same( array( '1' => 50 ), $settings_after['slot_offer_priority'], 'Removing a featured offer must not touch slot_offer_priority.' );
+};
+
+$tests['featured_order_save_does_not_alter_slot_offer_ids'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'slot_offer_ids' => array( '1', '2' ) ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta', 'dashboard_meta', 'skipped', 'featured' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+
+    $_POST = array( '_wpnonce' => '1', 'featured_offer_ids' => array( '8780' ) );
+    $page->handle_save_featured_order();
+
+    $settings_after = get_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY );
+    tmw_assert_same( array( '1', '2' ), $settings_after['slot_offer_ids'], 'Saving the featured order must never alter slot_offer_ids.' );
+};
+
+$tests['featured_order_save_does_not_alter_slot_offer_priority'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'slot_offer_priority' => array( '1' => 100 ) ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta', 'dashboard_meta', 'skipped', 'featured' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+
+    $_POST = array( '_wpnonce' => '1', 'featured_offer_ids' => array( '8780' ) );
+    $page->handle_save_featured_order();
+
+    $settings_after = get_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY );
+    tmw_assert_same( array( '1' => 100 ), $settings_after['slot_offer_priority'], 'Saving the featured order must never alter slot_offer_priority.' );
+};
+
+$tests['featured_order_survives_performance_or_settings_tab_save'] = function() {
+    tmw_reset_test_state();
+    update_option( 'featured', array( '8780', '10335' ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta', 'dashboard_meta', 'skipped', 'featured' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+
+    // Simulates saving the Performance/Settings tab through the shared settings-API sanitizer.
+    $page->sanitize_settings( array( 'rotation_mode' => 'manual', 'optimization_enabled' => 1 ) );
+
+    tmw_assert_same( array( '8780', '10335' ), $repo->get_featured_offer_ids(), 'The featured option must survive an unrelated Performance/Settings tab save.' );
+};
+
+$tests['featured_order_selected_only_mode_does_not_add_unselected_featured_offer'] = function() {
+    tmw_reset_test_state();
+    $repo = tmw_featured_order_test_repo(
+        array(
+            '100'  => array( 'name' => 'Selected Offer' ),
+            '8780' => array( 'name' => 'Jerkmate PPS' ),
+        )
+    );
+    $repo->save_featured_offer_ids( array( '8780' ) );
+    $settings = tmw_featured_order_test_settings(
+        array(
+            'frontend_pool_mode' => 'selected_only',
+            'slot_offer_ids'     => array( '100' ),
+        )
+    );
+
+    $pool = $repo->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    tmw_assert_true( ! in_array( '8780', array_column( $pool, 'id' ), true ), 'selected_only mode must not silently add a featured-but-unselected offer.' );
+    tmw_assert_same( array( '100' ), array_column( $pool, 'id' ), 'selected_only mode candidate rules must remain unchanged by featuring.' );
+};
+
+$tests['featured_order_final_pool_starts_with_first_eligible_featured_offer'] = function() {
+    tmw_reset_test_state();
+    $repo = tmw_featured_order_test_repo(
+        array(
+            '10335' => array( 'name' => 'Candy.ai' ),
+            '500'   => array( 'name' => 'Alpha Offer' ),
+            '8780'  => array( 'name' => 'Jerkmate PPS' ),
+            '600'   => array( 'name' => 'Beta Offer' ),
+        )
+    );
+    $repo->save_featured_offer_ids( array( '8780', '10335' ) );
+    $settings = tmw_featured_order_test_settings();
+
+    $pool = $repo->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    tmw_assert_same( array( '8780', '10335', '500', '600' ), array_column( $pool, 'id' ), 'Final pool must be featured-in-order followed by remaining eligible offers in existing order.' );
+};
+
+$tests['featured_order_does_not_change_cta_country_or_eligibility_behavior'] = function() {
+    tmw_reset_test_state();
+    $repo = tmw_featured_order_test_repo(
+        array(
+            '8780' => array( 'name' => 'Jerkmate PPS', 'final_url_override' => 'https://trk.example.test/8780', 'allowed_countries' => 'Belgium' ),
+        )
+    );
+    $settings = tmw_featured_order_test_settings();
+
+    $before = $repo->get_offer_frontend_eligibility_summary( $repo->get_synced_offers()['8780'], $settings, 'Belgium', array() );
+
+    $repo->save_featured_offer_ids( array( '8780' ) );
+    $after = $repo->get_offer_frontend_eligibility_summary( $repo->get_synced_offers()['8780'], $settings, 'Belgium', array() );
+
+    tmw_assert_same( $before, $after, 'Featuring an offer must not change its CTA, country, or eligibility evaluation.' );
 };
 
 foreach ( $tests as $name => $test ) {

@@ -2209,6 +2209,181 @@ class TMW_CR_Slot_Offer_Repository {
         return array( 'is_eligible' => true, 'block_reason' => 'valid' );
     }
 
+    /**
+     * [TMW-OFFER-SEARCH] Read-only offer lookup for the Offer Workbench.
+     *
+     * Iterates the raw synced-offer store directly, so results are NOT affected by:
+     *   - the Offer Setup bulk table's selected_only filter,
+     *   - the bulk table's allowed-type skip,
+     *   - the bulk table's hard page=1 / per_page=400 slice.
+     *
+     * Exact numeric ID matches are always returned first, even when the same digits
+     * also appear inside other offer IDs or names. Leading zeros are normalised so
+     * '0153' resolves to offer '153'.
+     *
+     * Composes existing helpers only. No eligibility rule is evaluated or duplicated here.
+     *
+     * @param string $query Raw operator query (offer ID or partial name).
+     * @param int    $limit Maximum number of results to return.
+     *
+     * @return array<int,array<string,string>> Rows of array( 'id', 'name', 'match' ).
+     */
+    public function search_offers_for_setup( $query, $limit = 20 ) {
+        $query = trim( (string) $query );
+        $limit = max( 1, (int) $limit );
+
+        if ( '' === $query ) {
+            return array();
+        }
+
+        $synced  = $this->get_synced_offers();
+        $results = array();
+        $seen    = array();
+
+        $exact_candidates = array( $query );
+        if ( ctype_digit( $query ) ) {
+            $exact_candidates[] = (string) (int) $query;
+        }
+
+        foreach ( $exact_candidates as $candidate ) {
+            $candidate = (string) $candidate;
+            if ( '' === $candidate || isset( $seen[ $candidate ] ) ) {
+                continue;
+            }
+            if ( ! isset( $synced[ $candidate ] ) || ! is_array( $synced[ $candidate ] ) ) {
+                continue;
+            }
+            $seen[ $candidate ] = true;
+            $results[]          = array(
+                'id'    => $candidate,
+                'name'  => (string) ( $synced[ $candidate ]['name'] ?? $candidate ),
+                'match' => 'exact_id',
+            );
+        }
+
+        $needle  = strtolower( $query );
+        $partial = array();
+        foreach ( $synced as $offer_id => $offer ) {
+            $offer_id = (string) $offer_id;
+            if ( '' === $offer_id || ! is_array( $offer ) || isset( $seen[ $offer_id ] ) ) {
+                continue;
+            }
+            $offer_name = (string) ( $offer['name'] ?? $offer_id );
+            if ( false === strpos( strtolower( $offer_id . ' ' . $offer_name ), $needle ) ) {
+                continue;
+            }
+            $partial[] = array(
+                'id'    => $offer_id,
+                'name'  => $offer_name,
+                'match' => 'partial',
+            );
+        }
+
+        usort(
+            $partial,
+            static function ( $left, $right ) {
+                return strcasecmp( (string) $left['name'], (string) $right['name'] );
+            }
+        );
+
+        foreach ( $partial as $partial_row ) {
+            if ( count( $results ) >= $limit ) {
+                break;
+            }
+            $results[] = $partial_row;
+        }
+
+        return array_slice( $results, 0, $limit );
+    }
+
+    /**
+     * [TMW-OFFER-CONFIG] Read-only composite state for one offer, used by the Offer Workbench.
+     *
+     * Every value is produced by an existing helper. This method deliberately contains
+     * NO eligibility logic of its own: it calls get_offer_frontend_eligibility_summary(),
+     * get_offer_status_approval_audit(), is_offer_allowed_for_country(),
+     * get_logo_status_for_offer_any(), get_effective_cta_url(),
+     * is_valid_manual_final_url_override() and is_valid_frontend_winner_cta_url()
+     * exactly as the rest of the admin already does.
+     *
+     * @param string              $offer_id       Offer ID.
+     * @param array<string,mixed> $settings       Plugin settings payload.
+     * @param string              $country        Visitor country code.
+     * @param array<string,mixed> $legacy_catalog Legacy fallback catalog.
+     *
+     * @return array<string,mixed>
+     */
+    public function get_offer_setup_state( $offer_id, $settings, $country = '', $legacy_catalog = array() ) {
+        $offer_id = (string) $offer_id;
+        $settings = is_array( $settings ) ? $settings : array();
+        $country  = strtoupper( (string) $country );
+
+        if ( empty( $legacy_catalog ) ) {
+            $legacy_catalog = $this->get_default_legacy_catalog();
+        }
+
+        $synced   = $this->get_synced_offers();
+        $exists   = isset( $synced[ $offer_id ] ) && is_array( $synced[ $offer_id ] );
+        $offer    = $exists ? $synced[ $offer_id ] : array();
+        $override = $this->get_offer_override( $offer_id );
+
+        $priorities = isset( $settings['slot_offer_priority'] ) && is_array( $settings['slot_offer_priority'] ) ? $settings['slot_offer_priority'] : array();
+        $legacy_images = isset( $settings['offer_image_overrides'] ) && is_array( $settings['offer_image_overrides'] ) ? $settings['offer_image_overrides'] : array();
+
+        $state = array(
+            'offer_id'              => $offer_id,
+            'exists'                => $exists,
+            'offer'                 => $offer,
+            'override'              => $override,
+            'name'                  => $exists ? (string) ( $offer['name'] ?? $offer_id ) : (string) ( $override['label_override'] ?? '' ),
+            'country'               => $country,
+            'pool_mode'             => $this->get_frontend_pool_mode( $settings ),
+            'is_selected'           => in_array( $offer_id, $this->get_selected_offer_ids( $settings ), true ),
+            'priority'              => isset( $priorities[ $offer_id ] ) ? (int) $priorities[ $offer_id ] : 100,
+            'featured_position'     => 0,
+            'legacy_image_override' => isset( $legacy_images[ $offer_id ] ) ? (string) $legacy_images[ $offer_id ] : '',
+        );
+
+        $featured_position = array_search( $offer_id, $this->get_featured_offer_ids(), true );
+        if ( false !== $featured_position ) {
+            $state['featured_position'] = (int) $featured_position + 1;
+        }
+
+        $final_url                  = (string) ( $override['final_url_override'] ?? '' );
+        $state['final_url_override'] = $final_url;
+        $state['cta_import_valid']   = '' !== $final_url && $this->is_valid_manual_final_url_override( $final_url );
+        $state['effective_cta_url']  = (string) $this->get_effective_cta_url(
+            $offer_id,
+            $settings,
+            array( 'cta_url' => (string) ( $settings['cta_url'] ?? '' ) ),
+            $offer,
+            $override
+        );
+        $state['cta_winner_valid'] = $this->is_valid_frontend_winner_cta_url( $state['effective_cta_url'] );
+
+        if ( ! $exists ) {
+            $state['status_audit']    = $this->get_offer_status_approval_audit( array() );
+            $state['type_keys']       = array();
+            $state['effective_type']  = array( 'type' => '', 'source' => '' );
+            $state['is_type_allowed'] = false;
+            $state['logo_status']     = '';
+            $state['country_allowed'] = $this->is_offer_allowed_for_country( $offer_id, $country, $override, array(), $legacy_catalog );
+            $state['eligibility']     = array( 'is_eligible' => false, 'block_reason' => 'unknown_offer' );
+
+            return $state;
+        }
+
+        $state['status_audit']    = $this->get_offer_status_approval_audit( $offer );
+        $state['type_keys']       = $this->get_offer_type_keys( $offer );
+        $state['effective_type']  = $this->get_effective_offer_type( $offer );
+        $state['is_type_allowed'] = $this->is_offer_type_allowed( $offer, $settings );
+        $state['logo_status']     = $this->get_logo_status_for_offer_any( $offer_id, $offer, $settings, $legacy_catalog );
+        $state['country_allowed'] = $this->is_offer_allowed_for_country( $offer_id, $country, $override, $offer, $legacy_catalog );
+        $state['eligibility']     = $this->get_offer_frontend_eligibility_summary( $offer, $settings, $country, $legacy_catalog );
+
+        return $state;
+    }
+
     public function get_offer_status_approval_audit( $offer ) {
         $raw_status          = strtolower( trim( (string) ( $offer['status'] ?? '' ) ) );
         $raw_approval_status = strtolower( trim( (string) ( $offer['approval_status'] ?? '' ) ) );

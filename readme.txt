@@ -3,7 +3,7 @@ Contributors: themilisofia
 Tags: affiliate marketing, crackrevenue, sidebar, banner, shortcode
 Requires at least: 5.8
 Tested up to: 6.4
-Stable tag: 1.9.15
+Stable tag: 1.9.16
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -42,6 +42,14 @@ Yes. Developers can hook into the `tmw_cr_slot_banner_offers` filter to provide 
 Yes. Version 1.3.0 ships with optimized PNG assets inside `assets/img/offers/` so the offer recommendation banner works out of the box. You can still override or extend the catalog with your own creatives via filters.
 
 == Changelog ==
+
+= 1.9.16 =
+* [TMW-OFFER-CONFIG] Added the "Offer Workbench" panel at the top of the Offer Setup tab: search every synced offer by exact ID or partial name, see status, approval, payout type, frontend eligibility, exact block reason, featured position and manual-selection state, then configure one offer at a time.
+* [TMW-OFFER-SEARCH] Workbench search reads the synced-offer store directly, so it is not limited by the bulk table's selected-only filter, its allowed-type skip, or its 400-row slice. The search form is a plain GET form and works without JavaScript.
+* [TMW-OFFER-CONFIG] The single-offer editor saves through its own admin-post action (`tmw_cr_slot_banner_save_offer_config`) and nonce, under the `tmw_offer_config[...]` POST namespace. It never submits the shared options.php settings form, and it writes only the target offer's override row, its `slot_offer_ids` membership and its `slot_offer_priority` entry. `frontend_pool_mode`, `allowed_offer_types`, `offer_image_overrides` and every other settings key are preserved.
+* [TMW-OFFER-CONFIG] Per-field validation now names the exact blocker beside the field that clears it, and the final URL is checked against both `is_valid_manual_final_url_override()` and `is_valid_frontend_winner_cta_url()`, with an explicit warning when a URL saves successfully but is still rejected by the frontend winner rule.
+* [TMW-OFFER-SETUP-EMPTY] The bulk setup table no longer claims "Sync offers first" when offers are synchronised. Empty states now distinguish no synced offers, selected-only mode with nothing selected, allowed-type exclusion, and rows hidden behind the 400-row bulk limit.
+* No changes to frontend winner selection, eligibility predicates, CTA tracking, country targeting, offer-type detection, logo resolution, caching, CrakRevenue sync, stats sync, Featured Order save behavior, `sanitize_settings()`, or the frontend banner script/animation.
 
 = 1.9.15 =
 * [TMW-FEATURED-ORDER] Added a manual "Featured Offer Order" control to the Offer Setup tab: search offers by name or ID, add them to a compact list, drag to reorder, and remove — no numeric priority field required for normal use.

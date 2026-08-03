@@ -41,6 +41,7 @@ class TMW_CR_Slot_Admin_Page {
         add_action( 'admin_post_tmw_cr_slot_banner_save_pool_mode', array( $this, 'handle_save_pool_mode' ) );
         add_action( 'admin_post_tmw_cr_slot_banner_select_offer', array( $this, 'handle_select_offer' ) );
         add_action( 'admin_post_tmw_cr_slot_banner_save_featured_order', array( $this, 'handle_save_featured_order' ) );
+        add_action( 'admin_post_tmw_cr_slot_banner_save_offer_config', array( $this, 'handle_save_offer_config' ) );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_dashboard_assets' ) );
     }
 
@@ -812,6 +813,187 @@ class TMW_CR_Slot_Admin_Page {
         $this->redirect_with_notice_to_tab( 'success', 'Featured offer order saved.', 'slot-setup' );
     }
 
+    /**
+     * [TMW-OFFER-CONFIG] Saves the configuration of exactly one offer from the Offer Workbench.
+     *
+     * Deliberately isolated from the shared settings-API group (options.php /
+     * sanitize_settings()). It writes:
+     *   - tmw_cr_slot_banner_offer_overrides : ONLY the target offer's row (read, merge, write)
+     *   - tmw_cr_slot_banner_settings        : ONLY slot_offer_ids membership and
+     *                                          slot_offer_priority[offer_id] for this offer;
+     *                                          every other settings key is carried through
+     *                                          untouched, including frontend_pool_mode,
+     *                                          allowed_offer_types and offer_image_overrides.
+     *   - tmw_cr_slot_banner_featured_offer_ids : only when the operator ticked
+     *                                          "Add to Featured Order", via the existing
+     *                                          save_featured_offer_ids() helper and its 25 limit.
+     *
+     * @return void
+     */
+    public function handle_save_offer_config() {
+        $this->assert_admin_action( 'tmw_cr_slot_banner_save_offer_config' );
+
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( esc_html__( 'You are not allowed to perform this action.', 'tmw-cr-slot-sidebar-banner' ) );
+        }
+
+        $raw = isset( $_POST['tmw_offer_config'] ) && is_array( $_POST['tmw_offer_config'] ) ? (array) wp_unslash( $_POST['tmw_offer_config'] ) : array();
+
+        $return_query = isset( $raw['offer_q'] ) ? sanitize_text_field( (string) $raw['offer_q'] ) : '';
+        $offer_id     = isset( $raw['offer_id'] ) ? trim( sanitize_text_field( (string) $raw['offer_id'] ) ) : '';
+
+        if ( '' === $offer_id || ! ctype_digit( $offer_id ) ) {
+            $this->redirect_with_notice_to_tab(
+                'error',
+                'Offer ID must be a digit-only value. Nothing was saved.',
+                'slot-setup',
+                array( 'offer_q' => $return_query )
+            );
+            return;
+        }
+
+        // Normalises leading zeros so '0153' and '153' can never diverge.
+        $offer_id = (string) (int) $offer_id;
+
+        $synced    = $this->offer_repository->get_synced_offers();
+        $overrides = $this->offer_repository->get_offer_overrides();
+
+        if ( ! isset( $synced[ $offer_id ] ) && ! isset( $overrides[ $offer_id ] ) ) {
+            $this->redirect_with_notice_to_tab(
+                'error',
+                sprintf( 'Offer %s is not in the synced pool and has no saved override. Nothing was saved.', $offer_id ),
+                'slot-setup',
+                array( 'offer_q' => $return_query )
+            );
+            return;
+        }
+
+        $existing_row = isset( $overrides[ $offer_id ] ) && is_array( $overrides[ $offer_id ] ) ? $overrides[ $offer_id ] : array();
+
+        $overrides[ $offer_id ] = array_merge(
+            $existing_row,
+            array(
+                'enabled'            => ! empty( $raw['enabled'] ) ? 1 : 0,
+                'final_url_override' => isset( $raw['final_url_override'] ) ? esc_url_raw( trim( (string) $raw['final_url_override'] ) ) : (string) ( $existing_row['final_url_override'] ?? '' ),
+                'image_url_override' => isset( $raw['image_url_override'] ) ? esc_url_raw( trim( (string) $raw['image_url_override'] ) ) : (string) ( $existing_row['image_url_override'] ?? '' ),
+                'allowed_countries'  => isset( $raw['allowed_countries'] ) ? sanitize_text_field( (string) $raw['allowed_countries'] ) : ( $existing_row['allowed_countries'] ?? array() ),
+                'blocked_countries'  => isset( $raw['blocked_countries'] ) ? sanitize_text_field( (string) $raw['blocked_countries'] ) : ( $existing_row['blocked_countries'] ?? array() ),
+                'custom_cta_text'    => isset( $raw['custom_cta_text'] ) ? sanitize_text_field( (string) $raw['custom_cta_text'] ) : (string) ( $existing_row['custom_cta_text'] ?? '' ),
+                'custom_slogan'      => isset( $raw['custom_slogan'] ) ? sanitize_text_field( (string) $raw['custom_slogan'] ) : (string) ( $existing_row['custom_slogan'] ?? '' ),
+                'label_override'     => isset( $raw['label_override'] ) ? sanitize_text_field( (string) $raw['label_override'] ) : (string) ( $existing_row['label_override'] ?? '' ),
+                'manual_offer_type'  => isset( $raw['manual_offer_type'] ) ? sanitize_key( (string) $raw['manual_offer_type'] ) : (string) ( $existing_row['manual_offer_type'] ?? '' ),
+                'notes'              => isset( $raw['notes'] ) ? sanitize_textarea_field( (string) $raw['notes'] ) : (string) ( $existing_row['notes'] ?? '' ),
+            )
+        );
+
+        $this->offer_repository->save_offer_overrides( $overrides );
+
+        $settings = get_option( $this->option_key, array() );
+        if ( ! is_array( $settings ) ) {
+            $settings = array();
+        }
+
+        $selected_ids = isset( $settings['slot_offer_ids'] ) && is_array( $settings['slot_offer_ids'] ) ? $settings['slot_offer_ids'] : array();
+        $selected_ids = array_values(
+            array_unique(
+                array_filter(
+                    array_map(
+                        static function ( $value ) {
+                            return sanitize_text_field( (string) $value );
+                        },
+                        $selected_ids
+                    ),
+                    static function ( $value ) {
+                        return '' !== $value;
+                    }
+                )
+            )
+        );
+
+        $wants_selected   = ! empty( $raw['slot_selected'] );
+        $already_selected = in_array( $offer_id, $selected_ids, true );
+
+        if ( $wants_selected && ! $already_selected ) {
+            $selected_ids[] = $offer_id;
+        } elseif ( ! $wants_selected && $already_selected ) {
+            $selected_ids = array_values(
+                array_filter(
+                    $selected_ids,
+                    static function ( $value ) use ( $offer_id ) {
+                        return (string) $value !== $offer_id;
+                    }
+                )
+            );
+        }
+
+        $settings['slot_offer_ids'] = $selected_ids;
+
+        $priorities = isset( $settings['slot_offer_priority'] ) && is_array( $settings['slot_offer_priority'] ) ? $settings['slot_offer_priority'] : array();
+        if ( isset( $raw['priority'] ) && '' !== trim( (string) $raw['priority'] ) ) {
+            $priorities[ $offer_id ] = max( 0, (int) $raw['priority'] );
+        }
+        $settings['slot_offer_priority'] = $priorities;
+
+        update_option( $this->option_key, $settings, false );
+
+        $featured_notice = '';
+        if ( ! empty( $raw['add_to_featured'] ) ) {
+            $featured_ids     = $this->offer_repository->get_featured_offer_ids();
+            $existing_featured = array_search( $offer_id, $featured_ids, true );
+            if ( false !== $existing_featured ) {
+                $featured_notice = sprintf( ' Already in Featured Offer Order at position %d.', (int) $existing_featured + 1 );
+            } else {
+                $featured_ids[] = $offer_id;
+                $saved_featured = $this->offer_repository->save_featured_offer_ids( $featured_ids );
+                if ( false === $saved_featured ) {
+                    $featured_notice = ' Featured Offer Order already holds the maximum of 25 offers, so this offer was not added to it.';
+                } else {
+                    $featured_notice = sprintf( ' Added to Featured Offer Order at position %d.', count( $saved_featured ) );
+                }
+            }
+        }
+
+        $fresh_settings = TMW_CR_Slot_Sidebar_Banner::get_settings();
+        $country        = strtoupper( TMW_CR_Slot_Geo_Helper::get_country_code() );
+        $state          = $this->offer_repository->get_offer_setup_state( $offer_id, $fresh_settings, $country );
+        $is_eligible    = ! empty( $state['eligibility']['is_eligible'] );
+        $block_reason   = (string) ( $state['eligibility']['block_reason'] ?? '' );
+
+        $message = sprintf(
+            'Offer %1$s saved. %2$s',
+            $offer_id,
+            $is_eligible ? 'Eligible for the frontend banner.' : sprintf( 'Not eligible - %s.', $block_reason )
+        );
+
+        if ( ! empty( $state['cta_import_valid'] ) && empty( $state['cta_winner_valid'] ) ) {
+            $message .= ' Warning: the saved final URL passes manual-override validation but is rejected by the frontend winner rule, so the banner still cannot use it.';
+        }
+
+        $message .= $featured_notice;
+
+        $this->admin_debug_log(
+            sprintf(
+                '[TMW-OFFER-CONFIG] saved offer_id=%1$s selected=%2$s priority=%3$s featured_position=%4$d eligible=%5$s block_reason=%6$s',
+                $offer_id,
+                $wants_selected ? 'yes' : 'no',
+                (string) ( $priorities[ $offer_id ] ?? '' ),
+                (int) $state['featured_position'],
+                $is_eligible ? 'yes' : 'no',
+                $block_reason
+            )
+        );
+
+        $this->redirect_with_notice_to_tab(
+            'success',
+            $message,
+            'slot-setup',
+            array(
+                'offer_edit' => $offer_id,
+                'offer_q'    => $return_query,
+            )
+        );
+    }
+
     protected function import_final_url_override_rows( $raw_csv ) {
         $lines = preg_split( '/\r?\n/', trim( (string) $raw_csv ) );
         $overrides = $this->offer_repository->get_offer_overrides();
@@ -1240,6 +1422,498 @@ class TMW_CR_Slot_Admin_Page {
     }
 
     /**
+     * [TMW-OFFER-SEARCH] Reads the Offer Workbench request parameters.
+     *
+     * @return array<string,mixed>
+     */
+    protected function read_workbench_request() {
+        return array(
+            'query'        => isset( $_GET['offer_q'] ) ? sanitize_text_field( wp_unslash( $_GET['offer_q'] ) ) : '',
+            'edit'         => isset( $_GET['offer_edit'] ) ? sanitize_text_field( wp_unslash( $_GET['offer_edit'] ) ) : '',
+            'blocked_only' => ! empty( $_GET['offer_blocked_only'] ),
+        );
+    }
+
+    /**
+     * [TMW-OFFER-CONFIG] Renders one labelled validation line inside the workbench editor.
+     *
+     * @param string $label   Field label.
+     * @param bool   $is_ok   Whether the check currently passes.
+     * @param string $message Message to display.
+     *
+     * @return void
+     */
+    protected function render_offer_validation_row( $label, $is_ok, $message ) {
+        $class = $is_ok ? 'tmw-cr-workbench__validation tmw-cr-workbench__validation--ok' : 'tmw-cr-workbench__validation tmw-cr-workbench__validation--error';
+        ?>
+        <p class="<?php echo esc_attr( $class ); ?>">
+            <strong aria-hidden="true"><?php echo esc_html( $is_ok ? "\u{2713}" : "\u{2715}" ); ?></strong>
+            <strong><?php echo esc_html( (string) $label ); ?></strong>
+            <?php echo esc_html( (string) $message ); ?>
+        </p>
+        <?php
+    }
+
+    /**
+     * [TMW-OFFER-SEARCH] Renders the Offer Workbench: search, result cards and single-offer editor.
+     *
+     * Search goes through TMW_CR_Slot_Offer_Repository::search_offers_for_setup(), which
+     * reads the synced-offer store directly and is therefore unaffected by the bulk table's
+     * selected_only filter, allowed-type skip, and 400-row slice. Per-offer state comes from
+     * get_offer_setup_state(), which only composes existing eligibility helpers.
+     *
+     * The search form is a plain GET form and works without JavaScript.
+     *
+     * @param array<string,mixed> $settings Settings payload (read-only here).
+     *
+     * @return void
+     */
+    protected function render_offer_workbench_panel( $settings ) {
+        $request        = $this->read_workbench_request();
+        $query          = (string) $request['query'];
+        $edit_id        = (string) $request['edit'];
+        $blocked_only   = ! empty( $request['blocked_only'] );
+        $country        = strtoupper( TMW_CR_Slot_Geo_Helper::get_country_code() );
+        $legacy_catalog = TMW_CR_Slot_Sidebar_Banner::get_offer_catalog_defaults();
+        $synced_total   = count( $this->offer_repository->get_synced_offers() );
+
+        $result_limit = 20;
+        $scan_limit   = $blocked_only ? 100 : $result_limit;
+        $rows         = array();
+        $scanned      = 0;
+
+        if ( '' !== $query ) {
+            $matches = $this->offer_repository->search_offers_for_setup( $query, $scan_limit );
+            $scanned = count( $matches );
+            foreach ( $matches as $match ) {
+                $state = $this->offer_repository->get_offer_setup_state( (string) $match['id'], $settings, $country, $legacy_catalog );
+                if ( $blocked_only && ! empty( $state['eligibility']['is_eligible'] ) ) {
+                    continue;
+                }
+                $rows[] = $state;
+                if ( count( $rows ) >= $result_limit ) {
+                    break;
+                }
+            }
+        }
+        ?>
+        <div class="tmw-cr-workbench" data-tmw-offer-workbench="1">
+            <h3><?php esc_html_e( 'Offer Workbench', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
+            <p class="description">
+                <?php
+                echo esc_html(
+                    sprintf(
+                        /* translators: %d: number of synced offers */
+                        __( 'Search all %d synchronised offers by exact ID or partial name, then configure one offer at a time. This search is not limited by the bulk table filters below.', 'tmw-cr-slot-sidebar-banner' ),
+                        (int) $synced_total
+                    )
+                );
+                ?>
+            </p>
+
+            <form method="get" class="tmw-cr-workbench__search">
+                <input type="hidden" name="page" value="tmw-cr-slot-sidebar-banner" />
+                <input type="hidden" name="tab" value="slot-setup" />
+                <label for="tmw-cr-workbench-query"><strong><?php esc_html_e( 'Find offer', 'tmw-cr-slot-sidebar-banner' ); ?></strong></label>
+                <input type="search" id="tmw-cr-workbench-query" name="offer_q" class="regular-text" value="<?php echo esc_attr( $query ); ?>" placeholder="<?php esc_attr_e( 'Offer ID (e.g. 153) or part of the offer name', 'tmw-cr-slot-sidebar-banner' ); ?>" />
+                <label>
+                    <input type="checkbox" name="offer_blocked_only" value="1" <?php checked( $blocked_only ); ?> />
+                    <?php esc_html_e( 'Only offers that are not eligible', 'tmw-cr-slot-sidebar-banner' ); ?>
+                </label>
+                <?php submit_button( __( 'Search offers', 'tmw-cr-slot-sidebar-banner' ), 'primary', '', false ); ?>
+            </form>
+
+            <?php if ( '' === $query ) : ?>
+                <p class="description"><?php esc_html_e( 'Enter an offer ID or name above to begin. Nothing is hidden from this search.', 'tmw-cr-slot-sidebar-banner' ); ?></p>
+            <?php elseif ( empty( $rows ) ) : ?>
+                <p class="description">
+                    <?php if ( 0 === $synced_total ) : ?>
+                        <?php esc_html_e( 'No offers have been synchronised yet. Run Sync Offers on the Overview tab first.', 'tmw-cr-slot-sidebar-banner' ); ?>
+                    <?php elseif ( $blocked_only && $scanned > 0 ) : ?>
+                        <?php echo esc_html( sprintf( 'No blocked offers matched "%s". Untick "Only offers that are not eligible" to see all matches.', $query ) ); ?>
+                    <?php else : ?>
+                        <?php echo esc_html( sprintf( 'No synchronised offer matched "%s". Check the ID, or try part of the offer name.', $query ) ); ?>
+                    <?php endif; ?>
+                </p>
+            <?php else : ?>
+                <p class="description"><?php echo esc_html( sprintf( 'Workbench results: %d (maximum %d shown).', count( $rows ), (int) $result_limit ) ); ?></p>
+                <ul class="tmw-cr-workbench__results">
+                    <?php foreach ( $rows as $row ) : ?>
+                        <?php
+                        $row_id        = (string) $row['offer_id'];
+                        $status_audit  = (array) $row['status_audit'];
+                        $eligible      = ! empty( $row['eligibility']['is_eligible'] );
+                        $block_reason  = (string) ( $row['eligibility']['block_reason'] ?? '' );
+                        $type_label    = (string) ( $row['effective_type']['type'] ?? '' );
+                        if ( '' === $type_label ) {
+                            $type_label = ! empty( $row['type_keys'] ) ? implode( '/', (array) $row['type_keys'] ) : '-';
+                        }
+                        $configure_url = $this->build_tab_url(
+                            'slot-setup',
+                            array(
+                                'offer_q'            => $query,
+                                'offer_blocked_only' => $blocked_only ? 1 : 0,
+                                'offer_edit'         => $row_id,
+                            )
+                        );
+                        ?>
+                        <li class="tmw-cr-workbench__result">
+                            <strong><?php echo esc_html( (string) $row['name'] ); ?></strong>
+                            <code><?php echo esc_html( $row_id ); ?></code>
+                            <span class="tmw-cr-workbench__result-meta">
+                                <?php $this->render_badge( empty( $status_audit['status_blocked'] ) ? 'Active' : 'Inactive', empty( $status_audit['status_blocked'] ) ? 'status' : 'muted' ); ?>
+                                <?php $this->render_badge( empty( $status_audit['approval_blocked'] ) ? 'Approved' : 'Unapproved', empty( $status_audit['approval_blocked'] ) ? 'approval' : 'warning' ); ?>
+                                <?php $this->render_badge( 'Type: ' . $type_label, empty( $row['is_type_allowed'] ) ? 'warning' : 'muted' ); ?>
+                                <?php if ( $eligible ) : ?>
+                                    <?php $this->render_badge( 'Eligible', 'featured' ); ?>
+                                <?php else : ?>
+                                    <?php $this->render_badge( sprintf( 'Not eligible - %s', $block_reason ), 'warning' ); ?>
+                                <?php endif; ?>
+                                <?php if ( (int) $row['featured_position'] > 0 ) : ?>
+                                    <?php $this->render_badge( sprintf( 'Featured #%d', (int) $row['featured_position'] ), 'featured' ); ?>
+                                <?php else : ?>
+                                    <?php $this->render_badge( 'Featured #-', 'muted' ); ?>
+                                <?php endif; ?>
+                                <?php $this->render_badge( ! empty( $row['is_selected'] ) ? 'Selected' : 'Not selected', ! empty( $row['is_selected'] ) ? 'selected' : 'muted' ); ?>
+                            </span>
+                            <a class="button button-primary" href="<?php echo esc_url( $configure_url ); ?>"><?php esc_html_e( 'Configure', 'tmw-cr-slot-sidebar-banner' ); ?></a>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
+
+            <?php
+            if ( '' !== $edit_id ) {
+                $edit_state = $this->offer_repository->get_offer_setup_state( $edit_id, $settings, $country, $legacy_catalog );
+                $this->render_offer_config_editor( $edit_id, $settings, $edit_state, $query, $blocked_only );
+            }
+            ?>
+        </div>
+        <?php
+    }
+
+    /**
+     * [TMW-OFFER-CONFIG] Renders the compact single-offer editor.
+     *
+     * Posts to admin-post.php with action tmw_cr_slot_banner_save_offer_config under the
+     * tmw_offer_config[...] namespace. It never posts to options.php and never emits a
+     * field inside the shared settings option namespace.
+     *
+     * @param string              $offer_id     Offer ID being configured.
+     * @param array<string,mixed> $settings     Settings payload (read-only here).
+     * @param array<string,mixed> $state        Composite state from get_offer_setup_state().
+     * @param string              $query        Current workbench query, preserved across the save.
+     * @param bool                $blocked_only Current blocked-only flag, preserved across the save.
+     *
+     * @return void
+     */
+    protected function render_offer_config_editor( $offer_id, $settings, $state, $query = '', $blocked_only = false ) {
+        $offer_id = (string) $offer_id;
+        $override = (array) ( $state['override'] ?? array() );
+        $offer    = (array) ( $state['offer'] ?? array() );
+
+        if ( empty( $state['exists'] ) && empty( $override ) ) {
+            ?>
+            <div class="tmw-cr-workbench__editor">
+                <h4><?php echo esc_html( sprintf( 'Configure offer %s', $offer_id ) ); ?></h4>
+                <p class="tmw-cr-workbench__validation tmw-cr-workbench__validation--error">
+                    <?php esc_html_e( 'This offer is not in the synced pool and has no saved override, so there is nothing to configure. Sync offers first.', 'tmw-cr-slot-sidebar-banner' ); ?>
+                </p>
+            </div>
+            <?php
+            return;
+        }
+
+        $status_audit  = (array) ( $state['status_audit'] ?? array() );
+        $eligibility   = (array) ( $state['eligibility'] ?? array() );
+        $block_reason  = (string) ( $eligibility['block_reason'] ?? '' );
+        $is_eligible   = ! empty( $eligibility['is_eligible'] );
+        $country       = (string) ( $state['country'] ?? '' );
+        $allowed_raw   = isset( $override['allowed_countries'] ) ? implode( ',', (array) $override['allowed_countries'] ) : '';
+        $blocked_raw   = isset( $override['blocked_countries'] ) ? implode( ',', (array) $override['blocked_countries'] ) : '';
+        $enabled       = ! isset( $override['enabled'] ) || ! empty( $override['enabled'] );
+        $final_url     = (string) ( $state['final_url_override'] ?? '' );
+        $manual_type   = (string) ( $override['manual_offer_type'] ?? '' );
+        $effective_type = (string) ( $state['effective_type']['type'] ?? '' );
+        $effective_source = (string) ( $state['effective_type']['source'] ?? '' );
+        $logo_status   = (string) ( $state['logo_status'] ?? '' );
+        $generated_cta = $this->offer_repository->generate_offer_cta_text( $offer );
+        $generated_slogan = $this->offer_repository->generate_offer_slogan( $offer );
+
+        $manual_type_choices = array(
+            ''                  => __( 'Auto (use API / name)', 'tmw-cr-slot-sidebar-banner' ),
+            'pps'               => 'PPS',
+            'revshare'          => 'Revshare',
+            'revshare_lifetime' => 'Revshare Lifetime',
+            'soi'               => 'SOI',
+            'doi'               => 'DOI',
+            'cpa'               => 'CPA',
+            'cpl'               => 'CPL',
+            'cpc'               => 'CPC',
+            'cpi'               => 'CPI',
+            'cpm'               => 'CPM',
+            'smartlink'         => 'Smartlink',
+            'fallback'          => 'Fallback',
+        );
+        ?>
+        <div class="tmw-cr-workbench__editor">
+            <h4>
+                <?php
+                echo esc_html(
+                    sprintf(
+                        'Configure offer %1$s%2$s',
+                        $offer_id,
+                        '' !== (string) $state['name'] ? ' - ' . (string) $state['name'] : ''
+                    )
+                );
+                ?>
+            </h4>
+
+            <p>
+                <?php if ( $is_eligible ) : ?>
+                    <?php $this->render_badge( __( 'Eligible', 'tmw-cr-slot-sidebar-banner' ), 'featured' ); ?>
+                <?php else : ?>
+                    <?php $this->render_badge( sprintf( 'Not eligible - %s', $block_reason ), 'warning' ); ?>
+                <?php endif; ?>
+            </p>
+
+            <?php
+            $this->render_offer_validation_row(
+                __( 'Offer status:', 'tmw-cr-slot-sidebar-banner' ),
+                empty( $status_audit['status_blocked'] ),
+                empty( $status_audit['status_blocked'] )
+                    ? sprintf( 'active (%s) in the last sync.', (string) ( $status_audit['normalized_status'] ?? '' ) )
+                    : sprintf( 'status_blocked - offer status is "%s" in the last sync. This cannot be repaired here.', (string) ( $status_audit['normalized_status'] ?? '' ) )
+            );
+            $this->render_offer_validation_row(
+                __( 'Approval:', 'tmw-cr-slot-sidebar-banner' ),
+                empty( $status_audit['approval_blocked'] ),
+                empty( $status_audit['approval_blocked'] )
+                    ? sprintf( '%s.', (string) ( $status_audit['normalized_approval'] ?? 'not_required' ) )
+                    : 'approval_blocked - approval is required for this offer and has not been granted. Request approval in CrakRevenue.'
+            );
+            if ( 'business_rule_blocked' === $block_reason ) {
+                $this->render_offer_validation_row( __( 'Business rules:', 'tmw-cr-slot-sidebar-banner' ), false, 'business_rule_blocked - the offer is blocked for the banner by an existing business rule. This cannot be repaired here.' );
+            }
+            if ( 'unavailable_account_offer' === $block_reason ) {
+                $this->render_offer_validation_row( __( 'Account availability:', 'tmw-cr-slot-sidebar-banner' ), false, 'unavailable_account_offer - this offer is not available on the connected account.' );
+            }
+            if ( 'skipped_offer' === $block_reason ) {
+                $this->render_offer_validation_row( __( 'Skip list:', 'tmw-cr-slot-sidebar-banner' ), false, 'skipped_offer - the offer is in the Skipped / Rejected list while enforcement is enabled. Remove it from that list to use it.' );
+            }
+            ?>
+
+            <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="tmw-cr-workbench__editor-form">
+                <?php wp_nonce_field( 'tmw_cr_slot_banner_save_offer_config' ); ?>
+                <input type="hidden" name="action" value="tmw_cr_slot_banner_save_offer_config" />
+                <input type="hidden" name="tmw_offer_config[offer_id]" value="<?php echo esc_attr( $offer_id ); ?>" />
+                <input type="hidden" name="tmw_offer_config[offer_q]" value="<?php echo esc_attr( (string) $query ); ?>" />
+                <input type="hidden" name="tmw_offer_config[offer_blocked_only]" value="<?php echo esc_attr( $blocked_only ? '1' : '0' ); ?>" />
+
+                <div class="tmw-cr-workbench__field">
+                    <label>
+                        <input type="checkbox" name="tmw_offer_config[enabled]" value="1" <?php checked( $enabled ); ?> />
+                        <?php esc_html_e( 'Enabled (offer may be used at all)', 'tmw-cr-slot-sidebar-banner' ); ?>
+                    </label>
+                </div>
+
+                <div class="tmw-cr-workbench__field">
+                    <label for="tmw-offer-final-url"><strong><?php esc_html_e( 'Final affiliate URL', 'tmw-cr-slot-sidebar-banner' ); ?></strong></label><br />
+                    <input type="url" id="tmw-offer-final-url" class="large-text" name="tmw_offer_config[final_url_override]" value="<?php echo esc_attr( $final_url ); ?>" placeholder="https://..." />
+                    <?php
+                    $this->render_offer_validation_row(
+                        __( 'Manual override validation:', 'tmw-cr-slot-sidebar-banner' ),
+                        ! empty( $state['cta_import_valid'] ),
+                        ! empty( $state['cta_import_valid'] )
+                            ? 'is_valid_manual_final_url_override() accepts this URL.'
+                            : ( '' === $final_url
+                                ? 'missing_valid_cta - no final affiliate URL is saved. The banner requires one.'
+                                : 'is_valid_manual_final_url_override() rejects this URL.' )
+                    );
+                    $this->render_offer_validation_row(
+                        __( 'Frontend winner validation:', 'tmw-cr-slot-sidebar-banner' ),
+                        ! empty( $state['cta_winner_valid'] ),
+                        ! empty( $state['cta_winner_valid'] )
+                            ? 'is_valid_frontend_winner_cta_url() accepts this URL.'
+                            : 'is_valid_frontend_winner_cta_url() rejects this URL.'
+                    );
+                    if ( ! empty( $state['cta_import_valid'] ) && empty( $state['cta_winner_valid'] ) ) {
+                        ?>
+                        <p class="tmw-cr-workbench__validation tmw-cr-workbench__validation--error">
+                            <strong><?php esc_html_e( 'Warning:', 'tmw-cr-slot-sidebar-banner' ); ?></strong>
+                            <?php esc_html_e( 'this URL saves successfully but remains unusable by the banner. The frontend winner rule rejects URLs containing affiliate_id, preview, template, help, docs or documentation anywhere in the address. Use a tracking URL without those substrings.', 'tmw-cr-slot-sidebar-banner' ); ?>
+                        </p>
+                        <?php
+                    }
+                    ?>
+                </div>
+
+                <div class="tmw-cr-workbench__field">
+                    <label for="tmw-offer-image"><strong><?php esc_html_e( 'Image / logo override', 'tmw-cr-slot-sidebar-banner' ); ?></strong></label><br />
+                    <input type="url" id="tmw-offer-image" class="large-text" name="tmw_offer_config[image_url_override]" value="<?php echo esc_attr( (string) ( $override['image_url_override'] ?? '' ) ); ?>" placeholder="https://..." />
+                    <?php
+                    $this->render_offer_validation_row(
+                        __( 'Logo:', 'tmw-cr-slot-sidebar-banner' ),
+                        'missing_logo' !== $block_reason,
+                        'missing_logo' === $block_reason
+                            ? 'missing_logo - no usable logo resolved for this offer. Add an override URL above, or add the mapped file to assets/logos/80x80/.'
+                            : sprintf( 'logo source: %s.', '' !== $logo_status ? $logo_status : 'unknown' )
+                    );
+                    if ( '' !== (string) $state['legacy_image_override'] ) {
+                        ?>
+                        <p class="description"><?php echo esc_html( sprintf( 'A legacy offer_image_overrides entry also exists for this offer: %s. It is preserved and is not edited here.', (string) $state['legacy_image_override'] ) ); ?></p>
+                        <?php
+                    }
+                    ?>
+                </div>
+
+                <div class="tmw-cr-workbench__field">
+                    <label for="tmw-offer-allowed"><strong><?php esc_html_e( 'Allowed countries', 'tmw-cr-slot-sidebar-banner' ); ?></strong></label><br />
+                    <input type="text" id="tmw-offer-allowed" class="regular-text" name="tmw_offer_config[allowed_countries]" value="<?php echo esc_attr( $allowed_raw ); ?>" placeholder="US,CA,GB" />
+                    <label for="tmw-offer-blocked"><strong><?php esc_html_e( 'Blocked countries', 'tmw-cr-slot-sidebar-banner' ); ?></strong></label>
+                    <input type="text" id="tmw-offer-blocked" class="regular-text" name="tmw_offer_config[blocked_countries]" value="<?php echo esc_attr( $blocked_raw ); ?>" placeholder="FR,DE" />
+                    <?php
+                    $this->render_offer_validation_row(
+                        __( 'Country targeting:', 'tmw-cr-slot-sidebar-banner' ),
+                        ! empty( $state['country_allowed'] ) && 'country_not_allowed' !== $block_reason,
+                        ( ! empty( $state['country_allowed'] ) && 'country_not_allowed' !== $block_reason )
+                            ? sprintf( 'visitor country %s is allowed by the current lists.', '' !== $country ? $country : '(unknown)' )
+                            : sprintf( 'country_not_allowed - visitor country %s is not permitted by the current allowed/blocked lists.', '' !== $country ? $country : '(unknown)' )
+                    );
+                    ?>
+                </div>
+
+                <div class="tmw-cr-workbench__field">
+                    <label for="tmw-offer-cta"><strong><?php esc_html_e( 'CTA text', 'tmw-cr-slot-sidebar-banner' ); ?></strong></label><br />
+                    <input type="text" id="tmw-offer-cta" class="regular-text" name="tmw_offer_config[custom_cta_text]" value="<?php echo esc_attr( (string) ( $override['custom_cta_text'] ?? '' ) ); ?>" />
+                    <p class="description"><?php echo esc_html( 'Fallback CTA: ' . $generated_cta ); ?></p>
+                    <label for="tmw-offer-slogan"><strong><?php esc_html_e( 'Slogan', 'tmw-cr-slot-sidebar-banner' ); ?></strong></label><br />
+                    <input type="text" id="tmw-offer-slogan" class="regular-text" name="tmw_offer_config[custom_slogan]" value="<?php echo esc_attr( (string) ( $override['custom_slogan'] ?? '' ) ); ?>" />
+                    <p class="description"><?php echo esc_html( 'Fallback slogan: ' . $generated_slogan ); ?></p>
+                    <label for="tmw-offer-label"><strong><?php esc_html_e( 'Label override', 'tmw-cr-slot-sidebar-banner' ); ?></strong></label><br />
+                    <input type="text" id="tmw-offer-label" class="regular-text" name="tmw_offer_config[label_override]" value="<?php echo esc_attr( (string) ( $override['label_override'] ?? '' ) ); ?>" />
+                </div>
+
+                <div class="tmw-cr-workbench__field">
+                    <label for="tmw-offer-type"><strong><?php esc_html_e( 'Offer-type override', 'tmw-cr-slot-sidebar-banner' ); ?></strong></label><br />
+                    <select id="tmw-offer-type" name="tmw_offer_config[manual_offer_type]">
+                        <?php foreach ( $manual_type_choices as $choice_key => $choice_label ) : ?>
+                            <option value="<?php echo esc_attr( (string) $choice_key ); ?>" <?php selected( $manual_type, (string) $choice_key ); ?>><?php echo esc_html( (string) $choice_label ); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <?php
+                    $this->render_offer_validation_row(
+                        __( 'Offer type:', 'tmw-cr-slot-sidebar-banner' ),
+                        ! empty( $state['is_type_allowed'] ),
+                        ! empty( $state['is_type_allowed'] )
+                            ? sprintf( 'effective type "%1$s" (%2$s) is in Allowed offer types.', $effective_type, $effective_source )
+                            : sprintf( 'not_allowed_type - effective type "%1$s" (%2$s) is not in Allowed offer types. Change the override above, or enable that type in "Allowed offer types for live banner" below.', $effective_type, $effective_source )
+                    );
+                    ?>
+                </div>
+
+                <div class="tmw-cr-workbench__field">
+                    <label for="tmw-offer-notes"><strong><?php esc_html_e( 'Internal notes', 'tmw-cr-slot-sidebar-banner' ); ?></strong></label><br />
+                    <textarea id="tmw-offer-notes" class="large-text" rows="2" name="tmw_offer_config[notes]"><?php echo esc_textarea( (string) ( $override['notes'] ?? '' ) ); ?></textarea>
+                </div>
+
+                <div class="tmw-cr-workbench__field">
+                    <label>
+                        <input type="checkbox" name="tmw_offer_config[slot_selected]" value="1" <?php checked( ! empty( $state['is_selected'] ) ); ?> />
+                        <?php esc_html_e( 'Enable for frontend pool (manual selection)', 'tmw-cr-slot-sidebar-banner' ); ?>
+                    </label>
+                    <?php if ( 'selected_only' === (string) $state['pool_mode'] && empty( $state['is_selected'] ) ) : ?>
+                        <p class="tmw-cr-workbench__validation tmw-cr-workbench__validation--error">
+                            <?php esc_html_e( 'Frontend pool mode is "Manual selected only". Without this box ticked, the offer cannot appear on the banner.', 'tmw-cr-slot-sidebar-banner' ); ?>
+                        </p>
+                    <?php endif; ?>
+                    <label for="tmw-offer-priority"><strong><?php esc_html_e( 'Manual priority', 'tmw-cr-slot-sidebar-banner' ); ?></strong></label>
+                    <input type="number" id="tmw-offer-priority" min="0" step="1" name="tmw_offer_config[priority]" value="<?php echo esc_attr( (string) (int) $state['priority'] ); ?>" style="width:90px;" />
+                </div>
+
+                <div class="tmw-cr-workbench__field">
+                    <?php if ( (int) $state['featured_position'] > 0 ) : ?>
+                        <p class="description"><?php echo esc_html( sprintf( 'Currently at position %d in Featured Offer Order.', (int) $state['featured_position'] ) ); ?></p>
+                    <?php else : ?>
+                        <label>
+                            <input type="checkbox" name="tmw_offer_config[add_to_featured]" value="1" />
+                            <?php esc_html_e( 'Add to Featured Order (appended at the end, maximum 25)', 'tmw-cr-slot-sidebar-banner' ); ?>
+                        </label>
+                    <?php endif; ?>
+                </div>
+
+                <?php submit_button( __( 'Save this offer', 'tmw-cr-slot-sidebar-banner' ), 'primary', 'submit', false ); ?>
+                <a class="button" href="<?php echo esc_url( $this->build_tab_url( 'slot-setup', array( 'offer_q' => (string) $query ) ) ); ?>"><?php esc_html_e( 'Cancel', 'tmw-cr-slot-sidebar-banner' ); ?></a>
+            </form>
+        </div>
+        <?php
+    }
+
+    /**
+     * [TMW-OFFER-SETUP-EMPTY] Renders an accurate empty-state message for the bulk setup table.
+     *
+     * Distinguishes: nothing synced, nothing selected while the table is in selected-only mode,
+     * offers hidden by the allowed-type skip, and rows hidden behind the bulk 400-row slice.
+     *
+     * @param array<string,mixed> $result                 Result payload from get_filtered_synced_offers_for_admin().
+     * @param bool                $include_all            Whether "Include more offers from synced pool" is on.
+     * @param int                 $type_allowed_displayed Type-allowed count among returned items.
+     * @param int                 $synced_total           Total synced offers in the store.
+     *
+     * @return void
+     */
+    protected function render_setup_empty_state( $result, $include_all, $type_allowed_displayed, $synced_total ) {
+        $source_total = (int) ( $result['source_total'] ?? 0 );
+        $matched      = (int) ( $result['total'] ?? 0 );
+        $per_page     = (int) ( $result['per_page'] ?? self::ADMIN_PER_PAGE_DEFAULT );
+        $synced_total = (int) $synced_total;
+
+        if ( 0 === $synced_total && 0 === $source_total ) {
+            esc_html_e( 'No offers have been synchronised yet. Run Sync Offers on the Overview tab.', 'tmw-cr-slot-sidebar-banner' );
+            return;
+        }
+
+        if ( empty( $include_all ) ) {
+            echo esc_html(
+                sprintf(
+                    '%1$d offers are synchronised. This table is showing selected offers only, and none are selected yet. Use the Offer Workbench search at the top of this tab to configure any offer, or tick "Include more offers from synced pool" and refresh.',
+                    $synced_total
+                )
+            );
+            return;
+        }
+
+        if ( $matched > 0 && 0 === (int) $type_allowed_displayed ) {
+            echo esc_html(
+                sprintf(
+                    '%1$d of %2$d synchronised offers matched, but none of them match your Allowed offer types, so every row was hidden. Adjust "Allowed offer types for live banner" below, or use the Offer Workbench search above.',
+                    $matched,
+                    $synced_total
+                )
+            );
+            return;
+        }
+
+        if ( $matched > $per_page ) {
+            echo esc_html(
+                sprintf(
+                    '%1$d offers matched but this bulk table only renders the first %2$d. Use the Offer Workbench search at the top of this tab to reach a specific offer.',
+                    $matched,
+                    $per_page
+                )
+            );
+            return;
+        }
+
+        echo esc_html(
+            sprintf(
+                '%1$d offers are synchronised, but none are visible under the current filters. Use the Offer Workbench search at the top of this tab to reach a specific offer.',
+                $synced_total
+            )
+        );
+    }
+
+    /**
      * [TMW-FEATURED-ORDER] Renders the compact "Featured Offer Order" panel.
      *
      * Reads only via existing repository helpers (get_featured_offer_ids(),
@@ -1436,6 +2110,7 @@ class TMW_CR_Slot_Admin_Page {
      * @return void
      */
     protected function render_slot_setup_tab( $settings ) {
+        $this->render_offer_workbench_panel( $settings );
         $this->render_featured_offer_order_panel( $settings );
 
         $include_all = ! empty( $_GET['include_all_offers'] );
@@ -2034,6 +2709,20 @@ class TMW_CR_Slot_Admin_Page {
                 <?php endif; ?>
             <?php endif; ?>
 
+            <?php if ( (int) ( $result['total'] ?? 0 ) > (int) ( $result['per_page'] ?? 400 ) ) : ?>
+                <p class="description">
+                    <?php
+                    echo esc_html(
+                        sprintf(
+                            'Showing the first %1$d of %2$d matching offers in this bulk table. Use the Offer Workbench search at the top of this tab to reach a specific offer.',
+                            (int) $result['per_page'],
+                            (int) $result['total']
+                        )
+                    );
+                    ?>
+                </p>
+            <?php endif; ?>
+
             <table class="widefat striped">
                 <thead>
                     <tr>
@@ -2052,7 +2741,7 @@ class TMW_CR_Slot_Admin_Page {
                 </thead>
                 <tbody>
                     <?php if ( empty( $offers ) ) : ?>
-                        <tr><td colspan="11"><?php esc_html_e( 'No offers available for slot setup yet. Sync offers first.', 'tmw-cr-slot-sidebar-banner' ); ?></td></tr>
+                        <tr><td colspan="11"><?php $this->render_setup_empty_state( $result, $include_all, (int) $synced_type_allowed_count, count( $synced_offers ) ); ?></td></tr>
                     <?php else : ?>
                         <?php foreach ( $offers as $offer ) : ?>
                             <?php

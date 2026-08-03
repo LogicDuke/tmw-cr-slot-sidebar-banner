@@ -269,3 +269,76 @@
     flex: 0 0 auto;
     gap: 4px;
 }
+
+/* [TMW-OFFER-CONFIG] Offer Workbench — scoped admin-only styles.
+   Badges reuse the existing .tmw-cr-badge styles above. */
+.tmw-cr-workbench {
+    margin: 0 0 24px;
+    padding: 16px;
+    border: 1px solid #c3c4c7;
+    border-left: 4px solid #2271b1;
+    border-radius: 4px;
+    background: #fff;
+}
+
+.tmw-cr-workbench__search {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin: 0 0 12px;
+}
+
+.tmw-cr-workbench__results {
+    margin: 0 0 12px;
+    padding: 0;
+    list-style: none;
+}
+
+.tmw-cr-workbench__result {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin: 0 0 6px;
+    padding: 10px 12px;
+    border: 1px solid #dcdcde;
+    border-radius: 4px;
+    background: #f6f7f7;
+}
+
+.tmw-cr-workbench__result-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+    flex: 1 1 auto;
+}
+
+.tmw-cr-workbench__editor {
+    margin: 12px 0 0;
+    padding: 14px 16px;
+    border: 1px solid #dcdcde;
+    border-radius: 4px;
+    background: #fbfbfc;
+}
+
+.tmw-cr-workbench__field {
+    margin: 0 0 16px;
+    padding: 0 0 12px;
+    border-bottom: 1px solid #f0f0f1;
+}
+
+.tmw-cr-workbench__validation {
+    margin: 4px 0 0;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.tmw-cr-workbench__validation--ok {
+    color: #1d6b32;
+}
+
+.tmw-cr-workbench__validation--error {
+    color: #b32d2e;
+}

@@ -121,6 +121,13 @@ class TMW_Test_Admin_Page extends TMW_CR_Slot_Admin_Page {
     public function test_build_offers_count_summary( $result, $args, $payout_labels ) {
         return $this->build_offers_count_summary( $result, $args, $payout_labels );
     }
+
+    public function test_render_setup_empty_state( $result, $include_all, $type_allowed_displayed, $synced_total ) {
+        ob_start();
+        $this->render_setup_empty_state( $result, $include_all, $type_allowed_displayed, $synced_total );
+
+        return (string) ob_get_clean();
+    }
 }
 
 class TMW_Test_Offer_Repository extends TMW_CR_Slot_Offer_Repository {
@@ -5407,17 +5414,17 @@ $tests['frontend_post_spin_cta_text_decoration_none'] = function() {
     tmw_assert_contains( 'border-bottom: 0 !important;', $css_file, 'CTA pseudo elements should not render underline borders.' );
 };
 
-$tests['plugin_version_bumped_to_1915'] = function() {
+$tests['plugin_version_bumped_to_1916'] = function() {
     $plugin_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'tmw-cr-slot-sidebar-banner.php' );
-    tmw_assert_contains( 'Version: 1.9.15', $plugin_file, 'Plugin header version should be 1.9.15.' );
-    tmw_assert_contains( "define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.15' );", $plugin_file, 'Asset version constant should be 1.9.15.' );
+    tmw_assert_contains( 'Version: 1.9.16', $plugin_file, 'Plugin header version should be 1.9.16.' );
+    tmw_assert_contains( "define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.16' );", $plugin_file, 'Asset version constant should be 1.9.16.' );
 };
 
 
 
-$tests['readme_stable_tag_bumped_to_1915'] = function() {
+$tests['readme_stable_tag_bumped_to_1916'] = function() {
     $readme_file = (string) file_get_contents( TMW_CR_SLOT_BANNER_PATH . 'readme.txt' );
-    tmw_assert_contains( 'Stable tag: 1.9.15', $readme_file, 'Readme stable tag should be 1.9.15.' );
+    tmw_assert_contains( 'Stable tag: 1.9.16', $readme_file, 'Readme stable tag should be 1.9.16.' );
 };
 
 
@@ -7324,6 +7331,656 @@ $tests['featured_order_does_not_change_cta_country_or_eligibility_behavior'] = f
     $after = $repo->get_offer_frontend_eligibility_summary( $repo->get_synced_offers()['8780'], $settings, 'Belgium', array() );
 
     tmw_assert_same( $before, $after, 'Featuring an offer must not change its CTA, country, or eligibility evaluation.' );
+};
+
+// -----------------------------------------------------------------------
+// [TMW-OFFER-CONFIG] Offer Workbench — Phase 1 focused test coverage.
+// -----------------------------------------------------------------------
+
+/**
+ * Builds a repository seeded with the given synced offers and overrides.
+ *
+ * @return TMW_CR_Slot_Offer_Repository
+ */
+function tmw_workbench_test_repo( array $synced, array $overrides = array() ) {
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta', 'dashboard_meta', 'skipped', 'featured' );
+    $repo->save_synced_offers( $synced );
+    if ( ! empty( $overrides ) ) {
+        $repo->save_offer_overrides( $overrides );
+    }
+
+    return $repo;
+}
+
+/**
+ * Builds a standard synced offer payload.
+ *
+ * @return array<string,mixed>
+ */
+function tmw_workbench_offer( $offer_id, $name, $payout_type = 'PPS', $status = 'active' ) {
+    return array(
+        'id'          => (string) $offer_id,
+        'name'        => (string) $name,
+        'status'      => (string) $status,
+        'payout_type' => (string) $payout_type,
+    );
+}
+
+// --- Search -------------------------------------------------------------
+
+$tests['workbench_exact_id_finds_offer_hidden_by_selected_only'] = function() {
+    tmw_reset_test_state();
+    $settings = array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array() );
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $settings );
+    $repo = tmw_workbench_test_repo(
+        array(
+            '153' => tmw_workbench_offer( '153', 'Slut Roulette - PPS' ),
+            '999' => tmw_workbench_offer( '999', 'Other Offer - PPS' ),
+        )
+    );
+
+    // The bulk Offer Setup table default (selected_only) shows nothing at all.
+    $bulk = $repo->get_filtered_synced_offers_for_admin(
+        array( 'selected_only' => true, 'page' => 1, 'per_page' => 400 ),
+        $settings
+    );
+    tmw_assert_same( 0, count( $bulk['items'] ), 'Bulk selected-only view should be empty when nothing is selected.' );
+
+    $results = $repo->search_offers_for_setup( '153' );
+    tmw_assert_same( '153', (string) $results[0]['id'], 'Exact ID search must find an offer the bulk table hides.' );
+    tmw_assert_same( 'exact_id', (string) $results[0]['match'], 'Exact ID hit should be flagged as exact_id.' );
+};
+
+$tests['workbench_exact_id_bypasses_bulk_pagination'] = function() {
+    tmw_reset_test_state();
+    $settings = array( 'allowed_offer_types' => array( 'pps' ) );
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $settings );
+
+    $synced = array();
+    for ( $index = 1; $index <= 410; $index++ ) {
+        $offer_id            = (string) ( 1000 + $index );
+        $synced[ $offer_id ] = tmw_workbench_offer( $offer_id, sprintf( 'Aaa Filler Offer %04d - PPS', $index ) );
+    }
+    $synced['999999'] = tmw_workbench_offer( '999999', 'Zzz Last Offer - PPS' );
+
+    $repo = tmw_workbench_test_repo( $synced );
+
+    // Bulk table hard-slices to page 1 / per_page 400 sorted by name ascending.
+    $bulk     = $repo->get_filtered_synced_offers_for_admin(
+        array( 'selected_only' => false, 'sort_by' => 'name', 'sort_order' => 'asc', 'page' => 1, 'per_page' => 400 ),
+        $settings
+    );
+    $bulk_ids = array_column( $bulk['items'], 'id' );
+    tmw_assert_same( 400, count( $bulk_ids ), 'Bulk table should return exactly the 400-row slice.' );
+    tmw_assert_true( ! in_array( '999999', $bulk_ids, true ), 'The last-sorting offer should fall outside the bulk slice.' );
+
+    $results = $repo->search_offers_for_setup( '999999' );
+    tmw_assert_same( '999999', (string) $results[0]['id'], 'Exact ID search must bypass the bulk 400-row slice.' );
+};
+
+$tests['workbench_partial_name_search_is_case_insensitive'] = function() {
+    tmw_reset_test_state();
+    $repo = tmw_workbench_test_repo(
+        array(
+            '153' => tmw_workbench_offer( '153', 'Slut Roulette - PPS' ),
+            '154' => tmw_workbench_offer( '154', 'Roulette Deluxe - PPS' ),
+            '155' => tmw_workbench_offer( '155', 'Unrelated Brand - PPS' ),
+        )
+    );
+
+    $ids = array_column( $repo->search_offers_for_setup( 'rOuLeTtE' ), 'id' );
+    sort( $ids );
+    tmw_assert_same( array( '153', '154' ), $ids, 'Partial name search should be case-insensitive and match both offers.' );
+};
+
+$tests['workbench_search_result_cap_is_respected'] = function() {
+    tmw_reset_test_state();
+    $synced = array();
+    for ( $index = 1; $index <= 40; $index++ ) {
+        $offer_id            = (string) ( 2000 + $index );
+        $synced[ $offer_id ] = tmw_workbench_offer( $offer_id, sprintf( 'Cammy Brand %02d - PPS', $index ) );
+    }
+    $repo = tmw_workbench_test_repo( $synced );
+
+    tmw_assert_same( 20, count( $repo->search_offers_for_setup( 'Cammy' ) ), 'Search should return at most 20 results by default.' );
+    tmw_assert_same( 5, count( $repo->search_offers_for_setup( 'Cammy', 5 ) ), 'Search should honour an explicit result cap.' );
+};
+
+$tests['workbench_unknown_id_returns_empty_result_set'] = function() {
+    tmw_reset_test_state();
+    $repo = tmw_workbench_test_repo( array( '153' => tmw_workbench_offer( '153', 'Slut Roulette - PPS' ) ) );
+
+    tmw_assert_same( array(), $repo->search_offers_for_setup( '4242424' ), 'Unknown ID should return no results and no error.' );
+    tmw_assert_same( array(), $repo->search_offers_for_setup( '' ), 'Empty query should return no results.' );
+};
+
+// --- State --------------------------------------------------------------
+
+$tests['workbench_state_reports_missing_valid_cta'] = function() {
+    tmw_reset_test_state();
+    $settings = array( 'allowed_offer_types' => array( 'pps' ), 'cta_url' => '' );
+    $repo     = tmw_workbench_test_repo( array( '8780' => tmw_workbench_offer( '8780', 'Jerkmate PPS' ) ) );
+
+    $state = $repo->get_offer_setup_state( '8780', $settings, 'Belgium' );
+
+    tmw_assert_true( (bool) $state['exists'], 'Synced offer should be reported as existing.' );
+    tmw_assert_same( false, (bool) $state['eligibility']['is_eligible'], 'Offer without a final URL should not be eligible.' );
+    tmw_assert_same( 'missing_valid_cta', (string) $state['eligibility']['block_reason'], 'Block reason should be missing_valid_cta.' );
+    tmw_assert_same( false, (bool) $state['cta_import_valid'], 'Empty final URL should fail manual-override validation.' );
+    tmw_assert_same( false, (bool) $state['cta_winner_valid'], 'Empty final URL should fail frontend winner validation.' );
+};
+
+$tests['workbench_state_reports_eligible_with_valid_cta'] = function() {
+    tmw_reset_test_state();
+    $settings = array( 'allowed_offer_types' => array( 'pps' ), 'cta_url' => '' );
+    $repo     = tmw_workbench_test_repo(
+        array( '8780' => tmw_workbench_offer( '8780', 'Jerkmate PPS' ) ),
+        array( '8780' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/8780', 'allowed_countries' => 'Belgium' ) )
+    );
+
+    $state = $repo->get_offer_setup_state( '8780', $settings, 'Belgium' );
+
+    tmw_assert_same( true, (bool) $state['eligibility']['is_eligible'], 'A valid final URL should make the offer eligible.' );
+    tmw_assert_same( 'valid', (string) $state['eligibility']['block_reason'], 'Eligible offers report the valid reason key.' );
+    tmw_assert_same( true, (bool) $state['cta_import_valid'], 'A clean tracking URL should pass manual-override validation.' );
+    tmw_assert_same( true, (bool) $state['cta_winner_valid'], 'A clean tracking URL should pass frontend winner validation.' );
+};
+
+$tests['workbench_state_reports_featured_position'] = function() {
+    tmw_reset_test_state();
+    $settings = array( 'allowed_offer_types' => array( 'pps' ) );
+    $repo     = tmw_workbench_test_repo(
+        array(
+            '8780'  => tmw_workbench_offer( '8780', 'Jerkmate PPS' ),
+            '10335' => tmw_workbench_offer( '10335', 'Candy AI PPS' ),
+        )
+    );
+    $repo->save_featured_offer_ids( array( '10335', '8780' ) );
+
+    tmw_assert_same( 2, (int) $repo->get_offer_setup_state( '8780', $settings, 'Belgium' )['featured_position'], 'Featured position should be 1-based.' );
+    tmw_assert_same( 1, (int) $repo->get_offer_setup_state( '10335', $settings, 'Belgium' )['featured_position'], 'First featured offer should report position 1.' );
+};
+
+$tests['workbench_state_reports_selected_membership'] = function() {
+    tmw_reset_test_state();
+    $repo = tmw_workbench_test_repo(
+        array(
+            '8780' => tmw_workbench_offer( '8780', 'Jerkmate PPS' ),
+            '500'  => tmw_workbench_offer( '500', 'Alpha Offer PPS' ),
+        )
+    );
+    $settings = array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array( '8780' ), 'slot_offer_priority' => array( '8780' => 5 ) );
+
+    $selected_state = $repo->get_offer_setup_state( '8780', $settings, 'Belgium' );
+    $other_state    = $repo->get_offer_setup_state( '500', $settings, 'Belgium' );
+
+    tmw_assert_same( true, (bool) $selected_state['is_selected'], 'Offer in slot_offer_ids should report as selected.' );
+    tmw_assert_same( 5, (int) $selected_state['priority'], 'Stored manual priority should be reported.' );
+    tmw_assert_same( false, (bool) $other_state['is_selected'], 'Offer outside slot_offer_ids should report as not selected.' );
+    tmw_assert_same( 100, (int) $other_state['priority'], 'Offers without a stored priority default to 100.' );
+};
+
+$tests['workbench_state_respects_selected_only_membership'] = function() {
+    tmw_reset_test_state();
+    $settings = array(
+        'allowed_offer_types' => array( 'pps' ),
+        'frontend_pool_mode'  => 'selected_only',
+        'slot_offer_ids'      => array(),
+    );
+    $repo = tmw_workbench_test_repo(
+        array( '8780' => tmw_workbench_offer( '8780', 'Jerkmate PPS' ) ),
+        array( '8780' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/8780', 'allowed_countries' => 'Belgium' ) )
+    );
+
+    $state = $repo->get_offer_setup_state( '8780', $settings, 'Belgium' );
+
+    tmw_assert_same( false, (bool) $state['eligibility']['is_eligible'], 'Unselected offers must not be reported eligible in selected_only mode.' );
+    tmw_assert_same( 'not_selected_for_selected_only', (string) $state['eligibility']['block_reason'], 'Selected-only membership should be the workbench blocker.' );
+};
+
+$tests['workbench_state_flags_url_accepted_by_import_but_rejected_by_winner'] = function() {
+    tmw_reset_test_state();
+    $settings   = array( 'allowed_offer_types' => array( 'pps' ), 'cta_url' => '' );
+    $tricky_url = 'https://trk.example.test/go?affiliate_id=12345';
+    $repo       = tmw_workbench_test_repo(
+        array( '8780' => tmw_workbench_offer( '8780', 'Jerkmate PPS' ) ),
+        array( '8780' => array( 'enabled' => 1, 'final_url_override' => $tricky_url, 'allowed_countries' => 'Belgium' ) )
+    );
+
+    $state = $repo->get_offer_setup_state( '8780', $settings, 'Belgium' );
+
+    tmw_assert_same( true, (bool) $state['cta_import_valid'], 'The import validator should accept this URL.' );
+    tmw_assert_same( false, (bool) $state['cta_winner_valid'], 'The frontend winner validator should reject this URL.' );
+    tmw_assert_same( 'missing_valid_cta', (string) $state['eligibility']['block_reason'], 'The offer should remain blocked despite a saved URL.' );
+};
+
+// --- Save isolation -----------------------------------------------------
+
+/**
+ * Runs handle_save_offer_config() against a prepared test page.
+ *
+ * @return TMW_Test_Admin_Page
+ */
+function tmw_workbench_run_save( TMW_CR_Slot_Offer_Repository $repo, array $config ) {
+    $_POST = array( '_wpnonce' => '1', 'tmw_offer_config' => $config );
+    $page  = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $page->handle_save_offer_config();
+
+    return $page;
+}
+
+$tests['save_offer_config_writes_only_target_override'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'pps' ) ) );
+    $repo = tmw_workbench_test_repo(
+        array(
+            '153' => tmw_workbench_offer( '153', 'Slut Roulette - PPS' ),
+            '999' => tmw_workbench_offer( '999', 'Other Offer - PPS' ),
+        ),
+        array(
+            '999' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/999', 'allowed_countries' => 'Belgium', 'notes' => 'untouched note' ),
+        )
+    );
+
+    tmw_workbench_run_save(
+        $repo,
+        array(
+            'offer_id'           => '153',
+            'enabled'            => '1',
+            'final_url_override' => 'https://trk.example.test/153',
+            'allowed_countries'  => 'BE,US',
+            'notes'              => 'configured from workbench',
+        )
+    );
+
+    $target = $repo->get_offer_override( '153' );
+    tmw_assert_same( 'https://trk.example.test/153', (string) $target['final_url_override'], 'Target offer final URL should be saved.' );
+    tmw_assert_same( array( 'BE', 'US' ), $target['allowed_countries'], 'Target offer allowed countries should be saved.' );
+    tmw_assert_same( 'configured from workbench', (string) $target['notes'], 'Target offer notes should be saved.' );
+};
+
+$tests['save_offer_config_preserves_other_offer_overrides'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'pps' ) ) );
+    $repo = tmw_workbench_test_repo(
+        array(
+            '153' => tmw_workbench_offer( '153', 'Slut Roulette - PPS' ),
+            '999' => tmw_workbench_offer( '999', 'Other Offer - PPS' ),
+        ),
+        array(
+            '999' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/999', 'allowed_countries' => 'Belgium', 'notes' => 'untouched note' ),
+        )
+    );
+    $before = $repo->get_offer_override( '999' );
+
+    tmw_workbench_run_save( $repo, array( 'offer_id' => '153', 'enabled' => '1', 'final_url_override' => 'https://trk.example.test/153' ) );
+
+    tmw_assert_same( $before, $repo->get_offer_override( '999' ), 'Unrelated offer overrides must be preserved byte for byte.' );
+};
+
+$tests['save_offer_config_preserves_frontend_pool_mode'] = function() {
+    tmw_reset_test_state();
+    update_option(
+        TMW_CR_Slot_Sidebar_Banner::OPTION_KEY,
+        array( 'frontend_pool_mode' => 'selected_only', 'allowed_offer_types' => array( 'pps' ) )
+    );
+    $repo = tmw_workbench_test_repo( array( '153' => tmw_workbench_offer( '153', 'Slut Roulette - PPS' ) ) );
+
+    tmw_workbench_run_save( $repo, array( 'offer_id' => '153', 'final_url_override' => 'https://trk.example.test/153' ) );
+
+    tmw_assert_same( 'selected_only', (string) get_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY )['frontend_pool_mode'], 'frontend_pool_mode must survive a workbench save.' );
+};
+
+$tests['save_offer_config_preserves_allowed_offer_types'] = function() {
+    tmw_reset_test_state();
+    update_option(
+        TMW_CR_Slot_Sidebar_Banner::OPTION_KEY,
+        array( 'allowed_offer_types' => array( 'pps', 'revshare' ), 'frontend_pool_mode' => 'smart_auto' )
+    );
+    $repo = tmw_workbench_test_repo( array( '153' => tmw_workbench_offer( '153', 'Slut Roulette - PPS' ) ) );
+
+    tmw_workbench_run_save( $repo, array( 'offer_id' => '153', 'final_url_override' => 'https://trk.example.test/153' ) );
+
+    tmw_assert_same( array( 'pps', 'revshare' ), get_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY )['allowed_offer_types'], 'allowed_offer_types must survive a workbench save.' );
+};
+
+$tests['save_offer_config_preserves_unrelated_slot_offer_ids'] = function() {
+    tmw_reset_test_state();
+    update_option(
+        TMW_CR_Slot_Sidebar_Banner::OPTION_KEY,
+        array( 'slot_offer_ids' => array( '900', '901' ), 'allowed_offer_types' => array( 'pps' ) )
+    );
+    $repo = tmw_workbench_test_repo( array( '153' => tmw_workbench_offer( '153', 'Slut Roulette - PPS' ) ) );
+
+    tmw_workbench_run_save( $repo, array( 'offer_id' => '153', 'slot_selected' => '1' ) );
+    tmw_assert_same( array( '900', '901', '153' ), get_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY )['slot_offer_ids'], 'Selecting one offer must append without dropping the others.' );
+
+    tmw_workbench_run_save( $repo, array( 'offer_id' => '153' ) );
+    tmw_assert_same( array( '900', '901' ), get_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY )['slot_offer_ids'], 'Deselecting one offer must remove only that offer.' );
+};
+
+$tests['save_offer_config_preserves_unrelated_slot_offer_priority'] = function() {
+    tmw_reset_test_state();
+    update_option(
+        TMW_CR_Slot_Sidebar_Banner::OPTION_KEY,
+        array( 'slot_offer_priority' => array( '900' => 3, '901' => 7 ), 'allowed_offer_types' => array( 'pps' ) )
+    );
+    $repo = tmw_workbench_test_repo( array( '153' => tmw_workbench_offer( '153', 'Slut Roulette - PPS' ) ) );
+
+    tmw_workbench_run_save( $repo, array( 'offer_id' => '153', 'priority' => '12' ) );
+
+    $saved = get_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY )['slot_offer_priority'];
+    tmw_assert_same( 3, (int) $saved['900'], 'Unrelated priority 900 must be preserved.' );
+    tmw_assert_same( 7, (int) $saved['901'], 'Unrelated priority 901 must be preserved.' );
+    tmw_assert_same( 12, (int) $saved['153'], 'Target priority should be written.' );
+};
+
+$tests['save_offer_config_preserves_offer_image_override_map'] = function() {
+    tmw_reset_test_state();
+    update_option(
+        TMW_CR_Slot_Sidebar_Banner::OPTION_KEY,
+        array( 'offer_image_overrides' => array( '900' => 'https://img.example.test/900.png' ), 'allowed_offer_types' => array( 'pps' ) )
+    );
+    $repo = tmw_workbench_test_repo( array( '153' => tmw_workbench_offer( '153', 'Slut Roulette - PPS' ) ) );
+
+    tmw_workbench_run_save( $repo, array( 'offer_id' => '153', 'image_url_override' => 'https://img.example.test/153.png' ) );
+
+    $saved = get_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY );
+    tmw_assert_same( array( '900' => 'https://img.example.test/900.png' ), $saved['offer_image_overrides'], 'The legacy offer_image_overrides map must be preserved untouched.' );
+    tmw_assert_same( 'https://img.example.test/153.png', (string) $repo->get_offer_override( '153' )['image_url_override'], 'Per-offer image override should be saved on the override row.' );
+};
+
+$tests['save_offer_config_rejects_invalid_nonce'] = function() {
+    tmw_reset_test_state();
+    $GLOBALS['tmw_test_nonce_ok'] = false;
+    $_POST  = array( 'tmw_offer_config' => array( 'offer_id' => '153' ) );
+    $thrown = false;
+    $page   = new TMW_CR_Slot_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    try {
+        $page->handle_save_offer_config();
+    } catch ( Throwable $throwable ) {
+        $thrown = true;
+    }
+    $GLOBALS['tmw_test_nonce_ok'] = true;
+    tmw_assert_true( $thrown, 'Offer config save should require a valid nonce.' );
+};
+
+$tests['save_offer_config_rejects_insufficient_capability'] = function() {
+    tmw_reset_test_state();
+    $GLOBALS['tmw_test_current_user_can'] = false;
+    $_POST  = array( '_wpnonce' => '1', 'tmw_offer_config' => array( 'offer_id' => '153' ) );
+    $thrown = false;
+    $page   = new TMW_CR_Slot_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    try {
+        $page->handle_save_offer_config();
+    } catch ( Throwable $throwable ) {
+        $thrown = true;
+    }
+    $GLOBALS['tmw_test_current_user_can'] = true;
+    tmw_assert_true( $thrown, 'Offer config save should require manage_options.' );
+};
+
+$tests['save_offer_config_rejects_non_numeric_offer_id'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'pps' ) ) );
+    $repo = tmw_workbench_test_repo( array( '153' => tmw_workbench_offer( '153', 'Slut Roulette - PPS' ) ) );
+
+    $page = tmw_workbench_run_save( $repo, array( 'offer_id' => 'abc' ) );
+
+    tmw_assert_same( 'error', (string) $page->notice['type'], 'A non-numeric offer ID should produce an error notice.' );
+    tmw_assert_same( array(), $repo->get_offer_override( 'abc' ), 'A non-numeric offer ID must not create an override row.' );
+};
+
+$tests['save_offer_config_rejects_unknown_offer_without_override'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'pps' ) ) );
+    $repo = tmw_workbench_test_repo( array( '153' => tmw_workbench_offer( '153', 'Slut Roulette - PPS' ) ) );
+
+    $page = tmw_workbench_run_save( $repo, array( 'offer_id' => '4242424', 'final_url_override' => 'https://trk.example.test/x' ) );
+
+    tmw_assert_same( 'error', (string) $page->notice['type'], 'An unknown offer ID with no override should be rejected.' );
+    tmw_assert_same( array(), $repo->get_offer_override( '4242424' ), 'An unknown offer ID must not create an override row.' );
+};
+
+$tests['save_offer_config_accepts_unknown_offer_that_already_has_override'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'pps' ) ) );
+    $repo = tmw_workbench_test_repo(
+        array( '153' => tmw_workbench_offer( '153', 'Slut Roulette - PPS' ) ),
+        array( '4242424' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/old' ) )
+    );
+
+    $page = tmw_workbench_run_save( $repo, array( 'offer_id' => '4242424', 'enabled' => '1', 'final_url_override' => 'https://trk.example.test/new' ) );
+
+    tmw_assert_same( 'success', (string) $page->notice['type'], 'An override-only offer should still be editable.' );
+    tmw_assert_same( 'https://trk.example.test/new', (string) $repo->get_offer_override( '4242424' )['final_url_override'], 'Override-only offer should be updated.' );
+};
+
+$tests['save_offer_config_appends_to_featured_order'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'pps' ) ) );
+    $repo = tmw_workbench_test_repo(
+        array(
+            '153'  => tmw_workbench_offer( '153', 'Slut Roulette - PPS' ),
+            '8780' => tmw_workbench_offer( '8780', 'Jerkmate PPS' ),
+        )
+    );
+    $repo->save_featured_offer_ids( array( '8780' ) );
+
+    $page = tmw_workbench_run_save( $repo, array( 'offer_id' => '153', 'add_to_featured' => '1' ) );
+
+    tmw_assert_same( array( '8780', '153' ), $repo->get_featured_offer_ids(), 'Featured append must preserve existing order and add at the end.' );
+    tmw_assert_contains( 'Added to Featured Offer Order at position 2', (string) $page->notice['message'], 'The notice should confirm the featured position.' );
+};
+
+$tests['save_offer_config_reports_featured_limit_clearly'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'pps' ) ) );
+
+    $synced = array( '153' => tmw_workbench_offer( '153', 'Slut Roulette - PPS' ) );
+    $full   = array();
+    for ( $index = 1; $index <= 25; $index++ ) {
+        $offer_id            = (string) ( 3000 + $index );
+        $synced[ $offer_id ] = tmw_workbench_offer( $offer_id, 'Featured Filler ' . $index );
+        $full[]              = $offer_id;
+    }
+    $repo = tmw_workbench_test_repo( $synced );
+    $repo->save_featured_offer_ids( $full );
+
+    $page = tmw_workbench_run_save( $repo, array( 'offer_id' => '153', 'add_to_featured' => '1' ) );
+
+    tmw_assert_same( $full, $repo->get_featured_offer_ids(), 'The featured list must be left untouched when the 25 limit is reached.' );
+    tmw_assert_contains( 'maximum of 25', (string) $page->notice['message'], 'The notice should explain the 25-offer featured limit.' );
+};
+
+$tests['save_offer_config_redirects_back_to_the_same_offer'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'pps' ) ) );
+    $repo = tmw_workbench_test_repo( array( '153' => tmw_workbench_offer( '153', 'Slut Roulette - PPS' ) ) );
+
+    $page = tmw_workbench_run_save( $repo, array( 'offer_id' => '153', 'offer_q' => 'Roulette', 'final_url_override' => 'https://trk.example.test/153' ) );
+
+    tmw_assert_same( 'slot-setup', (string) $page->notice['tab'], 'Save should redirect back to the Offer Setup tab.' );
+    tmw_assert_same( '153', (string) $page->notice['args']['offer_edit'], 'Save should preserve offer_edit.' );
+    tmw_assert_same( 'Roulette', (string) $page->notice['args']['offer_q'], 'Save should preserve offer_q.' );
+};
+
+$tests['save_offer_config_preserves_blocked_only_filter'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'pps' ) ) );
+    $repo = tmw_workbench_test_repo( array( '153' => tmw_workbench_offer( '153', 'Slut Roulette - PPS' ) ) );
+
+    $page = tmw_workbench_run_save(
+        $repo,
+        array(
+            'offer_id'          => '153',
+            'offer_q'           => 'Roulette',
+            'offer_blocked_only'=> '1',
+        )
+    );
+
+    tmw_assert_same( 1, (int) $page->notice['args']['offer_blocked_only'], 'Save redirect should preserve the blocked-only search filter.' );
+};
+
+$tests['workbench_blocked_filter_scans_complete_match_set'] = function() {
+    $source = file_get_contents( dirname( __DIR__ ) . '/admin/admin-page.php' );
+    tmw_assert_contains( '$blocked_only ? max( 1, $synced_total ) : $result_limit', (string) $source, 'Blocked-only search must scan the full synced match set before limiting displayed results.' );
+};
+
+$tests['save_offer_config_notice_reports_remaining_block_reason'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'pps' ) ) );
+    $repo = tmw_workbench_test_repo( array( '8780' => tmw_workbench_offer( '8780', 'Jerkmate PPS' ) ) );
+
+    $page = tmw_workbench_run_save( $repo, array( 'offer_id' => '8780', 'enabled' => '1' ) );
+
+    tmw_assert_contains( 'Not eligible - missing_valid_cta', (string) $page->notice['message'], 'The post-save notice should re-evaluate and name the remaining blocker.' );
+};
+
+$tests['save_offer_config_warns_when_url_is_rejected_by_winner_rule'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'pps' ) ) );
+    $repo = tmw_workbench_test_repo( array( '8780' => tmw_workbench_offer( '8780', 'Jerkmate PPS' ) ) );
+
+    $page = tmw_workbench_run_save(
+        $repo,
+        array( 'offer_id' => '8780', 'enabled' => '1', 'final_url_override' => 'https://trk.example.test/go?affiliate_id=12345', 'allowed_countries' => 'Belgium' )
+    );
+
+    tmw_assert_contains( 'rejected by the frontend winner rule', (string) $page->notice['message'], 'A winner-rejected URL should trigger an explicit warning.' );
+};
+
+$tests['save_offer_config_does_not_change_frontend_pool_when_only_notes_change'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'pps' ) ) );
+    $repo = tmw_workbench_test_repo(
+        array(
+            '8780'  => tmw_workbench_offer( '8780', 'Jerkmate PPS' ),
+            '10335' => tmw_workbench_offer( '10335', 'Candy AI PPS' ),
+        ),
+        array(
+            '8780'  => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/8780', 'allowed_countries' => 'Belgium' ),
+            '10335' => array( 'enabled' => 1, 'final_url_override' => 'https://trk.example.test/10335', 'allowed_countries' => 'Belgium' ),
+        )
+    );
+    $settings = array( 'allowed_offer_types' => array( 'pps' ), 'cta_url' => '', 'cta_text' => 'CTA' );
+    $before   = array_column( $repo->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() ), 'id' );
+    tmw_assert_same( 2, count( $before ), 'Fixture sanity: both offers should be in the frontend pool before the save.' );
+
+    tmw_workbench_run_save( $repo, array( 'offer_id' => '8780', 'enabled' => '1', 'final_url_override' => 'https://trk.example.test/8780', 'allowed_countries' => 'Belgium', 'notes' => 'operator note' ) );
+
+    $after = array_column( $repo->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() ), 'id' );
+    tmw_assert_same( $before, $after, 'A notes-only workbench save must not change frontend pool composition or order.' );
+};
+
+// --- Empty states -------------------------------------------------------
+
+$tests['empty_state_reports_no_synced_offers'] = function() {
+    tmw_reset_test_state();
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    $html = $page->test_render_setup_empty_state( array( 'source_total' => 0, 'total' => 0, 'per_page' => 400 ), false, 0, 0 );
+
+    tmw_assert_contains( 'No offers have been synchronised yet', $html, 'The no-sync empty state should be explicit.' );
+};
+
+$tests['empty_state_reports_synced_but_none_selected'] = function() {
+    tmw_reset_test_state();
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    $html = $page->test_render_setup_empty_state( array( 'source_total' => 451, 'total' => 0, 'per_page' => 400 ), false, 0, 451 );
+
+    tmw_assert_contains( '451 offers are synchronised', $html, 'The hidden-rows empty state should report the synced total.' );
+    tmw_assert_contains( 'selected offers only', $html, 'The hidden-rows empty state should explain the selected-only mode.' );
+};
+
+$tests['empty_state_reports_allowed_type_exclusion'] = function() {
+    tmw_reset_test_state();
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    $html = $page->test_render_setup_empty_state( array( 'source_total' => 451, 'total' => 448, 'per_page' => 400 ), true, 0, 451 );
+
+    tmw_assert_contains( 'none of them match your Allowed offer types', $html, 'The allowed-type empty state should name the type filter.' );
+};
+
+$tests['empty_state_reports_bulk_row_truncation'] = function() {
+    tmw_reset_test_state();
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, new TMW_CR_Slot_Offer_Repository( 'offers', 'meta' ), 'sidebar' );
+    $html = $page->test_render_setup_empty_state( array( 'source_total' => 451, 'total' => 448, 'per_page' => 400 ), true, 448, 451 );
+
+    tmw_assert_contains( 'only renders the first 400', $html, 'The truncation empty state should explain the 400-row bulk limit.' );
+};
+
+$tests['slot_setup_no_longer_claims_offers_need_syncing_when_offers_exist'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'pps' ), 'slot_offer_ids' => array() ) );
+    $repo = tmw_workbench_test_repo(
+        array(
+            '153' => tmw_workbench_offer( '153', 'Slut Roulette - PPS' ),
+            '999' => tmw_workbench_offer( '999', 'Other Offer - PPS' ),
+        )
+    );
+    $page  = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $_GET  = array( 'tab' => 'slot-setup' );
+    ob_start();
+    $page->render_page();
+    $html = (string) ob_get_clean();
+
+    tmw_assert_true( false === strpos( $html, 'No offers available for slot setup yet. Sync offers first.' ), 'The misleading sync empty state must be gone.' );
+    tmw_assert_contains( '2 offers are synchronised', $html, 'The corrected empty state should report the real synced total.' );
+};
+
+// --- Workbench panel rendering -----------------------------------------
+
+$tests['workbench_panel_renders_at_top_of_offer_setup_tab'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'pps' ) ) );
+    $repo = tmw_workbench_test_repo( array( '153' => tmw_workbench_offer( '153', 'Slut Roulette - PPS' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $_GET = array( 'tab' => 'slot-setup' );
+    ob_start();
+    $page->render_page();
+    $html = (string) ob_get_clean();
+
+    tmw_assert_contains( 'data-tmw-offer-workbench="1"', $html, 'The workbench panel should render on the Offer Setup tab.' );
+    tmw_assert_contains( 'name="offer_q"', $html, 'The workbench should expose the offer_q search field.' );
+    tmw_assert_contains( 'name="offer_blocked_only"', $html, 'The workbench should expose the offer_blocked_only filter.' );
+    tmw_assert_true(
+        strpos( $html, 'data-tmw-offer-workbench="1"' ) < strpos( $html, 'data-tmw-featured-order="1"' ),
+        'The workbench must render above Featured Offer Order.'
+    );
+};
+
+$tests['workbench_panel_renders_search_results_and_configure_link'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'pps' ) ) );
+    $repo = tmw_workbench_test_repo( array( '153' => tmw_workbench_offer( '153', 'Slut Roulette - PPS' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $_GET = array( 'tab' => 'slot-setup', 'offer_q' => '153' );
+    ob_start();
+    $page->render_page();
+    $html = (string) ob_get_clean();
+
+    tmw_assert_contains( 'Slut Roulette - PPS', $html, 'The workbench should list the matching offer.' );
+    tmw_assert_contains( 'Not eligible - missing_valid_cta', $html, 'The workbench should show the exact block reason.' );
+    tmw_assert_contains( 'offer_edit=153', $html, 'The workbench should offer a Configure link for the matched offer.' );
+};
+
+$tests['workbench_editor_renders_isolated_form_fields'] = function() {
+    tmw_reset_test_state();
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, array( 'allowed_offer_types' => array( 'pps' ) ) );
+    $repo = tmw_workbench_test_repo( array( '153' => tmw_workbench_offer( '153', 'Slut Roulette - PPS' ) ) );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $_GET = array( 'tab' => 'slot-setup', 'offer_q' => '153', 'offer_edit' => '153' );
+    ob_start();
+    $page->render_page();
+    $html = (string) ob_get_clean();
+
+    tmw_assert_contains( 'value="tmw_cr_slot_banner_save_offer_config"', $html, 'The editor should post to the isolated save action.' );
+    foreach ( array( 'final_url_override', 'image_url_override', 'allowed_countries', 'blocked_countries', 'custom_cta_text', 'custom_slogan', 'label_override', 'manual_offer_type', 'notes', 'slot_selected', 'priority' ) as $field ) {
+        tmw_assert_contains( 'tmw_offer_config[' . $field . ']', $html, 'The editor should expose the ' . $field . ' field in the tmw_offer_config namespace.' );
+    }
+    tmw_assert_true(
+        false === strpos( $html, 'tmw_cr_slot_banner_settings[offer_overrides][153]' ),
+        'The editor must not emit fields inside the shared settings option namespace.'
+    );
 };
 
 foreach ( $tests as $name => $test ) {

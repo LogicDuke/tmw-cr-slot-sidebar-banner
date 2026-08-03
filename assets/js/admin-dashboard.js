@@ -121,6 +121,7 @@
 
     const emptyText = list.getAttribute('data-empty-text') || '';
     const duplicateText = list.getAttribute('data-duplicate-text') || '';
+    const limitText = list.getAttribute('data-limit-text') || '';
     const eligibilityUnknownText = list.getAttribute('data-eligibility-unknown-text') || '';
 
     const currentIds = function () {
@@ -187,9 +188,21 @@
     };
 
     const addOffer = function (entry) {
-        const existing = list.querySelector('.tmw-cr-featured-row[data-offer-id="' + entry.id + '"]');
+        const existing = Array.from(list.querySelectorAll('.tmw-cr-featured-row')).find(function (row) {
+            return row.getAttribute('data-offer-id') === entry.id;
+        });
         if (existing) {
             flashDuplicate(existing);
+            return;
+        }
+
+        if (currentIds().length >= 25) {
+            const notice = document.createElement('li');
+            notice.className = 'tmw-cr-featured-search-results__notice';
+            notice.textContent = limitText;
+            searchResults.innerHTML = '';
+            searchResults.appendChild(notice);
+            searchResults.hidden = false;
             return;
         }
 
@@ -223,7 +236,7 @@
 
         const metaEl = row.querySelector('.tmw-cr-featured-row__meta');
         if (metaEl) {
-            metaEl.textContent = 'ID ' + entry.id + ' \u00b7 ' + (entry.type || '') + ' \u00b7 ' + (entry.status || '');
+            metaEl.textContent = 'ID ' + entry.id;
         }
 
         const badge = row.querySelector('.tmw-cr-badge');
@@ -303,7 +316,23 @@
 
     // --- Remove ---------------------------------------------------------
     list.addEventListener('click', function (event) {
+        const moveUpButton = event.target.closest('.tmw-cr-featured-row__move-up');
+        const moveDownButton = event.target.closest('.tmw-cr-featured-row__move-down');
         const removeButton = event.target.closest('.tmw-cr-featured-row__remove');
+        if (moveUpButton || moveDownButton) {
+            const row = (moveUpButton || moveDownButton).closest('.tmw-cr-featured-row');
+            if (!row) {
+                return;
+            }
+            if (moveUpButton && row.previousElementSibling) {
+                list.insertBefore(row, row.previousElementSibling);
+            } else if (moveDownButton && row.nextElementSibling) {
+                list.insertBefore(row.nextElementSibling, row);
+            }
+            renderPositions();
+            (moveUpButton || moveDownButton).focus();
+            return;
+        }
         if (!removeButton) {
             return;
         }

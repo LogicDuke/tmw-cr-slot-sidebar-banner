@@ -263,3 +263,9 @@
     flex: 0 0 auto;
     align-self: flex-start;
 }
+
+.tmw-cr-featured-row__move-controls {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 4px;
+}

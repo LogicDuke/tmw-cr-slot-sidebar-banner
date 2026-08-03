@@ -7155,6 +7155,52 @@ $tests['featured_order_sanitize_removes_invalid_non_numeric_ids'] = function() {
     tmw_assert_same( array( '8780' ), $saved, 'Non-digit IDs must be removed while valid numeric IDs are kept.' );
 };
 
+$tests['featured_order_sanitize_rejects_nested_and_non_scalar_ids_before_casting'] = function() {
+    tmw_reset_test_state();
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta', 'dashboard_meta', 'skipped', 'featured' );
+    $saved = $repo->save_featured_offer_ids( array( array( '8780' ), new stdClass(), '10335' ) );
+    tmw_assert_same( array( '10335' ), $saved, 'Nested and non-scalar values must be rejected before string casting.' );
+};
+
+$tests['featured_order_admin_rejects_nested_ids_without_changing_saved_order'] = function() {
+    tmw_reset_test_state();
+    update_option( 'featured', array( '8780' ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta', 'dashboard_meta', 'skipped', 'featured' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $_POST = array( '_wpnonce' => '1', 'featured_offer_ids' => array( array( '10335' ) ) );
+
+    $page->handle_save_featured_order();
+
+    tmw_assert_same( 'error', $page->notice['type'], 'A nested ID submission must show an error.' );
+    tmw_assert_same( array( '8780' ), $repo->get_featured_offer_ids(), 'A nested ID submission must not change the saved order.' );
+};
+
+$tests['featured_order_admin_rejects_non_list_payload_without_changing_saved_order'] = function() {
+    tmw_reset_test_state();
+    update_option( 'featured', array( '8780' ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta', 'dashboard_meta', 'skipped', 'featured' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $_POST = array( '_wpnonce' => '1', 'featured_offer_ids' => '10335' );
+
+    $page->handle_save_featured_order();
+
+    tmw_assert_same( 'error', $page->notice['type'], 'A non-list ID submission must show an error.' );
+    tmw_assert_same( array( '8780' ), $repo->get_featured_offer_ids(), 'A non-list ID submission must not change the saved order.' );
+};
+
+$tests['featured_order_admin_rejects_more_than_25_without_truncating'] = function() {
+    tmw_reset_test_state();
+    update_option( 'featured', array( '8780' ) );
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides', 'stats', 'stats_meta', 'dashboard_meta', 'skipped', 'featured' );
+    $page = new TMW_Test_Admin_Page( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $repo, 'sidebar' );
+    $_POST = array( '_wpnonce' => '1', 'featured_offer_ids' => array_map( 'strval', range( 1, 26 ) ) );
+
+    $page->handle_save_featured_order();
+
+    tmw_assert_same( 'error', $page->notice['type'], 'An over-limit submission must show an error.' );
+    tmw_assert_same( array( '8780' ), $repo->get_featured_offer_ids(), 'An over-limit submission must be rejected without truncating or changing the saved order.' );
+};
+
 $tests['featured_order_unknown_numeric_id_preserved_but_ignored_on_frontend'] = function() {
     tmw_reset_test_state();
     $repo = tmw_featured_order_test_repo(

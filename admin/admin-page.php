@@ -773,8 +773,19 @@ class TMW_CR_Slot_Admin_Page {
         $this->assert_admin_action( 'tmw_cr_slot_banner_save_featured_order' );
 
         $raw_ids = array();
-        if ( isset( $_POST['featured_offer_ids'] ) && is_array( $_POST['featured_offer_ids'] ) ) {
+        if ( isset( $_POST['featured_offer_ids'] ) && ! is_array( $_POST['featured_offer_ids'] ) ) {
+            $this->redirect_with_notice_to_tab( 'error', 'Featured offer IDs must be submitted as a list.', 'slot-setup' );
+            return;
+        }
+        if ( isset( $_POST['featured_offer_ids'] ) ) {
             $raw_ids = wp_unslash( $_POST['featured_offer_ids'] );
+        }
+
+        foreach ( $raw_ids as $raw_id ) {
+            if ( ! is_scalar( $raw_id ) ) {
+                $this->redirect_with_notice_to_tab( 'error', 'Featured offer IDs must be scalar values.', 'slot-setup' );
+                return;
+            }
         }
 
         $raw_ids = array_map(
@@ -785,6 +796,10 @@ class TMW_CR_Slot_Admin_Page {
         );
 
         $saved = $this->offer_repository->save_featured_offer_ids( $raw_ids );
+        if ( false === $saved ) {
+            $this->redirect_with_notice_to_tab( 'error', 'A maximum of 25 featured offers is allowed. No changes were saved.', 'slot-setup' );
+            return;
+        }
 
         $this->admin_debug_log(
             sprintf(
@@ -1309,20 +1324,16 @@ class TMW_CR_Slot_Admin_Page {
             $rows[] = $row;
         }
 
-        // Compact searchable catalog for the client-side search box. Read-only
-        // metadata already computed by existing helpers — no new classification logic.
+        // Compact searchable catalog containing only the fields used for search.
         $catalog_js = array();
         foreach ( $synced_offers as $offer_id => $offer ) {
             $offer_id = (string) $offer_id;
             if ( '' === $offer_id || ! is_array( $offer ) ) {
                 continue;
             }
-            $status_audit = $this->offer_repository->get_offer_status_approval_audit( $offer );
             $catalog_js[] = array(
-                'id'     => $offer_id,
-                'name'   => (string) ( $offer['name'] ?? $offer_id ),
-                'type'   => $format_type_label( $offer ),
-                'status' => ! empty( $status_audit['active_approved'] ) ? __( 'Active / Approved', 'tmw-cr-slot-sidebar-banner' ) : __( 'Inactive / Unapproved', 'tmw-cr-slot-sidebar-banner' ),
+                'id'   => $offer_id,
+                'name' => (string) ( $offer['name'] ?? $offer_id ),
             );
         }
         $catalog_json = str_replace( '</', '<\\/', (string) wp_json_encode( $catalog_js ) );
@@ -1343,7 +1354,7 @@ class TMW_CR_Slot_Admin_Page {
                 </p>
                 <ul id="tmw-cr-featured-search-results" class="tmw-cr-featured-search-results" hidden aria-live="polite"></ul>
 
-                <ol id="tmw-cr-featured-list" class="tmw-cr-featured-list" data-empty-text="<?php esc_attr_e( 'No offers featured yet. The banner is using its normal ranking.', 'tmw-cr-slot-sidebar-banner' ); ?>" data-duplicate-text="<?php esc_attr_e( 'Already in the featured list.', 'tmw-cr-slot-sidebar-banner' ); ?>" data-eligibility-unknown-text="<?php esc_attr_e( 'Eligibility unknown until saved', 'tmw-cr-slot-sidebar-banner' ); ?>">
+                <ol id="tmw-cr-featured-list" class="tmw-cr-featured-list" data-empty-text="<?php esc_attr_e( 'No offers featured yet. The banner is using its normal ranking.', 'tmw-cr-slot-sidebar-banner' ); ?>" data-duplicate-text="<?php esc_attr_e( 'Already in the featured list.', 'tmw-cr-slot-sidebar-banner' ); ?>" data-limit-text="<?php esc_attr_e( 'A maximum of 25 featured offers is allowed.', 'tmw-cr-slot-sidebar-banner' ); ?>" data-eligibility-unknown-text="<?php esc_attr_e( 'Eligibility unknown until saved', 'tmw-cr-slot-sidebar-banner' ); ?>">
                     <?php if ( empty( $rows ) ) : ?>
                         <li class="tmw-cr-featured-list__empty" data-empty="1">
                             <?php esc_html_e( 'No offers featured yet. The banner is using its normal ranking.', 'tmw-cr-slot-sidebar-banner' ); ?>
@@ -1383,6 +1394,10 @@ class TMW_CR_Slot_Admin_Page {
                                     <?php endif; ?>
                                 </span>
                                 <input type="hidden" name="featured_offer_ids[]" value="<?php echo esc_attr( $row['id'] ); ?>" />
+                                <span class="tmw-cr-featured-row__move-controls">
+                                    <button type="button" class="button tmw-cr-featured-row__move-up"><?php esc_html_e( 'Move up', 'tmw-cr-slot-sidebar-banner' ); ?></button>
+                                    <button type="button" class="button tmw-cr-featured-row__move-down"><?php esc_html_e( 'Move down', 'tmw-cr-slot-sidebar-banner' ); ?></button>
+                                </span>
                                 <button type="button" class="button tmw-cr-featured-row__remove"><?php esc_html_e( 'Remove', 'tmw-cr-slot-sidebar-banner' ); ?></button>
                             </li>
                         <?php endforeach; ?>
@@ -1402,6 +1417,10 @@ class TMW_CR_Slot_Admin_Page {
                         <span class="tmw-cr-badge tmw-cr-badge--featured"><?php esc_html_e( 'Eligibility unknown until saved', 'tmw-cr-slot-sidebar-banner' ); ?></span>
                     </span>
                     <input type="hidden" name="featured_offer_ids[]" value="" />
+                    <span class="tmw-cr-featured-row__move-controls">
+                        <button type="button" class="button tmw-cr-featured-row__move-up"><?php esc_html_e( 'Move up', 'tmw-cr-slot-sidebar-banner' ); ?></button>
+                        <button type="button" class="button tmw-cr-featured-row__move-down"><?php esc_html_e( 'Move down', 'tmw-cr-slot-sidebar-banner' ); ?></button>
+                    </span>
                     <button type="button" class="button tmw-cr-featured-row__remove"><?php esc_html_e( 'Remove', 'tmw-cr-slot-sidebar-banner' ); ?></button>
                 </li>
             </template>

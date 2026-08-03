@@ -40,6 +40,18 @@ class TMW_CR_Slot_Offer_Repository {
 
     /** @var string */
     protected $skipped_offers_option_key;
+
+    /**
+     * Option key for the manual Featured Offer Order list.
+     *
+     * Stores a single ordered array of offer ID strings, entirely separate from
+     * slot_offer_ids / slot_offer_priority. This keeps the featured order immune
+     * to the shared-settings-array rebuild performed by sanitize_settings().
+     *
+     * @var string
+     */
+    protected $featured_offer_ids_option_key;
+
     /** @var array<string,array<string,string>>|null */
     protected $offer_logo_manifest_rows = null;
 
@@ -67,7 +79,7 @@ class TMW_CR_Slot_Offer_Repository {
      * @param string $meta_option_key       Option key for sync meta.
      * @param string $overrides_option_key  Option key for offer overrides.
      */
-    public function __construct( $offers_option_key, $meta_option_key, $overrides_option_key = 'tmw_cr_slot_banner_offer_overrides', $stats_option_key = 'tmw_cr_slot_banner_offer_stats', $stats_meta_option_key = 'tmw_cr_slot_banner_offer_stats_meta', $dashboard_meta_option_key = 'tmw_cr_slot_banner_offer_dashboard_meta', $skipped_offers_option_key = 'tmw_cr_slot_banner_skipped_offers' ) {
+    public function __construct( $offers_option_key, $meta_option_key, $overrides_option_key = 'tmw_cr_slot_banner_offer_overrides', $stats_option_key = 'tmw_cr_slot_banner_offer_stats', $stats_meta_option_key = 'tmw_cr_slot_banner_offer_stats_meta', $dashboard_meta_option_key = 'tmw_cr_slot_banner_offer_dashboard_meta', $skipped_offers_option_key = 'tmw_cr_slot_banner_skipped_offers', $featured_offer_ids_option_key = 'tmw_cr_slot_banner_featured_offer_ids' ) {
         $this->offers_option_key    = $offers_option_key;
         $this->meta_option_key      = $meta_option_key;
         $this->overrides_option_key = $overrides_option_key;
@@ -75,6 +87,7 @@ class TMW_CR_Slot_Offer_Repository {
         $this->stats_meta_option_key = $stats_meta_option_key;
         $this->dashboard_meta_option_key = $dashboard_meta_option_key;
         $this->skipped_offers_option_key = $skipped_offers_option_key;
+        $this->featured_offer_ids_option_key = $featured_offer_ids_option_key;
     }
 
     /**
@@ -84,6 +97,171 @@ class TMW_CR_Slot_Offer_Repository {
         $offers = get_option( $this->offers_option_key, array() );
 
         return is_array( $offers ) ? $offers : array();
+    }
+
+    /**
+     * [TMW-FEATURED-ORDER] Sanitizes a submitted/stored Featured Offer Order list.
+     *
+     * Normalizes to a flat, ordered array of unique digit-only offer ID strings.
+     * Deliberately does NOT check the submitted IDs against the synced offer
+     * catalog: an offer that is temporarily unsynced (sync failure, removed and
+     * later restored, etc.) must not have its saved position silently discarded.
+     * Unknown-catalog handling happens at the read/render layer instead.
+     *
+     * @param mixed $input Raw list of offer IDs (any shape).
+     *
+     * @return array<int,string> Ordered, de-duplicated, digit-only offer IDs.
+     */
+    public function sanitize_featured_offer_ids( $input ) {
+        $input = is_array( $input ) ? $input : array();
+        $seen  = array();
+        $clean = array();
+
+        foreach ( $input as $raw_id ) {
+            if ( ! is_scalar( $raw_id ) ) {
+                continue;
+            }
+
+            $value = trim( (string) $raw_id );
+            if ( '' === $value || ! ctype_digit( $value ) ) {
+                continue;
+            }
+
+            // Normalizes leading zeros, e.g. '08780' -> '8780', so the same offer
+            // can never be represented as two different string keys.
+            $value = (string) (int) $value;
+            if ( '' === $value || isset( $seen[ $value ] ) ) {
+                continue;
+            }
+
+            $seen[ $value ] = true;
+            $clean[]        = $value;
+
+        }
+
+        return $clean;
+    }
+
+    /**
+     * [TMW-FEATURED-ORDER] Returns the saved Featured Offer Order list.
+     *
+     * @return array<int,string> Ordered offer ID strings. Position 0 is position 1 in the UI.
+     */
+    public function get_featured_offer_ids() {
+        $stored = get_option( $this->featured_offer_ids_option_key, array() );
+        $stored = is_array( $stored ) ? $stored : array();
+
+        $clean = $this->sanitize_featured_offer_ids( $stored );
+
+        // An over-limit value cannot be produced by save_featured_offer_ids().
+        // Treat externally corrupted data as invalid rather than truncating it.
+        return count( $clean ) > 25 ? array() : $clean;
+    }
+
+    /**
+     * [TMW-FEATURED-ORDER] Persists the Featured Offer Order list.
+     *
+     * Writes ONLY tmw_cr_slot_banner_featured_offer_ids. Never touches
+     * slot_offer_ids, slot_offer_priority, or any other settings key.
+     *
+     * @param mixed $input Raw list of offer IDs (any shape).
+     *
+     * @return array<int,string>|false The sanitized list, or false when over the limit.
+     */
+    public function save_featured_offer_ids( $input ) {
+        $clean = $this->sanitize_featured_offer_ids( $input );
+        if ( count( $clean ) > 25 ) {
+            return false;
+        }
+
+        update_option( $this->featured_offer_ids_option_key, $clean, false );
+
+        return $clean;
+    }
+
+    /**
+     * [TMW-FEATURED-ORDER] Final stable reordering step for the frontend pool.
+     *
+     * Runs strictly AFTER the pool has been assembled, filtered for eligibility,
+     * and ranked by the existing logic. It only permutes offers already present
+     * in $offers — it can never add an offer that failed eligibility, and it
+     * never re-sorts the offers it doesn't touch.
+     *
+     * Contract:
+     *   1. Featured offers that survived into $offers are lifted to the front,
+     *      in the exact order saved.
+     *   2. Featured offers NOT present in $offers (ineligible, unsynced, or
+     *      unknown) are simply skipped — never added, never substituted.
+     *   3. Every remaining offer keeps the relative order it already had.
+     *
+     * @param array<int,array<string,mixed>> $offers Already-ranked, already-eligible offers.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    protected function apply_featured_offer_order( $offers ) {
+        $featured_ids = $this->get_featured_offer_ids();
+
+        if ( empty( $featured_ids ) || empty( $offers ) ) {
+            return $offers;
+        }
+
+        $by_id = array();
+        foreach ( $offers as $offer ) {
+            if ( ! is_array( $offer ) ) {
+                continue;
+            }
+            $offer_id = (string) ( $offer['id'] ?? '' );
+            if ( '' === $offer_id || isset( $by_id[ $offer_id ] ) ) {
+                continue;
+            }
+            $by_id[ $offer_id ] = $offer;
+        }
+
+        $used_ids            = array();
+        $featured_section     = array();
+        $present_featured_ids = array();
+
+        foreach ( $featured_ids as $featured_id ) {
+            if ( isset( $by_id[ $featured_id ] ) && ! isset( $used_ids[ $featured_id ] ) ) {
+                $featured_section[]         = $by_id[ $featured_id ];
+                $used_ids[ $featured_id ]   = true;
+                $present_featured_ids[]     = $featured_id;
+            }
+        }
+
+        // No featured IDs actually survived into the eligible pool: nothing to reorder.
+        if ( empty( $featured_section ) ) {
+            return $offers;
+        }
+
+        $remaining_section = array();
+        foreach ( $offers as $offer ) {
+            if ( ! is_array( $offer ) ) {
+                continue;
+            }
+            $offer_id = (string) ( $offer['id'] ?? '' );
+            if ( '' === $offer_id || isset( $used_ids[ $offer_id ] ) ) {
+                continue;
+            }
+            $used_ids[ $offer_id ] = true;
+            $remaining_section[]   = $offer;
+        }
+
+        $final = array_merge( $featured_section, $remaining_section );
+
+        if ( defined( 'WP_DEBUG' ) && WP_DEBUG && function_exists( 'error_log' ) ) {
+            $first_id = isset( $final[0]['id'] ) ? (string) $final[0]['id'] : '';
+            error_log(
+                sprintf(
+                    '[TMW-FEATURED-ORDER] configured=%1$s present=%2$s first=%3$s',
+                    implode( ',', $featured_ids ),
+                    implode( ',', $present_featured_ids ),
+                    $first_id
+                )
+            );
+        }
+
+        return $final;
     }
 
     /**
@@ -2456,6 +2634,10 @@ class TMW_CR_Slot_Offer_Repository {
         if ( empty( $offers ) && function_exists( 'error_log' ) ) {
             error_log( '[TMW-BANNER-TYPE] frontend_pool_empty safe_empty_state=1' );
         }
+
+        // [TMW-FEATURED-ORDER] Final stable reorder. Runs after assembly, eligibility
+        // and ranking are complete; only permutes offers already in the pool.
+        $offers = $this->apply_featured_offer_order( $offers );
 
         return apply_filters( 'tmw_cr_slot_banner_offers', $offers, '', $banner_data );
     }

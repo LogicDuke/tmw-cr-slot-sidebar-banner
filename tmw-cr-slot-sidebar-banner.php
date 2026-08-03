@@ -3,7 +3,7 @@
  * Plugin Name: TMW CR Offer Sidebar Banner
  * Plugin URI: https://themilisofialtd.com/
  * Description: Displays a geo-targeted CrackRevenue offer recommendation banner with an animated offer selector in sidebar areas via shortcode or template tag.
- * Version: 1.9.14
+ * Version: 1.9.15
  * Author: The Milisofia LTD
  * Author URI: https://themilisofialtd.com/
  * License: GPL2
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.14' );
+define( 'TMW_CR_SLOT_BANNER_VERSION', '1.9.15' );
 define( 'TMW_CR_SLOT_BANNER_PATH', plugin_dir_path( __FILE__ ) );
 define( 'TMW_CR_SLOT_BANNER_URL', plugin_dir_url( __FILE__ ) );
 
@@ -77,6 +77,19 @@ class TMW_CR_Slot_Sidebar_Banner {
      * @var string
      */
     const OFFER_STATS_META_OPTION_KEY = 'tmw_cr_slot_banner_offer_stats_meta';
+
+    /**
+     * [TMW-FEATURED-ORDER] Stored manual Featured Offer Order option.
+     *
+     * A single ordered array of offer ID strings. Deliberately separate from
+     * OPTION_KEY (settings) so it can never be wiped by the shared settings-API
+     * sanitizer, and separate from slot_offer_ids / slot_offer_priority so it
+     * carries exactly one meaning: manual display order.
+     *
+     * @var string
+     */
+    const FEATURED_OFFER_IDS_OPTION_KEY = 'tmw_cr_slot_banner_featured_offer_ids';
+
     const STATS_SYNC_CRON_HOOK = TMW_CR_Slot_Stats_Sync_Service::CRON_HOOK;
 
     /**
@@ -97,7 +110,7 @@ class TMW_CR_Slot_Sidebar_Banner {
      * Constructor.
      */
     public function __construct() {
-        $this->offer_repository = new TMW_CR_Slot_Offer_Repository( self::OFFERS_OPTION_KEY, self::SYNC_META_OPTION_KEY, self::OFFER_OVERRIDES_OPTION_KEY, self::OFFER_STATS_OPTION_KEY, self::OFFER_STATS_META_OPTION_KEY );
+        $this->offer_repository = new TMW_CR_Slot_Offer_Repository( self::OFFERS_OPTION_KEY, self::SYNC_META_OPTION_KEY, self::OFFER_OVERRIDES_OPTION_KEY, self::OFFER_STATS_OPTION_KEY, self::OFFER_STATS_META_OPTION_KEY, 'tmw_cr_slot_banner_offer_dashboard_meta', 'tmw_cr_slot_banner_skipped_offers', self::FEATURED_OFFER_IDS_OPTION_KEY );
 
         add_action( 'init', array( $this, 'register_shortcode' ) );
         add_action( 'init', array( $this, 'maybe_configure_stats_sync_schedule' ), 20 );

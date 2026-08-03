@@ -40,6 +40,7 @@ class TMW_CR_Slot_Admin_Page {
         add_action( 'admin_post_tmw_cr_slot_banner_save_allowed_types', array( $this, 'handle_save_allowed_types' ) );
         add_action( 'admin_post_tmw_cr_slot_banner_save_pool_mode', array( $this, 'handle_save_pool_mode' ) );
         add_action( 'admin_post_tmw_cr_slot_banner_select_offer', array( $this, 'handle_select_offer' ) );
+        add_action( 'admin_post_tmw_cr_slot_banner_save_featured_order', array( $this, 'handle_save_featured_order' ) );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_dashboard_assets' ) );
     }
 
@@ -756,6 +757,61 @@ class TMW_CR_Slot_Admin_Page {
         );
     }
 
+    /**
+     * [TMW-FEATURED-ORDER] Saves the manual Featured Offer Order list.
+     *
+     * Writes ONLY the dedicated tmw_cr_slot_banner_featured_offer_ids option via
+     * TMW_CR_Slot_Offer_Repository::save_featured_offer_ids(). Deliberately does
+     * NOT go through the shared settings-API group (options.php / sanitize_settings),
+     * so it can never be wiped by an unrelated save on another tab, and it never
+     * reads or writes slot_offer_ids, slot_offer_priority, offer_overrides, or any
+     * other settings key.
+     *
+     * @return void
+     */
+    public function handle_save_featured_order() {
+        $this->assert_admin_action( 'tmw_cr_slot_banner_save_featured_order' );
+
+        $raw_ids = array();
+        if ( isset( $_POST['featured_offer_ids'] ) && ! is_array( $_POST['featured_offer_ids'] ) ) {
+            $this->redirect_with_notice_to_tab( 'error', 'Featured offer IDs must be submitted as a list.', 'slot-setup' );
+            return;
+        }
+        if ( isset( $_POST['featured_offer_ids'] ) ) {
+            $raw_ids = wp_unslash( $_POST['featured_offer_ids'] );
+        }
+
+        foreach ( $raw_ids as $raw_id ) {
+            if ( ! is_scalar( $raw_id ) ) {
+                $this->redirect_with_notice_to_tab( 'error', 'Featured offer IDs must be scalar values.', 'slot-setup' );
+                return;
+            }
+        }
+
+        $raw_ids = array_map(
+            static function ( $value ) {
+                return sanitize_text_field( (string) $value );
+            },
+            (array) $raw_ids
+        );
+
+        $saved = $this->offer_repository->save_featured_offer_ids( $raw_ids );
+        if ( false === $saved ) {
+            $this->redirect_with_notice_to_tab( 'error', 'A maximum of 25 featured offers is allowed. No changes were saved.', 'slot-setup' );
+            return;
+        }
+
+        $this->admin_debug_log(
+            sprintf(
+                '[TMW-FEATURED-ORDER] admin_save_featured_order saved_count=%1$d first=%2$s',
+                count( $saved ),
+                isset( $saved[0] ) ? $saved[0] : ''
+            )
+        );
+
+        $this->redirect_with_notice_to_tab( 'success', 'Featured offer order saved.', 'slot-setup' );
+    }
+
     protected function import_final_url_override_rows( $raw_csv ) {
         $lines = preg_split( '/\r?\n/', trim( (string) $raw_csv ) );
         $overrides = $this->offer_repository->get_offer_overrides();
@@ -1184,11 +1240,204 @@ class TMW_CR_Slot_Admin_Page {
     }
 
     /**
+     * [TMW-FEATURED-ORDER] Renders the compact "Featured Offer Order" panel.
+     *
+     * Reads only via existing repository helpers (get_featured_offer_ids(),
+     * get_synced_offers(), get_offer_type_keys(), get_offer_status_approval_audit(),
+     * get_offer_frontend_eligibility_summary()) — no offer classification or
+     * eligibility logic is duplicated here. Saves through its own admin-post
+     * action/nonce, never through the shared options.php settings group.
+     *
+     * @param array<string,mixed> $settings Settings payload (read-only here).
+     *
+     * @return void
+     */
+    protected function render_featured_offer_order_panel( $settings ) {
+        $featured_ids   = $this->offer_repository->get_featured_offer_ids();
+        $synced_offers  = $this->offer_repository->get_synced_offers();
+        $country        = strtoupper( TMW_CR_Slot_Geo_Helper::get_country_code() );
+        $legacy_catalog = TMW_CR_Slot_Sidebar_Banner::get_offer_catalog_defaults();
+        $pool_mode      = $this->offer_repository->get_frontend_pool_mode( $settings );
+
+        $selected_ids_raw = isset( $settings['slot_offer_ids'] ) && is_array( $settings['slot_offer_ids'] ) ? $settings['slot_offer_ids'] : array();
+        $selected_ids     = array_flip( array_map( 'strval', $selected_ids_raw ) );
+
+        $type_labels = array(
+            'pps'               => 'PPS',
+            'revshare'          => 'Revshare',
+            'revshare_lifetime' => 'Revshare Lifetime',
+            'soi'               => 'SOI',
+            'doi'               => 'DOI',
+            'cpa'               => 'CPA',
+            'cpl'               => 'CPL',
+            'cpc'               => 'CPC',
+            'cpi'               => 'CPI',
+            'cpm'               => 'CPM',
+            'smartlink'         => 'Smartlink',
+            'fallback'          => 'Fallback',
+        );
+
+        $format_type_label = function ( $offer ) use ( $type_labels ) {
+            $type_keys = $this->offer_repository->get_offer_type_keys( $offer );
+            if ( empty( $type_keys ) ) {
+                return '—';
+            }
+
+            $labels = array_map(
+                static function ( $key ) use ( $type_labels ) {
+                    return isset( $type_labels[ $key ] ) ? $type_labels[ $key ] : strtoupper( str_replace( '_', ' ', (string) $key ) );
+                },
+                $type_keys
+            );
+
+            return implode( '/', array_unique( $labels ) );
+        };
+
+        $rows = array();
+        foreach ( $featured_ids as $index => $offer_id ) {
+            $row = array(
+                'id'       => $offer_id,
+                'position' => $index + 1,
+                'known'    => isset( $synced_offers[ $offer_id ] ),
+            );
+
+            if ( isset( $synced_offers[ $offer_id ] ) ) {
+                $offer        = $synced_offers[ $offer_id ];
+                $status_audit = $this->offer_repository->get_offer_status_approval_audit( $offer );
+                $eligibility  = $this->offer_repository->get_offer_frontend_eligibility_summary( $offer, $settings, $country, $legacy_catalog );
+
+                $row['name']                  = (string) ( $offer['name'] ?? $offer_id );
+                $row['type_label']            = $format_type_label( $offer );
+                $row['status_label']          = ! empty( $status_audit['active_approved'] ) ? __( 'Active / Approved', 'tmw-cr-slot-sidebar-banner' ) : __( 'Inactive / Unapproved', 'tmw-cr-slot-sidebar-banner' );
+                $row['eligible']              = ! empty( $eligibility['is_eligible'] );
+                $row['block_reason']          = (string) ( $eligibility['block_reason'] ?? '' );
+                $row['selected_only_warning'] = ( 'selected_only' === $pool_mode && ! isset( $selected_ids[ $offer_id ] ) );
+            } else {
+                $row['name']                  = '';
+                $row['type_label']            = '';
+                $row['status_label']          = '';
+                $row['eligible']              = false;
+                $row['block_reason']          = 'unknown_offer';
+                $row['selected_only_warning'] = false;
+            }
+
+            $rows[] = $row;
+        }
+
+        // Compact searchable catalog containing only the fields used for search.
+        $catalog_js = array();
+        foreach ( $synced_offers as $offer_id => $offer ) {
+            $offer_id = (string) $offer_id;
+            if ( '' === $offer_id || ! is_array( $offer ) ) {
+                continue;
+            }
+            $catalog_js[] = array(
+                'id'   => $offer_id,
+                'name' => (string) ( $offer['name'] ?? $offer_id ),
+            );
+        }
+        $catalog_json = str_replace( '</', '<\\/', (string) wp_json_encode( $catalog_js ) );
+        ?>
+        <div class="tmw-cr-featured-order" data-tmw-featured-order="1">
+            <h3><?php esc_html_e( 'Featured Offer Order', 'tmw-cr-slot-sidebar-banner' ); ?></h3>
+            <p class="description">
+                <?php esc_html_e( 'These offers are shown first, in this exact order. Position 1 is the offer visitors land on. Offers not listed here remain ordinary smart-fill offers — nothing below is duplicated or replaced.', 'tmw-cr-slot-sidebar-banner' ); ?>
+            </p>
+
+            <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" id="tmw-cr-featured-order-form" class="tmw-cr-featured-order__form">
+                <?php wp_nonce_field( 'tmw_cr_slot_banner_save_featured_order' ); ?>
+                <input type="hidden" name="action" value="tmw_cr_slot_banner_save_featured_order" />
+
+                <p class="tmw-cr-featured-order__search">
+                    <label for="tmw-cr-featured-search-input"><?php esc_html_e( 'Search:', 'tmw-cr-slot-sidebar-banner' ); ?></label>
+                    <input type="text" id="tmw-cr-featured-search-input" class="regular-text" placeholder="<?php esc_attr_e( 'Search by offer name or ID', 'tmw-cr-slot-sidebar-banner' ); ?>" autocomplete="off" />
+                </p>
+                <ul id="tmw-cr-featured-search-results" class="tmw-cr-featured-search-results" hidden aria-live="polite"></ul>
+
+                <ol id="tmw-cr-featured-list" class="tmw-cr-featured-list" data-empty-text="<?php esc_attr_e( 'No offers featured yet. The banner is using its normal ranking.', 'tmw-cr-slot-sidebar-banner' ); ?>" data-duplicate-text="<?php esc_attr_e( 'Already in the featured list.', 'tmw-cr-slot-sidebar-banner' ); ?>" data-limit-text="<?php esc_attr_e( 'A maximum of 25 featured offers is allowed.', 'tmw-cr-slot-sidebar-banner' ); ?>" data-eligibility-unknown-text="<?php esc_attr_e( 'Eligibility unknown until saved', 'tmw-cr-slot-sidebar-banner' ); ?>">
+                    <?php if ( empty( $rows ) ) : ?>
+                        <li class="tmw-cr-featured-list__empty" data-empty="1">
+                            <?php esc_html_e( 'No offers featured yet. The banner is using its normal ranking.', 'tmw-cr-slot-sidebar-banner' ); ?>
+                        </li>
+                    <?php else : ?>
+                        <?php foreach ( $rows as $row ) : ?>
+                            <li class="tmw-cr-featured-row" draggable="true" data-offer-id="<?php echo esc_attr( $row['id'] ); ?>">
+                                <span class="tmw-cr-featured-row__handle" aria-hidden="true">&#9776;</span>
+                                <span class="tmw-cr-featured-row__position"><?php echo esc_html( (string) $row['position'] ); ?>.</span>
+                                <span class="tmw-cr-featured-row__body">
+                                    <?php if ( ! empty( $row['known'] ) ) : ?>
+                                        <strong class="tmw-cr-featured-row__name"><?php echo esc_html( $row['name'] ); ?></strong><br />
+                                        <span class="description">
+                                            <?php
+                                            echo esc_html(
+                                                sprintf(
+                                                    /* translators: 1: offer ID, 2: offer type, 3: status label */
+                                                    __( 'ID %1$s · %2$s · %3$s', 'tmw-cr-slot-sidebar-banner' ),
+                                                    $row['id'],
+                                                    $row['type_label'],
+                                                    $row['status_label']
+                                                )
+                                            );
+                                            ?>
+                                        </span><br />
+                                        <?php if ( ! empty( $row['eligible'] ) ) : ?>
+                                            <?php $this->render_badge( __( 'Eligible', 'tmw-cr-slot-sidebar-banner' ), 'featured' ); ?>
+                                        <?php else : ?>
+                                            <?php $this->render_badge( sprintf( /* translators: %s: block reason key */ __( 'Not eligible — %s', 'tmw-cr-slot-sidebar-banner' ), $row['block_reason'] ), 'warning' ); ?>
+                                        <?php endif; ?>
+                                        <?php if ( ! empty( $row['selected_only_warning'] ) ) : ?>
+                                            <?php $this->render_badge( __( 'Pool mode "Manual selected only": not in Offer Setup selection, so it will not appear', 'tmw-cr-slot-sidebar-banner' ), 'warning' ); ?>
+                                        <?php endif; ?>
+                                    <?php else : ?>
+                                        <strong class="tmw-cr-featured-row__name"><?php echo esc_html( sprintf( /* translators: %s: offer ID */ __( 'ID %s', 'tmw-cr-slot-sidebar-banner' ), $row['id'] ) ); ?></strong><br />
+                                        <?php $this->render_badge( __( 'Unknown / not in current sync', 'tmw-cr-slot-sidebar-banner' ), 'warning' ); ?>
+                                    <?php endif; ?>
+                                </span>
+                                <input type="hidden" name="featured_offer_ids[]" value="<?php echo esc_attr( $row['id'] ); ?>" />
+                                <span class="tmw-cr-featured-row__move-controls">
+                                    <button type="button" class="button tmw-cr-featured-row__move-up"><?php esc_html_e( 'Move up', 'tmw-cr-slot-sidebar-banner' ); ?></button>
+                                    <button type="button" class="button tmw-cr-featured-row__move-down"><?php esc_html_e( 'Move down', 'tmw-cr-slot-sidebar-banner' ); ?></button>
+                                </span>
+                                <button type="button" class="button tmw-cr-featured-row__remove"><?php esc_html_e( 'Remove', 'tmw-cr-slot-sidebar-banner' ); ?></button>
+                            </li>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </ol>
+
+                <?php submit_button( __( 'Save Featured Order', 'tmw-cr-slot-sidebar-banner' ), 'primary', 'submit', false ); ?>
+            </form>
+
+            <template id="tmw-cr-featured-row-template">
+                <li class="tmw-cr-featured-row" draggable="true" data-offer-id="">
+                    <span class="tmw-cr-featured-row__handle" aria-hidden="true">&#9776;</span>
+                    <span class="tmw-cr-featured-row__position"></span>
+                    <span class="tmw-cr-featured-row__body">
+                        <strong class="tmw-cr-featured-row__name"></strong><br />
+                        <span class="description tmw-cr-featured-row__meta"></span><br />
+                        <span class="tmw-cr-badge tmw-cr-badge--featured"><?php esc_html_e( 'Eligibility unknown until saved', 'tmw-cr-slot-sidebar-banner' ); ?></span>
+                    </span>
+                    <input type="hidden" name="featured_offer_ids[]" value="" />
+                    <span class="tmw-cr-featured-row__move-controls">
+                        <button type="button" class="button tmw-cr-featured-row__move-up"><?php esc_html_e( 'Move up', 'tmw-cr-slot-sidebar-banner' ); ?></button>
+                        <button type="button" class="button tmw-cr-featured-row__move-down"><?php esc_html_e( 'Move down', 'tmw-cr-slot-sidebar-banner' ); ?></button>
+                    </span>
+                    <button type="button" class="button tmw-cr-featured-row__remove"><?php esc_html_e( 'Remove', 'tmw-cr-slot-sidebar-banner' ); ?></button>
+                </li>
+            </template>
+
+            <script type="application/json" id="tmw-cr-featured-catalog-data"><?php echo $catalog_json; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- str_replace-hardened wp_json_encode() output, not raw user input. ?></script>
+        </div>
+        <?php
+    }
+
+    /**
      * @param array<string,mixed> $settings Settings.
      *
      * @return void
      */
     protected function render_slot_setup_tab( $settings ) {
+        $this->render_featured_offer_order_panel( $settings );
+
         $include_all = ! empty( $_GET['include_all_offers'] );
         $args        = array(
             'selected_only' => ! $include_all,

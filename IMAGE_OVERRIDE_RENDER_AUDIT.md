@@ -26,9 +26,12 @@ The URL itself is valid. The defect was an internal field mismatch, not URL avai
 4. explicit remote thumbnail;
 5. generated placeholder.
 
-Bundled reel logos are separately resolved by manifest offer ID first and then the brand map. Before this fix, `get_effective_offer_record()` placed the correctly resolved manual URL only in **`image`**, but populated **`logo_url`** directly from the manifest/brand resolver. For offer 153, where that resolver returned no bundled logo, `logo_url` was empty.
+Bundled reel logos are separately resolved by manifest offer ID first and then the brand map. There are two frontend-record construction paths:
 
-The smallest safe correction is confined to PHP record construction: `get_frontend_offer_logo_url()` gives the canonical per-offer override highest precedence, then the legacy manual override, and only then the unchanged manifest/brand-map resolver. It does not promote remote thumbnails or placeholders into reel logos, so the existing text behavior for offers without a logo remains intact.
+* The normal synced path uses `get_effective_offer_record()`. Before this fix, it placed the correctly resolved manual URL only in **`image`**, but populated **`logo_url`** directly from the manifest/brand resolver. For offer 153, where that resolver returned no bundled logo, `logo_url` was empty.
+* The thin-pool override-only fallback uses `get_override_only_effective_offer_record()` for a saved override whose offer is absent from the synced map. It also called the manifest/brand resolver directly. Its immediately following empty-`logo_url` guard could therefore discard an otherwise valid override-only offer even when the override supplied a canonical or legacy manual logo.
+
+The smallest safe correction is confined to PHP record construction: both the synced and override-only paths call the shared `get_frontend_offer_logo_url()` helper. It gives the canonical per-offer `image_url_override` highest precedence, then `settings['offer_image_overrides'][offer_id]`, and only then the unchanged manifest/brand-map resolver. The override-only empty-logo guard now evaluates this shared result, so a supplied manual logo survives while a record with no manual or bundled logo remains excluded. The helper does not promote remote thumbnails or placeholders into reel logos, so the existing text and exclusion behavior remains intact.
 
 ### 3. Frontend serialization
 
@@ -48,10 +51,10 @@ The smallest safe correction is confined to PHP record construction: `get_fronte
 
 **D. Which field does `slot-banner.js` read?**  `renderReelFace()` reads `offer.logo_url` for the `<img>` source. `parseOffers()` separately requires `offer.image` when admitting an offer.
 
-**E. At what exact step was the override lost or ignored?**  It was ignored during `get_effective_offer_record()` construction: `image` used `get_effective_image()` and received the override, while `logo_url` bypassed that manual value and called `get_offer_logo_url()` (manifest/brand map only). Serialization and JavaScript then faithfully carried/read the empty `logo_url`.
+**E. At what exact step was the override lost or ignored?**  It was ignored during frontend record construction. The synced path's `image` used `get_effective_image()` and received the override, while its `logo_url` bypassed that manual value and called `get_offer_logo_url()` (manifest/brand map only). The override-only path likewise called `get_offer_logo_url()` and could then reject the record at its empty-logo check. Serialization and JavaScript faithfully carried/read whatever `logo_url` those constructors produced.
 
 **F. Why can the offer be eligible while still rendering text?**  Eligibility and `parseOffers()` can succeed because the effective `image` is non-empty (manual, catalog, remote, or placeholder) and all type/country/status/CTA gates pass. Reel rendering is a later, independent decision based on `logo_url`; an empty value produces text, as does an image load error.
 
 ## Regression boundary
 
-The change does not touch eligibility, CTA validation, country targeting, Featured Order, ranking/spin selection, tracking, sync, caching, remote image resolution, placeholders, or JavaScript. Tests cover persistence, manual precedence over legacy and manifest/brand resolution, the exact offer 153 URL in serialized JSON, unrelated-offer behavior, `<img>` creation, successful-load text hiding, error fallback, and empty-logo text rendering.
+The change does not touch eligibility, CTA validation, country targeting, Featured Order, ranking/spin selection, tracking, sync, caching, remote image resolution, placeholders, or production JavaScript. Tests cover persistence, the synced path, canonical and legacy override-only paths, manual precedence over manifest/brand resolution, bundled and no-logo fallback behavior, the exact offer 153 URL in serialized JSON, unrelated-offer behavior, `<img>` creation, successful-load text hiding, error fallback, and empty-logo text rendering.

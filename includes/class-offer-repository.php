@@ -3364,7 +3364,7 @@ class TMW_CR_Slot_Offer_Repository {
             return array();
         }
 
-        $logo_url = $this->get_offer_logo_url( $offer_stub );
+        $logo_url = $this->get_frontend_offer_logo_url( $offer_stub, $settings, $override );
         if ( '' === $logo_url ) {
             return array();
         }

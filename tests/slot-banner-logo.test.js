@@ -45,4 +45,4 @@ const textOnlyWrapper = new Element('div');
 context.__slotBannerTest.renderReelFace(textOnlyWrapper, { id: '999', name: 'Text Only', logo_url: '' });
 assert.strictEqual(textOnlyWrapper.children.length, 1, 'empty logo_url should retain text-only rendering');
 
-console.log('Total: 7 passed, 0 failed');
+console.log('Total: 6 passed, 0 failed');

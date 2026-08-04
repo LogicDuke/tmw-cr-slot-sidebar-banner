@@ -3043,6 +3043,52 @@ $tests['override_only_offers_respect_manual_country_and_alias_rules'] = function
     }
     tmw_assert_same( 'https://trk.example.com/jerkmate-winner', (string) ( $offer_8780['cta_url'] ?? '' ), 'Override-only 8780 should use manual final_url_override as CTA.' );
     tmw_assert_same( 'manual_override_only', (string) ( $offer_8780['source'] ?? '' ), 'Override-only 8780 should be marked with manual override-only source.' );
+    tmw_assert_same( $repo->get_offer_logo_url( array( 'id' => '8780', 'name' => 'Jerkmate - PPS' ) ), (string) ( $offer_8780['logo_url'] ?? '' ), 'Override-only offer without a manual image should retain its bundled logo fallback.' );
+};
+
+$tests['override_only_canonical_logo_override_wins_all_fallbacks'] = function() {
+    tmw_reset_test_state();
+    $canonical_url = 'https://img.example.test/canonical-8780.png';
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_offer_overrides(
+        array(
+            '8780' => array(
+                'final_url_override' => 'https://trk.example.com/jerkmate',
+                'image_url_override' => $canonical_url,
+                'allowed_countries'  => array( 'Belgium' ),
+            ),
+        )
+    );
+    $settings = array(
+        'allowed_offer_types'   => array( 'pps' ),
+        'offer_image_overrides' => array( '8780' => 'https://img.example.test/legacy-8780.png' ),
+    );
+
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'BE', array() );
+    tmw_assert_same( 1, count( $offers ), 'Canonical manual logo should allow the override-only record through the empty-logo guard.' );
+    tmw_assert_same( 'manual_override_only', (string) $offers[0]['source'], 'Record should come from the thin-pool override-only fallback.' );
+    tmw_assert_same( $canonical_url, (string) $offers[0]['logo_url'], 'Canonical override should win over legacy and bundled logo values.' );
+};
+
+$tests['override_only_legacy_logo_override_reaches_frontend_logo_url'] = function() {
+    tmw_reset_test_state();
+    $legacy_url = 'https://img.example.test/legacy-8780.png';
+    $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
+    $repo->save_offer_overrides(
+        array(
+            '8780' => array(
+                'final_url_override' => 'https://trk.example.com/jerkmate',
+                'allowed_countries'  => array( 'Belgium' ),
+            ),
+        )
+    );
+    $settings = array(
+        'allowed_offer_types'   => array( 'pps' ),
+        'offer_image_overrides' => array( '8780' => $legacy_url ),
+    );
+
+    $offers = $repo->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'BE', array() );
+    tmw_assert_same( $legacy_url, (string) $offers[0]['logo_url'], 'Legacy override should win over the bundled logo for an override-only record.' );
 };
 
 $tests['override_only_naughtycharm_us_only_is_eligible_in_us'] = function() {
@@ -3059,7 +3105,7 @@ $tests['override_only_unknown_offer_id_is_not_surfaced'] = function() {
     $repo = new TMW_CR_Slot_Offer_Repository( 'offers', 'meta', 'overrides' );
     $repo->save_offer_overrides( array( '999999' => array( 'final_url_override' => 'https://trk.example.com/u', 'allowed_countries' => array( 'United States' ) ) ) );
     $offers = $repo->get_frontend_slot_offers( 'sidebar', array( 'allowed_offer_types' => array( 'pps' ) ), array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'US', array() );
-    tmw_assert_same( 0, count( $offers ), 'Unknown override-only IDs should remain excluded without safe identity/logo resolution.' );
+    tmw_assert_same( 0, count( $offers ), 'Unknown override-only IDs without a manual or bundled logo should retain existing exclusion behavior.' );
 };
 
 $tests['override_only_offer_requires_manual_allowed_country'] = function() {

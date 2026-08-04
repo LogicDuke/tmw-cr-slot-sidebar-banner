@@ -1033,6 +1033,33 @@ class TMW_CR_Slot_Offer_Repository {
     }
 
     /**
+     * Returns the image URL consumed by the frontend reel logo element.
+     *
+     * Workbench and legacy manual image overrides must precede the bundled
+     * manifest / brand-map logo. Other image fallbacks remain on the separate
+     * `image` field so an absent logo continues to use the existing text face.
+     *
+     * @param array<string,mixed> $offer    Synced offer row.
+     * @param array<string,mixed> $settings Plugin settings.
+     * @param array<string,mixed> $override Per-offer override row.
+     *
+     * @return string
+     */
+    public function get_frontend_offer_logo_url( $offer, $settings, $override = array() ) {
+        if ( ! empty( $override['image_url_override'] ) ) {
+            return esc_url_raw( (string) $override['image_url_override'] );
+        }
+
+        $offer_id = (string) ( $offer['id'] ?? '' );
+        $legacy_overrides = isset( $settings['offer_image_overrides'] ) && is_array( $settings['offer_image_overrides'] ) ? $settings['offer_image_overrides'] : array();
+        if ( '' !== $offer_id && ! empty( $legacy_overrides[ $offer_id ] ) ) {
+            return esc_url_raw( (string) $legacy_overrides[ $offer_id ] );
+        }
+
+        return $this->get_offer_logo_url( $offer );
+    }
+
+    /**
      * @param string $offer_name Offer name.
      *
      * @return string
@@ -3268,7 +3295,7 @@ class TMW_CR_Slot_Offer_Repository {
             'vertical' => $this->classify_offer_vertical( $synced_offer ),
             'brand_key' => $this->get_offer_brand_key( (string) ( $synced_offer['name'] ?? '' ) ),
             'logo_filename' => $this->get_offer_logo_filename( $synced_offer ),
-            'logo_url' => $this->get_offer_logo_url( $synced_offer ),
+            'logo_url' => $this->get_frontend_offer_logo_url( $synced_offer, $settings, $override ),
         );
     }
 
@@ -3337,7 +3364,7 @@ class TMW_CR_Slot_Offer_Repository {
             return array();
         }
 
-        $logo_url = $this->get_offer_logo_url( $offer_stub );
+        $logo_url = $this->get_frontend_offer_logo_url( $offer_stub, $settings, $override );
         if ( '' === $logo_url ) {
             return array();
         }

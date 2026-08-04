@@ -7692,6 +7692,56 @@ $tests['save_offer_config_preserves_offer_image_override_map'] = function() {
     tmw_assert_same( 'https://img.example.test/153.png', (string) $repo->get_offer_override( '153' )['image_url_override'], 'Per-offer image override should be saved on the override row.' );
 };
 
+$tests['manual_logo_override_reaches_offer_153_frontend_serialization'] = function() {
+    tmw_reset_test_state();
+    $override_url = 'https://top-models.webcam/wp-content/plugins/tmw-cr-slot-sidebar-banner/assets/logos/80x80/Slut-Roulette.png';
+    $settings = array(
+        'allowed_offer_types' => array( 'pps' ),
+        'slot_offer_ids'      => array( '153' ),
+        'offer_image_overrides' => array( '153' => 'https://legacy.example.test/153.png' ),
+    );
+    update_option( TMW_CR_Slot_Sidebar_Banner::OPTION_KEY, $settings );
+    $repo = tmw_workbench_test_repo(
+        array( '153' => tmw_workbench_offer( '153', 'Slut Roulette - PPS' ) ),
+        array(
+            '153' => array(
+                'enabled'            => 1,
+                'final_url_override' => 'https://trk.example.test/153',
+                'image_url_override' => $override_url,
+                'allowed_countries'  => 'BE',
+            ),
+        )
+    );
+
+    $state = $repo->get_offer_setup_state( '153', $settings, 'Belgium' );
+    tmw_assert_same( $override_url, (string) $state['override']['image_url_override'], 'Workbench state should load the persisted image_url_override field.' );
+
+    $record = $repo->get_effective_offer_record( '153', $settings, array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    tmw_assert_same( $override_url, (string) $record['image'], 'Manual override should retain highest image-resolution precedence.' );
+    tmw_assert_same( $override_url, (string) $record['logo_url'], 'The frontend-consumed logo_url should contain the manual override rather than manifest, brand-map, or legacy values.' );
+    $pool = $repo->get_frontend_slot_offers( 'sidebar', $settings, array( 'cta_url' => '', 'cta_text' => 'CTA' ), 'Belgium', array() );
+    tmw_assert_same( $override_url, (string) $pool[0]['logo_url'], 'Final frontend pool record should contain the exact override in the consumed field.' );
+
+    $serialized = wp_json_encode( $pool );
+    $decoded    = json_decode( $serialized, true );
+    tmw_assert_same( $override_url, (string) $decoded[0]['logo_url'], 'Serialized data-slot-offers JSON should decode to the exact offer 153 override URL in logo_url.' );
+};
+
+$tests['manual_logo_override_does_not_change_unrelated_offer_logo'] = function() {
+    tmw_reset_test_state();
+    $settings = array( 'allowed_offer_types' => array( 'pps' ) );
+    $repo = tmw_workbench_test_repo(
+        array(
+            '153' => tmw_workbench_offer( '153', 'Slut Roulette - PPS' ),
+            '8780' => tmw_workbench_offer( '8780', 'Jerkmate - PPS' ),
+        ),
+        array( '153' => array( 'image_url_override' => 'https://img.example.test/153.png' ) )
+    );
+    $other = tmw_workbench_offer( '8780', 'Jerkmate - PPS' );
+
+    tmw_assert_same( $repo->get_offer_logo_url( $other ), $repo->get_frontend_offer_logo_url( $other, $settings, array() ), 'An unrelated offer without an override should retain manifest/brand-map logo resolution.' );
+};
+
 $tests['save_offer_config_rejects_invalid_nonce'] = function() {
     tmw_reset_test_state();
     $GLOBALS['tmw_test_nonce_ok'] = false;
